@@ -1,0 +1,39 @@
+/* SynTrack - Material Design 3 Theme */
+
+:root {
+    --primary-color: #6750a4;
+    --surface-color: #fffbfe;
+    --text-color: #1c1b1f;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--surface-color);
+    color: var(--text-color);
+    line-height: 1.6;
+}
+
+header {
+    background: var(--primary-color);
+    color: white;
+    padding: 1rem 2rem;
+}
+
+main {
+    max-width: 1200px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+}
+
+.dashboard {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
