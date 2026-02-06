@@ -15,10 +15,10 @@
   --surface-inset: #F3F4F6;
   --surface-overlay: rgba(0, 0, 0, 0.45);
 
-  /* Text */
+  /* Text — all pass WCAG AA 4.5:1 on white */
   --text-primary: #1A1D21;
-  --text-secondary: #5F6B7A;
-  --text-muted: #9CA3AF;
+  --text-secondary: #4B5563;
+  --text-muted: #6B7280;
   --text-inverse: #FFFFFF;
 
   /* Borders */
@@ -100,16 +100,17 @@
   --surface-card: #1A1D24;
   --surface-card-alt: #21242C;
   --surface-raised: #252830;
-  --surface-inset: #14161C;
+  --surface-inset: #161921;
   --surface-overlay: rgba(0, 0, 0, 0.65);
 
-  --text-primary: #F3F4F6;
-  --text-secondary: #9CA3AF;
-  --text-muted: #6B7280;
+  /* Text — all pass WCAG AA 4.5:1 on #1A1D24 */
+  --text-primary: #F1F3F5;
+  --text-secondary: #ABB5C2;
+  --text-muted: #8891A0;
   --text-inverse: #1A1D21;
 
-  --border-default: #2D3139;
-  --border-light: #252830;
+  --border-default: #2F3440;
+  --border-light: #2A2E37;
   --border-focus: #14B8A6;
 
   --accent-teal: #14B8A6;
@@ -973,7 +974,7 @@ button, input, select { font-family: inherit; }
   transition: color var(--transition-fast);
 }
 .data-table th[data-sort-key]:hover { color: var(--accent-teal); }
-.sort-arrow { font-size: 12px; margin-left: 4px; opacity: 0.3; }
+.sort-arrow { font-size: 12px; margin-left: 4px; opacity: 0.5; }
 .data-table th[data-sort-key][data-sort-dir="asc"] .sort-arrow::after { content: '\2191'; opacity: 1; }
 .data-table th[data-sort-key][data-sort-dir="desc"] .sort-arrow::after { content: '\2193'; opacity: 1; }
 

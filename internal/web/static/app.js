@@ -82,8 +82,8 @@ function getThemeColors() {
   const style = getComputedStyle(document.documentElement);
   const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
   return {
-    grid: style.getPropertyValue('--border-light').trim() || (isDark ? '#252830' : '#F0F1F3'),
-    text: style.getPropertyValue('--text-muted').trim() || (isDark ? '#6B7280' : '#9CA3AF'),
+    grid: style.getPropertyValue('--border-light').trim() || (isDark ? '#2A2E37' : '#F0F1F3'),
+    text: style.getPropertyValue('--text-muted').trim() || (isDark ? '#8891A0' : '#6B7280'),
     outline: style.getPropertyValue('--border-default').trim(),
     surfaceContainer: style.getPropertyValue('--surface-card').trim(),
     onSurface: style.getPropertyValue('--text-primary').trim(),
