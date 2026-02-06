@@ -268,7 +268,7 @@ func run() error {
 	logger.Info("Database opened", "path", cfg.DBPath)
 
 	// Create components
-	client := api.NewClient(cfg.APIKey, logger)
+	client := api.NewClient(cfg.SyntheticAPIKey, logger)
 	tr := tracker.New(db, logger)
 	ag := agent.New(client, db, tr, cfg.PollInterval, logger)
 	handler := web.NewHandler(db, tr, logger, nil)
@@ -338,7 +338,7 @@ func run() error {
 }
 
 func printBanner(cfg *config.Config, version string) {
-	apiKeyDisplay := redactAPIKey(cfg.APIKey)
+	apiKeyDisplay := redactAPIKey(cfg.SyntheticAPIKey)
 	fmt.Println()
 	fmt.Println("╔══════════════════════════════════════╗")
 	fmt.Printf("║  SynTrack v%-25s ║\n", version)
