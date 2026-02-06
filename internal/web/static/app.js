@@ -78,11 +78,11 @@ function getThemeColors() {
   const style = getComputedStyle(document.documentElement);
   const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
   return {
-    grid: style.getPropertyValue(isDark ? '--md-outline-variant' : '--md-outline-variant').trim() || (isDark ? '#49454F' : '#CAC4D0'),
-    text: style.getPropertyValue(isDark ? '--md-on-surface-variant' : '--md-on-surface-variant').trim() || (isDark ? '#CAC4D0' : '#49454F'),
-    outline: style.getPropertyValue('--md-outline').trim(),
-    surfaceContainer: style.getPropertyValue('--md-surface-container').trim(),
-    onSurface: style.getPropertyValue('--md-on-surface').trim(),
+    grid: style.getPropertyValue('--border-light').trim() || (isDark ? '#252830' : '#F0F1F3'),
+    text: style.getPropertyValue('--text-muted').trim() || (isDark ? '#6B7280' : '#9CA3AF'),
+    outline: style.getPropertyValue('--border-default').trim(),
+    surfaceContainer: style.getPropertyValue('--surface-card').trim(),
+    onSurface: style.getPropertyValue('--text-primary').trim(),
     isDark
   };
 }
@@ -234,6 +234,14 @@ const insightIcons = {
   info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'
 };
 
+// Quota-specific icons for insight cards
+const quotaIcons = {
+  subscription: '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>',
+  toolCalls: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+  session: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>'
+};
+
 async function fetchDeepInsights() {
   const statsEl = document.getElementById('insights-stats');
   const cardsEl = document.getElementById('insights-cards');
@@ -260,7 +268,7 @@ async function fetchDeepInsights() {
 
     if (allInsights.length > 0) {
       cardsEl.innerHTML = allInsights.map((i, idx) => {
-        const icon = insightIcons[i.severity] || insightIcons.info;
+        const icon = (i.quotaType && quotaIcons[i.quotaType]) ? quotaIcons[i.quotaType] : (insightIcons[i.severity] || insightIcons.info);
         return `<div class="insight-card severity-${i.severity}" data-insight-idx="${idx}" role="button" tabindex="0">
           <div class="insight-card-header">
             <svg class="insight-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${icon}</svg>
@@ -310,6 +318,7 @@ function computeClientInsights() {
     if (remaining > 0 && q.timeUntilResetSeconds > 0) {
       insights.push({
         type: 'live',
+        quotaType: type,
         severity: pctUsed > 80 ? 'warning' : pctUsed > 50 ? 'info' : 'positive',
         title: `${quotaNames[type]}`,
         metric: `${pctUsed.toFixed(1)}%`,
@@ -332,7 +341,7 @@ function computeClientInsights() {
     const avg = totalCons / recent.length;
     if (avg > 0) {
       insights.push({
-        type: 'session', severity: 'info',
+        type: 'session', quotaType: 'session', severity: 'info',
         title: 'Session Avg',
         metric: formatNumber(avg),
         sublabel: `per session (last ${recent.length})`,
@@ -355,7 +364,7 @@ const crosshairPlugin = {
     ctx.save();
     ctx.beginPath();
     ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--md-outline').trim() || '#938F99';
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border-default').trim() || '#E5E7EB';
     ctx.lineWidth = 1;
     ctx.moveTo(x, chartArea.top);
     ctx.lineTo(x, chartArea.bottom);
@@ -389,9 +398,9 @@ function initChart() {
     data: {
       labels: [],
       datasets: [
-        { label: 'Subscription', data: [], borderColor: '#D0BCFF', backgroundColor: 'rgba(208, 188, 255, 0.08)', fill: true, tension: 0.3, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 5 },
-        { label: 'Search', data: [], borderColor: '#4ADE80', backgroundColor: 'rgba(74, 222, 128, 0.08)', fill: true, tension: 0.3, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 5 },
-        { label: 'Tool Calls', data: [], borderColor: '#38BDF8', backgroundColor: 'rgba(56, 189, 248, 0.08)', fill: true, tension: 0.3, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 5 }
+        { label: 'Subscription', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-subscription').trim() || '#0D9488', backgroundColor: 'rgba(13, 148, 136, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
+        { label: 'Search', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-search').trim() || '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
+        { label: 'Tool Calls', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-toolcalls').trim() || '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 }
       ]
     },
     options: {
@@ -429,6 +438,17 @@ function initChart() {
 function updateChartTheme() {
   if (!State.chart) return;
   const colors = getThemeColors();
+  const style = getComputedStyle(document.documentElement);
+
+  // Update line colors for theme
+  const chartColors = [
+    style.getPropertyValue('--chart-subscription').trim() || '#0D9488',
+    style.getPropertyValue('--chart-search').trim() || '#F59E0B',
+    style.getPropertyValue('--chart-toolcalls').trim() || '#3B82F6'
+  ];
+  State.chart.data.datasets.forEach((ds, i) => {
+    if (chartColors[i]) ds.borderColor = chartColors[i];
+  });
 
   State.chart.options.scales.x.grid.color = colors.grid;
   State.chart.options.scales.x.ticks.color = colors.text;
@@ -913,8 +933,9 @@ async function loadModalChart(quotaType) {
     const data = await res.json();
 
     const datasetKey = quotaType === 'subscription' ? 'subscriptionPercent' : quotaType === 'search' ? 'searchPercent' : 'toolCallsPercent';
-    const colorMap = { subscription: '#D0BCFF', search: '#4ADE80', toolCalls: '#38BDF8' };
-    const bgMap = { subscription: 'rgba(208,188,255,0.12)', search: 'rgba(74,222,128,0.12)', toolCalls: 'rgba(56,189,248,0.12)' };
+    const style = getComputedStyle(document.documentElement);
+    const colorMap = { subscription: style.getPropertyValue('--chart-subscription').trim() || '#0D9488', search: style.getPropertyValue('--chart-search').trim() || '#F59E0B', toolCalls: style.getPropertyValue('--chart-toolcalls').trim() || '#3B82F6' };
+    const bgMap = { subscription: 'rgba(13,148,136,0.08)', search: 'rgba(245,158,11,0.08)', toolCalls: 'rgba(59,130,246,0.08)' };
 
     const colors = getThemeColors();
     const chartData = data.map(d => d[datasetKey]);
