@@ -1,0 +1,50 @@
+# Secrets & Environment
+.env
+*.key
+*.pem
+*.cert
+
+# Database
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Binary
+/syntrack
+/syntrack.exe
+/bin/
+/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Screenshots & temp
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+screenshots/
+tmp/
+temp/
+
+# Go
+vendor/
+*.test
+coverage.out
+coverage.html
+
+# Logs
+*.log
+.syntrack.log
+logs/
