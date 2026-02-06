@@ -864,6 +864,59 @@ func compactNum(v float64) string {
 	return fmt.Sprintf("%.0f", v)
 }
 
+// GetSettings returns current settings as JSON.
+func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
+	tz := ""
+	if h.store != nil {
+		val, err := h.store.GetSetting("timezone")
+		if err != nil {
+			h.logger.Error("failed to get timezone setting", "error", err)
+		} else {
+			tz = val
+		}
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"timezone": tz})
+}
+
+// UpdateSettings updates settings from JSON body.
+func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	var body struct {
+		Timezone string `json:"timezone"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	// Empty string means "use browser default" — allow it
+	if body.Timezone != "" {
+		// Validate against Go's known timezones
+		_, err := time.LoadLocation(body.Timezone)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, fmt.Sprintf("invalid timezone: %s", body.Timezone))
+			return
+		}
+	}
+
+	if h.store == nil {
+		respondError(w, http.StatusInternalServerError, "store not available")
+		return
+	}
+
+	if err := h.store.SetSetting("timezone", body.Timezone); err != nil {
+		h.logger.Error("failed to save timezone setting", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to save setting")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]string{"timezone": body.Timezone})
+}
+
 // Login handles GET (show form) and POST (authenticate).
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	// If already logged in, redirect to dashboard

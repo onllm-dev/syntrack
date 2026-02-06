@@ -115,6 +115,11 @@ func (s *Store) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_cycles_type_start ON reset_cycles(quota_type, cycle_start);
 		CREATE INDEX IF NOT EXISTS idx_cycles_type_active ON reset_cycles(quota_type, cycle_end) WHERE cycle_end IS NULL;
 		CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at);
+
+		CREATE TABLE IF NOT EXISTS settings (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		);
 	`
 
 	if _, err := s.db.Exec(schema); err != nil {
@@ -504,4 +509,26 @@ func (s *Store) QueryCyclesSince(quotaType string, since time.Time) ([]*ResetCyc
 	}
 
 	return cycles, rows.Err()
+}
+
+// GetSetting returns the value for a setting key. Returns "" if not found.
+func (s *Store) GetSetting(key string) (string, error) {
+	var value string
+	err := s.db.QueryRow("SELECT value FROM settings WHERE key = ?", key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("store.GetSetting: %w", err)
+	}
+	return value, nil
+}
+
+// SetSetting inserts or replaces a setting value.
+func (s *Store) SetSetting(key, value string) error {
+	_, err := s.db.Exec("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", key, value)
+	if err != nil {
+		return fmt.Errorf("store.SetSetting: %w", err)
+	}
+	return nil
 }

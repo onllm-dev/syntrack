@@ -70,7 +70,11 @@ function formatNumber(num) {
 
 function formatDateTime(isoString) {
   const d = new Date(isoString);
-  return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const opts = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+  if (typeof getEffectiveTimezone === 'function') {
+    opts.timeZone = getEffectiveTimezone();
+  }
+  return d.toLocaleString('en-US', opts);
 }
 
 
@@ -87,18 +91,176 @@ function getThemeColors() {
   };
 }
 
-// ── Timezone Badge ──
+// ── Timezone Badge & Selector ──
+
+// Active timezone (empty = browser default)
+let activeTimezone = '';
+
+function getEffectiveTimezone() {
+  return activeTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+function tzAbbr(tz) {
+  try {
+    return new Date().toLocaleTimeString('en-US', { timeZone: tz, timeZoneName: 'short' }).split(' ').pop();
+  } catch (e) {
+    return tz.split('/').pop();
+  }
+}
 
 function initTimezoneBadge() {
   const badge = document.getElementById('timezone-badge');
   if (!badge) return;
+
+  // Load saved timezone from API
+  loadTimezoneFromAPI().then(() => {
+    updateTimezoneBadgeDisplay();
+  });
+
+  // Make badge clickable
+  badge.style.cursor = 'pointer';
+  badge.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleTimezoneDropdown();
+  });
+}
+
+async function loadTimezoneFromAPI() {
   try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const abbr = new Date().toLocaleTimeString('en-US', { timeZoneName: 'short' }).split(' ').pop();
-    badge.textContent = abbr || tz.split('/').pop();
-    badge.title = tz;
+    const res = await authFetch(`${API_BASE}/api/settings`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.timezone) {
+      activeTimezone = data.timezone;
+    }
   } catch (e) {
-    badge.textContent = '';
+    // Silent fail — use browser default
+  }
+}
+
+function updateTimezoneBadgeDisplay() {
+  const badge = document.getElementById('timezone-badge');
+  if (!badge) return;
+  const tz = getEffectiveTimezone();
+  const abbr = tzAbbr(tz);
+  badge.textContent = abbr;
+  badge.title = tz + (activeTimezone ? ' (saved)' : ' (browser)');
+}
+
+function toggleTimezoneDropdown() {
+  let dropdown = document.getElementById('tz-dropdown');
+  if (dropdown) {
+    dropdown.remove();
+    return;
+  }
+
+  const badge = document.getElementById('timezone-badge');
+  if (!badge) return;
+
+  // Get all IANA timezones
+  let tzList;
+  try {
+    tzList = Intl.supportedValuesOf('timeZone');
+  } catch (e) {
+    tzList = ['UTC', 'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+      'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Asia/Tokyo', 'Asia/Shanghai',
+      'Asia/Kolkata', 'Asia/Dubai', 'Australia/Sydney', 'Pacific/Auckland'];
+  }
+
+  dropdown = document.createElement('div');
+  dropdown.id = 'tz-dropdown';
+  dropdown.className = 'tz-dropdown';
+
+  const searchInput = document.createElement('input');
+  searchInput.type = 'text';
+  searchInput.placeholder = 'Search timezone...';
+  searchInput.className = 'tz-search';
+  dropdown.appendChild(searchInput);
+
+  // "Browser default" option
+  const defaultOpt = document.createElement('div');
+  defaultOpt.className = 'tz-option' + (!activeTimezone ? ' active' : '');
+  defaultOpt.textContent = 'Browser Default';
+  defaultOpt.dataset.tz = '';
+  dropdown.appendChild(defaultOpt);
+
+  const list = document.createElement('div');
+  list.className = 'tz-list';
+  dropdown.appendChild(list);
+
+  function renderList(filter) {
+    const filtered = filter
+      ? tzList.filter(tz => tz.toLowerCase().includes(filter.toLowerCase()))
+      : tzList;
+    list.innerHTML = '';
+    filtered.slice(0, 50).forEach(tz => {
+      const opt = document.createElement('div');
+      opt.className = 'tz-option' + (tz === activeTimezone ? ' active' : '');
+      const abbr = tzAbbr(tz);
+      opt.innerHTML = `<span class="tz-name">${tz.replace(/_/g, ' ')}</span><span class="tz-abbr">${abbr}</span>`;
+      opt.dataset.tz = tz;
+      list.appendChild(opt);
+    });
+    if (filtered.length > 50) {
+      const more = document.createElement('div');
+      more.className = 'tz-more';
+      more.textContent = `${filtered.length - 50} more — type to filter`;
+      list.appendChild(more);
+    }
+  }
+
+  renderList('');
+
+  searchInput.addEventListener('input', () => renderList(searchInput.value));
+
+  // Handle selection (delegated)
+  dropdown.addEventListener('click', async (e) => {
+    const opt = e.target.closest('.tz-option');
+    if (!opt) return;
+    const tz = opt.dataset.tz;
+    await saveTimezone(tz);
+    dropdown.remove();
+  });
+
+  // Position dropdown below badge
+  const rect = badge.getBoundingClientRect();
+  dropdown.style.top = (rect.bottom + 4) + 'px';
+  dropdown.style.right = (window.innerWidth - rect.right) + 'px';
+
+  document.body.appendChild(dropdown);
+  searchInput.focus();
+
+  // Close on outside click
+  function closeOnOutside(e) {
+    if (!dropdown.contains(e.target) && e.target !== badge) {
+      dropdown.remove();
+      document.removeEventListener('click', closeOnOutside);
+    }
+  }
+  setTimeout(() => document.addEventListener('click', closeOnOutside), 0);
+
+  // Close on Escape
+  function closeOnEsc(e) {
+    if (e.key === 'Escape') {
+      dropdown.remove();
+      document.removeEventListener('keydown', closeOnEsc);
+      document.removeEventListener('click', closeOnOutside);
+    }
+  }
+  document.addEventListener('keydown', closeOnEsc);
+}
+
+async function saveTimezone(tz) {
+  activeTimezone = tz;
+  updateTimezoneBadgeDisplay();
+  try {
+    await fetch(`${API_BASE}/api/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timezone: tz })
+    });
+  } catch (e) {
+    console.error('Failed to save timezone:', e);
   }
 }
 

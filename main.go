@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -120,6 +121,51 @@ func writePIDFile() error {
 
 func removePIDFile() {
 	os.Remove(pidFile)
+}
+
+// daemonize re-executes the current binary as a detached background process.
+// The parent writes the child's PID to .syntrack.pid and exits.
+func daemonize(cfg *config.Config) error {
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	// Resolve symlinks so re-exec works correctly
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		return fmt.Errorf("failed to resolve executable path: %w", err)
+	}
+
+	// Open log file for child's stdout/stderr
+	logPath := filepath.Join(filepath.Dir(cfg.DBPath), ".syntrack.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open log file for daemon: %w", err)
+	}
+
+	// Build child command with same args
+	cmd := exec.Command(exe, os.Args[1:]...)
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.Env = append(os.Environ(), "_SYNTRACK_DAEMON=1")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
+	if err := cmd.Start(); err != nil {
+		logFile.Close()
+		return fmt.Errorf("failed to start daemon: %w", err)
+	}
+
+	// Write child PID to .syntrack.pid
+	childPID := cmd.Process.Pid
+	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(childPID)), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not write PID file: %v\n", err)
+	}
+
+	logFile.Close()
+
+	fmt.Printf("Daemon started (PID %d), logs: %s\n", childPID, logPath)
+	return nil
 }
 
 func run() error {

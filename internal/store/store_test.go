@@ -16,12 +16,12 @@ func TestStore_CreateTables(t *testing.T) {
 
 	// Verify tables exist by querying
 	var count int
-	err = s.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('quota_snapshots', 'reset_cycles', 'sessions')").Scan(&count)
+	err = s.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('quota_snapshots', 'reset_cycles', 'sessions', 'settings')").Scan(&count)
 	if err != nil {
 		t.Fatalf("Failed to query tables: %v", err)
 	}
-	if count != 3 {
-		t.Errorf("Expected 3 tables, got %d", count)
+	if count != 4 {
+		t.Errorf("Expected 4 tables, got %d", count)
 	}
 }
 
@@ -420,5 +420,58 @@ func TestStore_MultipleInserts(t *testing.T) {
 	}
 	if len(snapshots) != 10 {
 		t.Errorf("Expected 10 snapshots, got %d", len(snapshots))
+	}
+}
+
+func TestStore_GetSetting_NotFound(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	val, err := s.GetSetting("nonexistent")
+	if err != nil {
+		t.Fatalf("GetSetting failed: %v", err)
+	}
+	if val != "" {
+		t.Errorf("Expected empty string for missing key, got %q", val)
+	}
+}
+
+func TestStore_SetAndGetSetting(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	// Set a value
+	err = s.SetSetting("timezone", "America/New_York")
+	if err != nil {
+		t.Fatalf("SetSetting failed: %v", err)
+	}
+
+	// Get it back
+	val, err := s.GetSetting("timezone")
+	if err != nil {
+		t.Fatalf("GetSetting failed: %v", err)
+	}
+	if val != "America/New_York" {
+		t.Errorf("Expected 'America/New_York', got %q", val)
+	}
+
+	// Overwrite
+	err = s.SetSetting("timezone", "Europe/London")
+	if err != nil {
+		t.Fatalf("SetSetting overwrite failed: %v", err)
+	}
+
+	val, err = s.GetSetting("timezone")
+	if err != nil {
+		t.Fatalf("GetSetting after overwrite failed: %v", err)
+	}
+	if val != "Europe/London" {
+		t.Errorf("Expected 'Europe/London', got %q", val)
 	}
 }
