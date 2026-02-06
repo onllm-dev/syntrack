@@ -7,6 +7,8 @@ let chart = null;
 let countdownInterval = null;
 let refreshInterval = null;
 let currentQuotas = {};
+let currentProvider = 'synthetic';
+let availableProviders = [];
 
 const statusConfig = {
   healthy: { label: 'Healthy', icon: 'M20 6L9 17l-5-5' },
@@ -45,6 +47,77 @@ function formatNumber(num) {
 function formatDateTime(isoString) {
   const d = new Date(isoString);
   return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function initProvider() {
+  const grid = document.getElementById('quota-grid');
+  if (grid && grid.dataset.provider) {
+    currentProvider = grid.dataset.provider;
+  }
+  
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlProvider = urlParams.get('provider');
+  if (urlProvider) {
+    currentProvider = urlProvider;
+  }
+  
+  fetchProviders();
+}
+
+async function fetchProviders() {
+  try {
+    const response = await fetch('/api/providers');
+    if (!response.ok) return;
+    
+    const data = await response.json();
+    availableProviders = data.providers || [];
+    
+    if (!currentProvider && availableProviders.length > 0) {
+      currentProvider = data.current || availableProviders[0];
+    }
+    
+    setupProviderSelector();
+  } catch (err) {
+    console.error('Failed to fetch providers:', err);
+  }
+}
+
+function setupProviderSelector() {
+  const selector = document.getElementById('provider-select');
+  if (!selector) return;
+  
+  selector.innerHTML = availableProviders.map(p => 
+    `<option value="${p}" ${p === currentProvider ? 'selected' : ''}>${p.charAt(0).toUpperCase() + p.slice(1)}</option>`
+  ).join('');
+  
+  selector.addEventListener('change', (e) => {
+    const newProvider = e.target.value;
+    if (newProvider !== currentProvider) {
+      currentProvider = newProvider;
+      updateURLWithProvider();
+      loadDashboardData();
+    }
+  });
+}
+
+function updateURLWithProvider() {
+  const url = new URL(window.location);
+  url.searchParams.set('provider', currentProvider);
+  window.history.replaceState({}, '', url);
+}
+
+function loadDashboardData() {
+  if (chart) {
+    chart.destroy();
+    chart = null;
+  }
+  currentQuotas = {};
+  
+  initChart();
+  fetchCurrent();
+  fetchHistory('6h');
+  fetchCycles(currentProvider === 'zai' ? 'tokens' : 'subscription');
+  fetchSessions();
 }
 
 function updateCard(quotaType, data) {
@@ -87,6 +160,62 @@ function updateCard(quotaType, data) {
   }
 }
 
+function updateDashboard(data) {
+  if (currentProvider === 'zai') {
+    updateZaiDashboard(data);
+  } else {
+    updateSyntheticDashboard(data);
+  }
+}
+
+function updateZaiDashboard(data) {
+  if (data.tokensLimit) {
+    updateCard('tokensLimit', data.tokensLimit);
+  }
+  
+  if (data.timeLimit) {
+    updateCard('timeLimit', data.timeLimit);
+    if (data.timeLimit.usageDetails) {
+      updateToolBreakdown(data.timeLimit.usageDetails);
+    }
+  }
+  
+  updateInsights(data);
+}
+
+function updateSyntheticDashboard(data) {
+  if (data.subscription) {
+    updateCard('subscription', data.subscription);
+  }
+  if (data.search) {
+    updateCard('search', data.search);
+  }
+  if (data.toolCalls) {
+    updateCard('toolCalls', data.toolCalls);
+  }
+  
+  updateInsights(data);
+}
+
+function updateToolBreakdown(details) {
+  const container = document.getElementById('tool-breakdown');
+  if (!container) return;
+  
+  if (!details || details.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+  
+  const html = details.map(tool => `
+    <div class="tool-breakdown-item">
+      <span class="tool-name">${tool.modelCode}</span>
+      <span class="tool-usage">${formatNumber(tool.usage)} units</span>
+    </div>
+  `).join('');
+  
+  container.innerHTML = html;
+}
+
 function startCountdowns() {
   if (countdownInterval) clearInterval(countdownInterval);
   countdownInterval = setInterval(() => {
@@ -106,14 +235,12 @@ function startCountdowns() {
 
 async function fetchCurrent() {
   try {
-    const res = await fetch(`${API_BASE}/api/current`);
+    const res = await fetch(`${API_BASE}/api/current?provider=${currentProvider}`);
     if (!res.ok) throw new Error('Failed to fetch');
     const data = await res.json();
     
     requestAnimationFrame(() => {
-      updateCard('subscription', data.subscription);
-      updateCard('search', data.search);
-      updateCard('toolCalls', data.toolCalls);
+      updateDashboard(data);
       
       const lastUpdated = document.getElementById('last-updated');
       if (lastUpdated) {
@@ -122,8 +249,6 @@ async function fetchCurrent() {
       
       const statusDot = document.getElementById('status-dot');
       if (statusDot) statusDot.classList.remove('stale');
-      
-      updateInsights(data);
     });
   } catch (err) {
     console.error('Fetch error:', err);
@@ -137,10 +262,21 @@ function updateInsights(data) {
   if (!container) return;
   
   const insights = [];
-  ['subscription', 'search', 'toolCalls'].forEach(type => {
-    const q = data[type];
-    if (q && q.insight) insights.push(`<p class="insight-text"><strong>${q.name}:</strong> ${q.insight}</p>`);
-  });
+  
+  if (currentProvider === 'zai') {
+    ['tokensLimit', 'timeLimit'].forEach(type => {
+      const q = data[type];
+      if (q && q.insight) {
+        const name = type === 'tokensLimit' ? 'Tokens Limit' : 'Time Limit';
+        insights.push(`<p class="insight-text"><strong>${name}:</strong> ${q.insight}</p>`);
+      }
+    });
+  } else {
+    ['subscription', 'search', 'toolCalls'].forEach(type => {
+      const q = data[type];
+      if (q && q.insight) insights.push(`<p class="insight-text"><strong>${q.name}:</strong> ${q.insight}</p>`);
+    });
+  }
   
   container.innerHTML = insights.join('') || '<p class="insight-text">No insights available.</p>';
 }
@@ -153,29 +289,54 @@ function initChart() {
   const gridColor = isDark ? '#49454F' : '#CAC4D0';
   const textColor = isDark ? '#CAC4D0' : '#49454F';
   
-  chart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [
-        { label: 'Subscription', data: [], borderColor: '#D0BCFF', backgroundColor: 'rgba(208, 188, 255, 0.1)', fill: true, tension: 0.3 },
-        { label: 'Search', data: [], borderColor: '#4ADE80', backgroundColor: 'rgba(74, 222, 128, 0.1)', fill: true, tension: 0.3 },
-        { label: 'Tool Calls', data: [], borderColor: '#38BDF8', backgroundColor: 'rgba(56, 189, 248, 0.1)', fill: true, tension: 0.3 }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { labels: { color: textColor, usePointStyle: true, boxWidth: 8 } }
+  if (currentProvider === 'zai') {
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          { label: 'Tokens Limit', data: [], borderColor: '#D0BCFF', backgroundColor: 'rgba(208, 188, 255, 0.1)', fill: true, tension: 0.3 },
+          { label: 'Time Limit', data: [], borderColor: '#4ADE80', backgroundColor: 'rgba(74, 222, 128, 0.1)', fill: true, tension: 0.3 }
+        ]
       },
-      scales: {
-        x: { grid: { color: gridColor, drawBorder: false }, ticks: { color: textColor, maxTicksLimit: 6 } },
-        y: { grid: { color: gridColor, drawBorder: false }, ticks: { color: textColor, callback: v => v + '%' }, min: 0, max: 100 }
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: textColor, usePointStyle: true, boxWidth: 8 } }
+        },
+        scales: {
+          x: { grid: { color: gridColor, drawBorder: false }, ticks: { color: textColor, maxTicksLimit: 6 } },
+          y: { grid: { color: gridColor, drawBorder: false }, ticks: { color: textColor, callback: v => v + '%' }, min: 0, max: 100 }
+        }
       }
-    }
-  });
+    });
+  } else {
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          { label: 'Subscription', data: [], borderColor: '#D0BCFF', backgroundColor: 'rgba(208, 188, 255, 0.1)', fill: true, tension: 0.3 },
+          { label: 'Search', data: [], borderColor: '#4ADE80', backgroundColor: 'rgba(74, 222, 128, 0.1)', fill: true, tension: 0.3 },
+          { label: 'Tool Calls', data: [], borderColor: '#38BDF8', backgroundColor: 'rgba(56, 189, 248, 0.1)', fill: true, tension: 0.3 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: textColor, usePointStyle: true, boxWidth: 8 } }
+        },
+        scales: {
+          x: { grid: { color: gridColor, drawBorder: false }, ticks: { color: textColor, maxTicksLimit: 6 } },
+          y: { grid: { color: gridColor, drawBorder: false }, ticks: { color: textColor, callback: v => v + '%' }, min: 0, max: 100 }
+        }
+      }
+    });
+  }
 }
 
 function updateChartTheme() {
@@ -194,7 +355,7 @@ function updateChartTheme() {
 
 async function fetchHistory(range = '6h') {
   try {
-    const res = await fetch(`${API_BASE}/api/history?range=${range}`);
+    const res = await fetch(`${API_BASE}/api/history?range=${range}&provider=${currentProvider}`);
     if (!res.ok) throw new Error('Failed to fetch history');
     const data = await res.json();
     
@@ -202,9 +363,15 @@ async function fetchHistory(range = '6h') {
     if (!chart) return;
     
     chart.data.labels = data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
-    chart.data.datasets[0].data = data.map(d => d.subscriptionPercent);
-    chart.data.datasets[1].data = data.map(d => d.searchPercent);
-    chart.data.datasets[2].data = data.map(d => d.toolCallsPercent);
+    
+    if (currentProvider === 'zai') {
+      chart.data.datasets[0].data = data.map(d => d.tokensLimitPercent || 0);
+      chart.data.datasets[1].data = data.map(d => d.timeLimitPercent || 0);
+    } else {
+      chart.data.datasets[0].data = data.map(d => d.subscriptionPercent);
+      chart.data.datasets[1].data = data.map(d => d.searchPercent);
+      chart.data.datasets[2].data = data.map(d => d.toolCallsPercent);
+    }
     chart.update();
   } catch (err) {
     console.error('History fetch error:', err);
@@ -213,7 +380,7 @@ async function fetchHistory(range = '6h') {
 
 async function fetchCycles(quotaType = 'subscription') {
   try {
-    const res = await fetch(`${API_BASE}/api/cycles?type=${quotaType}`);
+    const res = await fetch(`${API_BASE}/api/cycles?type=${quotaType}&provider=${currentProvider}`);
     if (!res.ok) throw new Error('Failed to fetch cycles');
     const data = await res.json();
     
@@ -250,7 +417,7 @@ async function fetchCycles(quotaType = 'subscription') {
 
 async function fetchSessions() {
   try {
-    const res = await fetch(`${API_BASE}/api/sessions`);
+    const res = await fetch(`${API_BASE}/api/sessions?provider=${currentProvider}`);
     if (!res.ok) throw new Error('Failed to fetch sessions');
     const data = await res.json();
     
@@ -298,9 +465,24 @@ function setupRangeSelector() {
 
 function setupCycleSelector() {
   const select = document.getElementById('cycle-quota-select');
-  if (select) {
-    select.addEventListener('change', (e) => fetchCycles(e.target.value));
+  if (!select) return;
+  
+  if (currentProvider === 'zai') {
+    select.innerHTML = `
+      <option value="tokens">Tokens Limit</option>
+      <option value="time">Time Limit</option>
+    `;
+    select.value = 'tokens';
+  } else {
+    select.innerHTML = `
+      <option value="subscription">Subscription</option>
+      <option value="search">Search</option>
+      <option value="toolcall">Tool Calls</option>
+    `;
+    select.value = 'subscription';
   }
+  
+  select.addEventListener('change', (e) => fetchCycles(e.target.value));
 }
 
 function setupPasswordToggle() {
@@ -322,12 +504,13 @@ function startAutoRefresh() {
     const activeRange = document.querySelector('.range-btn.active');
     fetchHistory(activeRange?.dataset.range || '6h');
     const cycleSelect = document.getElementById('cycle-quota-select');
-    fetchCycles(cycleSelect?.value || 'subscription');
+    fetchCycles(cycleSelect?.value || (currentProvider === 'zai' ? 'tokens' : 'subscription'));
     fetchSessions();
   }, REFRESH_INTERVAL);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  initProvider();
   initTheme();
   setupRangeSelector();
   setupCycleSelector();
@@ -337,7 +520,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initChart();
     fetchCurrent();
     fetchHistory('6h');
-    fetchCycles('subscription');
+    fetchCycles(currentProvider === 'zai' ? 'tokens' : 'subscription');
     fetchSessions();
     startCountdowns();
     startAutoRefresh();

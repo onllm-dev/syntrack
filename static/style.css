@@ -1402,9 +1402,17 @@ button, input, select { font-family: inherit; }
 }
 
 @media (max-width: 480px) {
-  .app-header { padding: 10px 12px; }
+  .app-header { padding: 10px 12px; flex-wrap: wrap; }
   .brand-text { font-size: 16px; }
   .brand-icon { width: 26px; height: 26px; }
+  .provider-selector {
+    order: 3;
+    width: 100%;
+    margin: 8px 0 0 0;
+  }
+  .provider-select {
+    width: 100%;
+  }
   .main-content { padding: 12px; }
   .quota-card { padding: 16px; border-radius: var(--radius-md); }
   .usage-percent { font-size: 26px; }
@@ -1427,7 +1435,104 @@ button, input, select { font-family: inherit; }
 }
 
 /* ═══════════════════════════════════════════
-   17. REDUCED MOTION
+   17. PROVIDER SELECTOR
+   ═══════════════════════════════════════════ */
+
+.provider-selector {
+  margin-left: 16px;
+  margin-right: auto;
+}
+
+.provider-select {
+  appearance: none;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 8px 32px 8px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  min-width: 120px;
+}
+
+.provider-select:hover {
+  border-color: var(--accent-teal);
+  background-color: var(--surface-card-alt);
+}
+
+.provider-select:focus {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-teal-muted);
+}
+
+[data-theme="dark"] .provider-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238891A0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* ═══════════════════════════════════════════
+   18. TOOL BREAKDOWN (Z.ai)
+   ═══════════════════════════════════════════ */
+
+.tool-breakdown {
+  margin: 16px 0;
+  padding: 12px;
+  background: var(--surface-card-alt);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+}
+
+.breakdown-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.breakdown-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.breakdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.breakdown-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.breakdown-item:last-child {
+  border-bottom: none;
+}
+
+.breakdown-item-name {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.breakdown-item-value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* ═══════════════════════════════════════════
+   19. REDUCED MOTION
    ═══════════════════════════════════════════ */
 
 @media (prefers-reduced-motion: reduce) {

@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/onllm-dev/syntrack/internal/api"
@@ -76,6 +77,7 @@ func (s *Store) createTables() error {
 
 		CREATE TABLE IF NOT EXISTS quota_snapshots (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			provider TEXT NOT NULL DEFAULT 'synthetic',
 			captured_at TEXT NOT NULL,
 			sub_limit REAL NOT NULL,
 			sub_requests REAL NOT NULL,
@@ -90,6 +92,7 @@ func (s *Store) createTables() error {
 
 		CREATE TABLE IF NOT EXISTS reset_cycles (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			provider TEXT NOT NULL DEFAULT 'synthetic',
 			quota_type TEXT NOT NULL,
 			cycle_start TEXT NOT NULL,
 			cycle_end TEXT,
@@ -100,6 +103,7 @@ func (s *Store) createTables() error {
 
 		CREATE TABLE IF NOT EXISTS sessions (
 			id TEXT PRIMARY KEY,
+			provider TEXT NOT NULL DEFAULT 'synthetic',
 			started_at TEXT NOT NULL,
 			ended_at TEXT,
 			poll_interval INTEGER NOT NULL,
@@ -125,10 +129,100 @@ func (s *Store) createTables() error {
 			token      TEXT PRIMARY KEY,
 			expires_at TEXT NOT NULL
 		);
+
+		-- Z.ai-specific tables
+		CREATE TABLE IF NOT EXISTS zai_snapshots (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			provider TEXT NOT NULL DEFAULT 'zai',
+			captured_at TEXT NOT NULL,
+			time_limit INTEGER NOT NULL,
+			time_unit INTEGER NOT NULL,
+			time_number INTEGER NOT NULL,
+			time_usage REAL NOT NULL,
+			time_current_value REAL NOT NULL,
+			time_remaining REAL NOT NULL,
+			time_percentage INTEGER NOT NULL,
+			tokens_limit INTEGER NOT NULL,
+			tokens_unit INTEGER NOT NULL,
+			tokens_number INTEGER NOT NULL,
+			tokens_usage REAL NOT NULL,
+			tokens_current_value REAL NOT NULL,
+			tokens_remaining REAL NOT NULL,
+			tokens_percentage INTEGER NOT NULL,
+			tokens_next_reset TEXT
+		);
+
+		CREATE TABLE IF NOT EXISTS zai_hourly_usage (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			provider TEXT NOT NULL DEFAULT 'zai',
+			hour TEXT NOT NULL,
+			model_calls INTEGER,
+			tokens_used INTEGER,
+			network_searches INTEGER,
+			web_reads INTEGER,
+			zreads INTEGER,
+			fetched_at TEXT NOT NULL,
+			UNIQUE(hour)
+		);
+
+		CREATE TABLE IF NOT EXISTS zai_reset_cycles (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			quota_type TEXT NOT NULL,
+			cycle_start TEXT NOT NULL,
+			cycle_end TEXT,
+			next_reset TEXT,
+			peak_value INTEGER NOT NULL DEFAULT 0,
+			total_delta INTEGER NOT NULL DEFAULT 0
+		);
+
+		-- Z.ai indexes
+		CREATE INDEX IF NOT EXISTS idx_zai_snapshots_captured ON zai_snapshots(captured_at);
+		CREATE INDEX IF NOT EXISTS idx_zai_snapshots_tokens_reset ON zai_snapshots(tokens_next_reset);
+		CREATE INDEX IF NOT EXISTS idx_zai_hourly_hour ON zai_hourly_usage(hour);
+		CREATE INDEX IF NOT EXISTS idx_zai_cycles_type_start ON zai_reset_cycles(quota_type, cycle_start);
+		CREATE INDEX IF NOT EXISTS idx_zai_cycles_type_active ON zai_reset_cycles(quota_type, cycle_end) WHERE cycle_end IS NULL;
 	`
 
 	if _, err := s.db.Exec(schema); err != nil {
 		return fmt.Errorf("failed to create schema: %w", err)
+	}
+
+	// Run migrations for existing databases
+	if err := s.migrateSchema(); err != nil {
+		return fmt.Errorf("failed to migrate schema: %w", err)
+	}
+
+	return nil
+}
+
+// migrateSchema handles schema migrations for existing databases
+func (s *Store) migrateSchema() error {
+	// Add provider column to quota_snapshots if not exists
+	if _, err := s.db.Exec(`
+		ALTER TABLE quota_snapshots ADD COLUMN provider TEXT NOT NULL DEFAULT 'synthetic'
+	`); err != nil {
+		// Ignore error - column might already exist
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("failed to add provider to quota_snapshots: %w", err)
+		}
+	}
+
+	// Add provider column to reset_cycles if not exists
+	if _, err := s.db.Exec(`
+		ALTER TABLE reset_cycles ADD COLUMN provider TEXT NOT NULL DEFAULT 'synthetic'
+	`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("failed to add provider to reset_cycles: %w", err)
+		}
+	}
+
+	// Add provider column to sessions if not exists
+	if _, err := s.db.Exec(`
+		ALTER TABLE sessions ADD COLUMN provider TEXT NOT NULL DEFAULT 'synthetic'
+	`); err != nil {
+		if !strings.Contains(err.Error(), "duplicate column name") {
+			return fmt.Errorf("failed to add provider to sessions: %w", err)
+		}
 	}
 
 	return nil

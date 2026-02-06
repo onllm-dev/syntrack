@@ -7,6 +7,17 @@
             </svg>
             <span class="brand-text">SynTrack</span>
         </a>
+        {{if gt (len .Providers) 1}}
+        <div class="provider-selector">
+            <select id="provider-select" class="provider-select" aria-label="Select provider">
+                {{range .Providers}}
+                <option value="{{.}}" {{if eq . $.CurrentProvider}}selected{{end}}>
+                    {{if eq . "synthetic"}}Synthetic{{else if eq . "zai"}}Z.ai{{else}}{{.}}{{end}}
+                </option>
+                {{end}}
+            </select>
+        </div>
+        {{end}}
         <div class="header-actions">
             <button class="header-btn" id="refresh-btn" aria-label="Refresh data" title="Refresh now">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
@@ -31,10 +42,82 @@
     <main id="main-content" class="main-content">
         <div class="welcome-banner">
             <h1 class="welcome-title">Dashboard</h1>
-            <p class="welcome-subtitle">Track your Synthetic API quota usage in real time.</p>
+            <p class="welcome-subtitle">
+                Track your 
+                {{if eq .CurrentProvider "synthetic"}}Synthetic{{else if eq .CurrentProvider "zai"}}Z.ai{{else}}{{.CurrentProvider}}{{end}} 
+                API quota usage in real time.
+            </p>
         </div>
 
-        <div class="quota-grid" id="quota-grid">
+        <div class="quota-grid" id="quota-grid" data-provider="{{.CurrentProvider}}">
+            {{if eq .CurrentProvider "zai"}}
+            <!-- Z.ai quota cards -->
+            <article class="quota-card" data-quota="tokensLimit" role="button" tabindex="0" aria-label="View Tokens Limit details">
+                <header class="card-header">
+                    <h2 class="quota-title">
+                        <svg class="quota-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                        </svg>
+                        Tokens Limit
+                    </h2>
+                    <span class="countdown" id="countdown-tokensLimit">--:--</span>
+                </header>
+                <div class="progress-stats">
+                    <span class="usage-percent" id="percent-tokensLimit">0%</span>
+                    <span class="usage-fraction" id="fraction-tokensLimit">0 / 200M</span>
+                </div>
+                <div class="progress-wrapper">
+                    <div class="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-fill" id="progress-tokensLimit" style="width: 0%"></div>
+                    </div>
+                </div>
+                <footer class="card-footer">
+                    <span class="status-badge" id="status-tokensLimit" data-status="healthy">
+                        <svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 6L9 17l-5-5"/>
+                        </svg>
+                        Healthy
+                    </span>
+                    <span class="reset-time" id="reset-tokensLimit">Resets: --</span>
+                </footer>
+            </article>
+
+            <article class="quota-card" data-quota="timeLimit" role="button" tabindex="0" aria-label="View Time Limit details">
+                <header class="card-header">
+                    <h2 class="quota-title">
+                        <svg class="quota-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"/>
+                            <polyline points="12 6 12 12 16 14"/>
+                        </svg>
+                        Time Limit
+                    </h2>
+                </header>
+                <div class="progress-stats">
+                    <span class="usage-percent" id="percent-timeLimit">0%</span>
+                    <span class="usage-fraction" id="fraction-timeLimit">0 / 1,000</span>
+                </div>
+                <div class="progress-wrapper">
+                    <div class="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                        <div class="progress-fill" id="progress-timeLimit" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="tool-breakdown" id="tool-breakdown" style="display: none;">
+                    <div class="breakdown-header">
+                        <span class="breakdown-label">Tool Usage</span>
+                    </div>
+                    <div class="breakdown-list" id="tool-breakdown-list"></div>
+                </div>
+                <footer class="card-footer">
+                    <span class="status-badge" id="status-timeLimit" data-status="healthy">
+                        <svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 6L9 17l-5-5"/>
+                        </svg>
+                        Healthy
+                    </span>
+                </footer>
+            </article>
+            {{else}}
+            <!-- Synthetic quota cards -->
             <article class="quota-card" data-quota="subscription" role="button" tabindex="0" aria-label="View Subscription Quota details">
                 <header class="card-header">
                     <h2 class="quota-title">
@@ -126,6 +209,7 @@
                     <span class="reset-time" id="reset-toolCalls">Resets: --</span>
                 </footer>
             </article>
+            {{end}}
         </div>
 
         <section class="insights-panel">
