@@ -16,8 +16,8 @@ func daemonSysProcAttr() *syscall.SysProcAttr {
 }
 
 func defaultPIDDir() string {
-	if dir := os.Getenv("PROGRAMDATA"); dir != "" {
+	if dir := os.Getenv("LOCALAPPDATA"); dir != "" {
 		return filepath.Join(dir, "syntrack")
 	}
-	return filepath.Join(os.Getenv("LOCALAPPDATA"), "syntrack")
+	return filepath.Join(os.Getenv("USERPROFILE"), ".syntrack")
 }

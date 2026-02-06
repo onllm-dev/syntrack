@@ -200,11 +200,15 @@ func run() error {
 		}
 	}
 
-	// Stop any previous instance before starting
-	stopPreviousInstance(cfg.Port)
+	isDaemonChild := os.Getenv("_SYNTRACK_DAEMON") == "1"
+
+	// Stop any previous instance (parent does this, daemon child skips it)
+	if !isDaemonChild {
+		stopPreviousInstance(cfg.Port)
+	}
 
 	// Daemonize: if not in debug mode and not already the daemon child, fork
-	if !cfg.DebugMode && os.Getenv("_SYNTRACK_DAEMON") != "1" {
+	if !cfg.DebugMode && !isDaemonChild {
 		printBanner(cfg, version)
 		return daemonize(cfg)
 	}
