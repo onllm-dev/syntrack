@@ -238,6 +238,22 @@ func (s *Store) CreateSession(sessionID string, startedAt time.Time, pollInterva
 	return nil
 }
 
+// CloseOrphanedSessions closes any sessions that were left open (e.g., process was killed).
+// Sets ended_at to started_at + (snapshot_count * poll_interval) as best estimate,
+// or now if no snapshots were captured.
+func (s *Store) CloseOrphanedSessions() (int, error) {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	result, err := s.db.Exec(
+		`UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL`,
+		now,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to close orphaned sessions: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	return int(n), nil
+}
+
 // CloseSession marks a session as ended
 func (s *Store) CloseSession(sessionID string, endedAt time.Time) error {
 	_, err := s.db.Exec(
