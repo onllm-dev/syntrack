@@ -11,6 +11,11 @@ REPO="onllm-dev/syntrack"
 SERVICE_NAME="syntrack"
 SYSTEMD_MODE="user"  # "user" or "system" — auto-detected at runtime
 
+# Collected during interactive setup, used by start_service
+SETUP_USERNAME=""
+SETUP_PASSWORD=""
+SETUP_PORT=""
+
 # ─── Colors ───────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 BLUE='\033[0;34m'; CYAN='\033[0;36m'; BOLD='\033[1m'
@@ -53,6 +58,121 @@ _jctl_cmd() {
     else
         echo "journalctl --user -u syntrack"
     fi
+}
+
+# ─── Input Helpers ──────────────────────────────────────────────────
+
+# Generate a random 12-char alphanumeric password
+generate_password() {
+    LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 12
+}
+
+# Numbered menu, returns selection number
+# Usage: choice=$(prompt_choice "Which provider?" "Synthetic only" "Z.ai only" "Both")
+prompt_choice() {
+    local prompt="$1"; shift
+    local options=("$@")
+    printf "\n  ${BOLD}%s${NC}\n" "$prompt"
+    for i in "${!options[@]}"; do
+        printf "    ${CYAN}%d)${NC} %s\n" "$((i+1))" "${options[$i]}"
+    done
+    while true; do
+        printf "  ${BOLD}>${NC} "
+        read -u 3 -r choice
+        if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#options[@]} )); then
+            echo "$choice"
+            return
+        fi
+        printf "  ${RED}Please enter 1-%d${NC}\n" "${#options[@]}"
+    done
+}
+
+# Read a secret value (no echo), show masked version, validate with callback
+# Usage: prompt_secret "Synthetic API key" synthetic_key "starts_with_syn"
+prompt_secret() {
+    local prompt="$1" validation="$2"
+    local value=""
+    while true; do
+        printf "  %s: " "$prompt"
+        read -u 3 -rs value
+        echo ""
+        if [[ -z "$value" ]]; then
+            printf "  ${RED}Cannot be empty${NC}\n"
+            continue
+        fi
+        # Run validation
+        if eval "$validation \"$value\""; then
+            local masked
+            if [[ ${#value} -gt 10 ]]; then
+                masked="${value:0:6}...${value: -4}"
+            else
+                masked="${value:0:3}..."
+            fi
+            printf "  ${GREEN}✓${NC} ${DIM}%s${NC}\n" "$masked"
+            echo "$value"
+            return
+        fi
+    done
+}
+
+# Prompt with a default value shown in brackets
+# Usage: result=$(prompt_with_default "Dashboard port" "9211")
+prompt_with_default() {
+    local prompt="$1" default="$2"
+    printf "  %s ${DIM}[%s]${NC}: " "$prompt" "$default"
+    read -u 3 -r value
+    if [[ -z "$value" ]]; then
+        echo "$default"
+    else
+        echo "$value"
+    fi
+}
+
+# ─── Validation Helpers ─────────────────────────────────────────────
+
+validate_synthetic_key() {
+    local val="$1"
+    if [[ "$val" == syn_* ]]; then
+        return 0
+    fi
+    printf "  ${RED}Key must start with 'syn_'${NC}\n"
+    return 1
+}
+
+validate_nonempty() {
+    local val="$1"
+    if [[ -n "$val" ]]; then
+        return 0
+    fi
+    printf "  ${RED}Cannot be empty${NC}\n"
+    return 1
+}
+
+validate_https_url() {
+    local val="$1"
+    if [[ "$val" == https://* ]]; then
+        return 0
+    fi
+    printf "  ${RED}URL must start with 'https://'${NC}\n"
+    return 1
+}
+
+validate_port() {
+    local val="$1"
+    if [[ "$val" =~ ^[0-9]+$ ]] && (( val >= 1 && val <= 65535 )); then
+        return 0
+    fi
+    printf "  ${RED}Must be a number between 1 and 65535${NC}\n"
+    return 1
+}
+
+validate_interval() {
+    local val="$1"
+    if [[ "$val" =~ ^[0-9]+$ ]] && (( val >= 10 && val <= 3600 )); then
+        return 0
+    fi
+    printf "  ${RED}Must be a number between 10 and 3600${NC}\n"
+    return 1
 }
 
 # ─── Detect Platform ─────────────────────────────────────────────────
@@ -130,39 +250,163 @@ WRAPPER
     chmod +x "$wrapper"
 }
 
-# ─── Create .env ─────────────────────────────────────────────────────
-setup_env() {
+# ─── Interactive Setup ──────────────────────────────────────────────
+# Fully interactive .env configuration for fresh installs.
+# Reads from /dev/tty (fd 3) for piped install compatibility.
+interactive_setup() {
     local env_file="${INSTALL_DIR}/.env"
 
+    # Preserve existing config on upgrade
     if [[ -f "$env_file" ]]; then
         info "Existing .env found — keeping current configuration"
+        # Load existing values for start_service display
+        SETUP_PORT="$(grep -E '^SYNTRACK_PORT=' "$env_file" 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')"
+        SETUP_PORT="${SETUP_PORT:-9211}"
+        SETUP_USERNAME="$(grep -E '^SYNTRACK_ADMIN_USER=' "$env_file" 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')"
+        SETUP_USERNAME="${SETUP_USERNAME:-admin}"
+        SETUP_PASSWORD=""  # Don't show existing password
         return
     fi
 
-    cat > "$env_file" <<'EOF'
-# ═══════════════════════════════════════════════════════════════
-# SynTrack Configuration
-# At least one provider API key is required.
-# ═══════════════════════════════════════════════════════════════
+    # Open /dev/tty for reading — works even when script is piped via curl | bash
+    exec 3</dev/tty || fail "Cannot read from terminal. Run the script directly instead of piping."
 
-# Synthetic API key (https://synthetic.new/settings/api)
-SYNTHETIC_API_KEY=
+    printf "\n"
+    printf "  ${BOLD}━━━ Configuration ━━━${NC}\n"
 
-# Z.ai API key (https://www.z.ai/api-keys)
-ZAI_API_KEY=
+    # ── Provider Selection ──
+    local provider_choice
+    provider_choice=$(prompt_choice "Which providers do you want to track?" \
+        "Synthetic only" \
+        "Z.ai only" \
+        "Both")
 
-# Dashboard credentials
-SYNTRACK_ADMIN_USER=admin
-SYNTRACK_ADMIN_PASS=changeme
+    local synthetic_key="" zai_key="" zai_base_url=""
 
-# Polling interval in seconds (10-3600, default: 60)
-SYNTRACK_POLL_INTERVAL=60
+    # ── Synthetic API Key ──
+    if [[ "$provider_choice" == "1" || "$provider_choice" == "3" ]]; then
+        printf "\n  ${DIM}Get your key: https://synthetic.new/settings/api${NC}\n"
+        synthetic_key=$(prompt_secret "Synthetic API key (syn_...)" validate_synthetic_key)
+    fi
 
-# Dashboard port (default: 9211)
-SYNTRACK_PORT=9211
-EOF
+    # ── Z.ai API Key ──
+    if [[ "$provider_choice" == "2" || "$provider_choice" == "3" ]]; then
+        printf "\n  ${DIM}Get your key: https://www.z.ai/api-keys${NC}\n"
+        zai_key=$(prompt_secret "Z.ai API key" validate_nonempty)
+
+        printf "\n"
+        local use_default_url
+        use_default_url=$(prompt_with_default "Use default Z.ai base URL (https://api.z.ai/api)? (Y/n)" "Y")
+        if [[ "$use_default_url" =~ ^[Nn] ]]; then
+            while true; do
+                zai_base_url=$(prompt_with_default "Z.ai base URL" "https://open.bigmodel.cn/api")
+                if validate_https_url "$zai_base_url" 2>/dev/null; then
+                    break
+                fi
+                printf "  ${RED}URL must start with 'https://'${NC}\n"
+            done
+        else
+            zai_base_url="https://api.z.ai/api"
+        fi
+    fi
+
+    # ── Dashboard Credentials ──
+    printf "\n  ${BOLD}━━━ Dashboard Credentials ━━━${NC}\n\n"
+
+    SETUP_USERNAME=$(prompt_with_default "Dashboard username" "admin")
+
+    local generated_pass
+    generated_pass=$(generate_password)
+    printf "  Dashboard password ${DIM}[Enter = auto-generate]${NC}: "
+    read -u 3 -rs pass_input
+    echo ""
+    if [[ -z "$pass_input" ]]; then
+        SETUP_PASSWORD="$generated_pass"
+        printf "  ${GREEN}✓${NC} Generated password: ${BOLD}${SETUP_PASSWORD}${NC}\n"
+        printf "  ${YELLOW}Save this password — it won't be shown again${NC}\n"
+    else
+        SETUP_PASSWORD="$pass_input"
+        printf "  ${GREEN}✓${NC} Password set\n"
+    fi
+
+    # ── Optional Settings ──
+    printf "\n  ${BOLD}━━━ Optional Settings ━━━${NC}\n\n"
+
+    while true; do
+        SETUP_PORT=$(prompt_with_default "Dashboard port" "9211")
+        if validate_port "$SETUP_PORT" 2>/dev/null; then
+            break
+        fi
+        printf "  ${RED}Must be a number between 1 and 65535${NC}\n"
+    done
+
+    local poll_interval
+    while true; do
+        poll_interval=$(prompt_with_default "Polling interval in seconds" "60")
+        if validate_interval "$poll_interval" 2>/dev/null; then
+            break
+        fi
+        printf "  ${RED}Must be a number between 10 and 3600${NC}\n"
+    done
+
+    # Close the tty fd
+    exec 3<&-
+
+    # ── Write .env ──
+    {
+        echo "# ═══════════════════════════════════════════════════════════════"
+        echo "# SynTrack Configuration"
+        echo "# Generated by installer on $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+        echo "# ═══════════════════════════════════════════════════════════════"
+        echo ""
+
+        if [[ -n "$synthetic_key" ]]; then
+            echo "# Synthetic API key (https://synthetic.new/settings/api)"
+            echo "SYNTHETIC_API_KEY=${synthetic_key}"
+            echo ""
+        fi
+
+        if [[ -n "$zai_key" ]]; then
+            echo "# Z.ai API key (https://www.z.ai/api-keys)"
+            echo "ZAI_API_KEY=${zai_key}"
+            echo ""
+            echo "# Z.ai base URL"
+            echo "ZAI_BASE_URL=${zai_base_url}"
+            echo ""
+        fi
+
+        echo "# Dashboard credentials"
+        echo "SYNTRACK_ADMIN_USER=${SETUP_USERNAME}"
+        echo "SYNTRACK_ADMIN_PASS=${SETUP_PASSWORD}"
+        echo ""
+        echo "# Polling interval in seconds (10-3600)"
+        echo "SYNTRACK_POLL_INTERVAL=${poll_interval}"
+        echo ""
+        echo "# Dashboard port"
+        echo "SYNTRACK_PORT=${SETUP_PORT}"
+    } > "$env_file"
 
     ok "Created ${env_file}"
+
+    # ── Summary ──
+    local provider_label
+    case "$provider_choice" in
+        1) provider_label="Synthetic" ;;
+        2) provider_label="Z.ai" ;;
+        3) provider_label="Synthetic + Z.ai" ;;
+    esac
+
+    local masked_pass
+    masked_pass=$(printf '%*s' ${#SETUP_PASSWORD} '' | tr ' ' '•')
+
+    printf "\n"
+    printf "  ${BOLD}┌─ Configuration Summary ──────────────────┐${NC}\n"
+    printf "  ${BOLD}│${NC}  Provider:  %-29s${BOLD}│${NC}\n" "$provider_label"
+    printf "  ${BOLD}│${NC}  Dashboard: %-29s${BOLD}│${NC}\n" "http://localhost:${SETUP_PORT}"
+    printf "  ${BOLD}│${NC}  Username:  %-29s${BOLD}│${NC}\n" "$SETUP_USERNAME"
+    printf "  ${BOLD}│${NC}  Password:  %-29s${BOLD}│${NC}\n" "$masked_pass"
+    printf "  ${BOLD}│${NC}  Interval:  %-29s${BOLD}│${NC}\n" "${poll_interval}s"
+    printf "  ${BOLD}└───────────────────────────────────────────┘${NC}\n"
 }
 
 # ─── systemd Service (Linux) ─────────────────────────────────────────
@@ -306,34 +550,11 @@ setup_path() {
     export PATH="${INSTALL_DIR}:$PATH"
 }
 
-# ─── Check API Keys ─────────────────────────────────────────────────
-has_api_keys() {
-    local env_file="${INSTALL_DIR}/.env"
-    [[ -f "$env_file" ]] || return 1
-
-    local key val
-    while IFS='=' read -r key val || [[ -n "$key" ]]; do
-        # Skip comments and empty lines
-        [[ "$key" =~ ^[[:space:]]*# ]] && continue
-        [[ -z "$key" ]] && continue
-        key="$(echo "$key" | tr -d '[:space:]')"
-        val="$(echo "$val" | tr -d '[:space:]')"
-        case "$key" in
-            SYNTHETIC_API_KEY|ZAI_API_KEY)
-                if [[ -n "$val" && "$val" != "syn_your_api_key_here" && "$val" != "your_zai_api_key_here" ]]; then
-                    return 0
-                fi
-                ;;
-        esac
-    done < "$env_file"
-    return 1
-}
-
 # ─── Start Service ───────────────────────────────────────────────────
 start_service() {
-    local port
-    port="$(grep -E '^SYNTRACK_PORT=' "${INSTALL_DIR}/.env" 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')"
-    port="${port:-9211}"
+    local port="${SETUP_PORT:-9211}"
+    local username="${SETUP_USERNAME:-admin}"
+    local password="${SETUP_PASSWORD}"
 
     info "Starting SynTrack..."
 
@@ -366,7 +587,11 @@ start_service() {
 
     echo ""
     printf "  ${GREEN}${BOLD}Dashboard: http://localhost:${port}${NC}\n"
-    printf "  ${DIM}Login with: admin / changeme (change from dashboard footer)${NC}\n"
+    if [[ -n "$password" ]]; then
+        printf "  ${DIM}Login with: ${username} / ${password}${NC}\n"
+    else
+        printf "  ${DIM}Login with: ${username} / <your configured password>${NC}\n"
+    fi
     return 0
 }
 
@@ -390,19 +615,15 @@ print_errors() {
     echo ""
     printf "  ${BOLD}Common issues:${NC}\n\n"
 
-    printf "  ${YELLOW}1.${NC} No API keys configured\n"
-    printf "     Edit ${CYAN}${INSTALL_DIR}/.env${NC}\n"
-    printf "     Add SYNTHETIC_API_KEY or ZAI_API_KEY\n\n"
-
-    printf "  ${YELLOW}2.${NC} Port ${port} already in use\n"
+    printf "  ${YELLOW}1.${NC} Port ${port} already in use\n"
     printf "     Change SYNTRACK_PORT in ${CYAN}${INSTALL_DIR}/.env${NC}\n"
     printf "     Check what's using it: ${CYAN}lsof -i :${port}${NC}\n\n"
 
-    printf "  ${YELLOW}3.${NC} Invalid API key\n"
+    printf "  ${YELLOW}2.${NC} Invalid API key\n"
     printf "     Synthetic: ${CYAN}https://synthetic.new/settings/api${NC}\n"
     printf "     Z.ai:      ${CYAN}https://www.z.ai/api-keys${NC}\n\n"
 
-    printf "  ${YELLOW}4.${NC} Network error\n"
+    printf "  ${YELLOW}3.${NC} Network error\n"
     printf "     Verify you can reach the API endpoints\n\n"
 
     if [[ "$OS" == "linux" ]] && command -v systemctl &>/dev/null; then
@@ -441,8 +662,8 @@ main() {
     # Create wrapper (so .env is always found)
     create_wrapper
 
-    # Create .env configuration
-    setup_env
+    # Interactive .env configuration (skipped if .env already exists)
+    interactive_setup
 
     # Set up service management
     echo ""
@@ -455,25 +676,9 @@ main() {
     # Add to PATH
     setup_path
 
-    # Check config and optionally start
+    # Start the service
     echo ""
-    if has_api_keys; then
-        start_service || true
-    else
-        warn "No API keys configured yet"
-        echo ""
-        printf "  ${BOLD}Next steps:${NC}\n\n"
-        printf "  1. Edit ${CYAN}${INSTALL_DIR}/.env${NC}\n"
-        printf "     Add your Synthetic or Z.ai API key\n\n"
-        printf "  2. Start SynTrack:\n"
-        if [[ "$OS" == "linux" ]] && command -v systemctl &>/dev/null; then
-            printf "     ${CYAN}$(_sctl_cmd) start syntrack${NC}\n"
-        else
-            printf "     ${CYAN}syntrack${NC}\n"
-        fi
-        echo ""
-        printf "  3. Open ${CYAN}http://localhost:9211${NC}\n"
-    fi
+    start_service || true
 
     printf "\n  ${GREEN}${BOLD}Installation complete${NC}\n\n"
 }
