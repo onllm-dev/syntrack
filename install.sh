@@ -250,23 +250,135 @@ WRAPPER
     chmod +x "$wrapper"
 }
 
+# ─── .env Helpers ───────────────────────────────────────────────────
+
+# Read a value from the existing .env file
+# Usage: val=$(env_get "SYNTHETIC_API_KEY")
+env_get() {
+    local key="$1" env_file="${INSTALL_DIR}/.env"
+    grep -E "^${key}=" "$env_file" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]'
+}
+
+# Check if a provider key is configured (non-empty, not a placeholder)
+has_synthetic_key() {
+    local val
+    val="$(env_get SYNTHETIC_API_KEY)"
+    [[ -n "$val" && "$val" != "syn_your_api_key_here" ]]
+}
+
+has_zai_key() {
+    local val
+    val="$(env_get ZAI_API_KEY)"
+    [[ -n "$val" && "$val" != "your_zai_api_key_here" ]]
+}
+
+# Append a provider section to the existing .env
+append_synthetic_to_env() {
+    local key="$1" env_file="${INSTALL_DIR}/.env"
+    printf '\n# Synthetic API key (https://synthetic.new/settings/api)\nSYNTHETIC_API_KEY=%s\n' "$key" >> "$env_file"
+}
+
+append_zai_to_env() {
+    local key="$1" base_url="$2" env_file="${INSTALL_DIR}/.env"
+    printf '\n# Z.ai API key (https://www.z.ai/api-keys)\nZAI_API_KEY=%s\n\n# Z.ai base URL\nZAI_BASE_URL=%s\n' "$key" "$base_url" >> "$env_file"
+}
+
+# ─── Collect Z.ai Key + Base URL ────────────────────────────────────
+# Shared between fresh setup and add-provider flow
+collect_zai_config() {
+    local _zai_key _zai_base_url
+
+    printf "\n  ${DIM}Get your key: https://www.z.ai/api-keys${NC}\n"
+    _zai_key=$(prompt_secret "Z.ai API key" validate_nonempty)
+
+    printf "\n"
+    local use_default_url
+    use_default_url=$(prompt_with_default "Use default Z.ai base URL (https://api.z.ai/api)? (Y/n)" "Y")
+    if [[ "$use_default_url" =~ ^[Nn] ]]; then
+        while true; do
+            _zai_base_url=$(prompt_with_default "Z.ai base URL" "https://open.bigmodel.cn/api")
+            if validate_https_url "$_zai_base_url" 2>/dev/null; then
+                break
+            fi
+            printf "  ${RED}URL must start with 'https://'${NC}\n"
+        done
+    else
+        _zai_base_url="https://api.z.ai/api"
+    fi
+
+    # Return both values separated by newline
+    printf '%s\n%s' "$_zai_key" "$_zai_base_url"
+}
+
 # ─── Interactive Setup ──────────────────────────────────────────────
 # Fully interactive .env configuration for fresh installs.
+# On upgrade: checks for missing providers and offers to add them.
 # Reads from /dev/tty (fd 3) for piped install compatibility.
 interactive_setup() {
     local env_file="${INSTALL_DIR}/.env"
 
-    # Preserve existing config on upgrade
     if [[ -f "$env_file" ]]; then
-        info "Existing .env found — keeping current configuration"
         # Load existing values for start_service display
-        SETUP_PORT="$(grep -E '^SYNTRACK_PORT=' "$env_file" 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')"
+        SETUP_PORT="$(env_get SYNTRACK_PORT)"
         SETUP_PORT="${SETUP_PORT:-9211}"
-        SETUP_USERNAME="$(grep -E '^SYNTRACK_ADMIN_USER=' "$env_file" 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')"
+        SETUP_USERNAME="$(env_get SYNTRACK_ADMIN_USER)"
         SETUP_USERNAME="${SETUP_USERNAME:-admin}"
         SETUP_PASSWORD=""  # Don't show existing password
-        return
+
+        local has_syn=false has_zai=false
+        has_synthetic_key && has_syn=true
+        has_zai_key && has_zai=true
+
+        if $has_syn && $has_zai; then
+            # Both providers configured — nothing to do
+            info "Existing .env found — both providers configured"
+            return
+        fi
+
+        if ! $has_syn && ! $has_zai; then
+            # .env exists but no keys at all — run full setup
+            warn "Existing .env found but no API keys configured"
+            info "Running interactive setup..."
+            # Remove the empty .env so the fresh setup flow creates a new one
+            rm -f "$env_file"
+            # Fall through to fresh setup below
+        else
+            # One provider configured — offer to add the missing one
+            exec 3</dev/tty || fail "Cannot read from terminal. Run the script directly instead of piping."
+
+            if $has_syn && ! $has_zai; then
+                info "Existing .env found — Synthetic configured"
+                printf "\n"
+                local add_zai
+                add_zai=$(prompt_with_default "Add Z.ai provider? (y/N)" "N")
+                if [[ "$add_zai" =~ ^[Yy] ]]; then
+                    local zai_result zai_key zai_base_url
+                    zai_result=$(collect_zai_config)
+                    zai_key=$(echo "$zai_result" | head -1)
+                    zai_base_url=$(echo "$zai_result" | tail -1)
+                    append_zai_to_env "$zai_key" "$zai_base_url"
+                    ok "Added Z.ai provider to .env"
+                fi
+            elif $has_zai && ! $has_syn; then
+                info "Existing .env found — Z.ai configured"
+                printf "\n"
+                local add_syn
+                add_syn=$(prompt_with_default "Add Synthetic provider? (y/N)" "N")
+                if [[ "$add_syn" =~ ^[Yy] ]]; then
+                    printf "\n  ${DIM}Get your key: https://synthetic.new/settings/api${NC}\n"
+                    local syn_key
+                    syn_key=$(prompt_secret "Synthetic API key (syn_...)" validate_synthetic_key)
+                    append_synthetic_to_env "$syn_key"
+                    ok "Added Synthetic provider to .env"
+                fi
+            fi
+
+            exec 3<&-
+            return
+        fi
     fi
+
+    # ── Fresh setup (no .env or empty keys) ──
 
     # Open /dev/tty for reading — works even when script is piped via curl | bash
     exec 3</dev/tty || fail "Cannot read from terminal. Run the script directly instead of piping."
@@ -291,23 +403,10 @@ interactive_setup() {
 
     # ── Z.ai API Key ──
     if [[ "$provider_choice" == "2" || "$provider_choice" == "3" ]]; then
-        printf "\n  ${DIM}Get your key: https://www.z.ai/api-keys${NC}\n"
-        zai_key=$(prompt_secret "Z.ai API key" validate_nonempty)
-
-        printf "\n"
-        local use_default_url
-        use_default_url=$(prompt_with_default "Use default Z.ai base URL (https://api.z.ai/api)? (Y/n)" "Y")
-        if [[ "$use_default_url" =~ ^[Nn] ]]; then
-            while true; do
-                zai_base_url=$(prompt_with_default "Z.ai base URL" "https://open.bigmodel.cn/api")
-                if validate_https_url "$zai_base_url" 2>/dev/null; then
-                    break
-                fi
-                printf "  ${RED}URL must start with 'https://'${NC}\n"
-            done
-        else
-            zai_base_url="https://api.z.ai/api"
-        fi
+        local zai_result
+        zai_result=$(collect_zai_config)
+        zai_key=$(echo "$zai_result" | head -1)
+        zai_base_url=$(echo "$zai_result" | tail -1)
     fi
 
     # ── Dashboard Credentials ──
