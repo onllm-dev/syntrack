@@ -1,0 +1,1609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SynTrack - API Quota Tracker for AI Coding Tools</title>
+    <meta name="description" content="Open-source, lightweight background agent that tracks Synthetic and Z.ai API usage. Historical trends, reset cycle detection, rate projections — all in a Material Design dashboard.">
+    <meta name="keywords" content="API quota tracker, Synthetic API, Z.ai, usage monitoring, open source, developer tool">
+    <meta property="og:title" content="SynTrack - API Quota Tracker for AI Coding Tools">
+    <meta property="og:description" content="Track your AI coding API usage with historical trends, reset cycle detection, and rate projections. Free and open source.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://github.com/onllm-dev/syntrack">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='16' fill='%230D9488'/><g transform='translate(4 4)' fill='none' stroke='%23fff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07'/></g></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+/* ═══════════════════════════════════════════
+   DESIGN TOKENS — Matches SynTrack Dashboard
+   ═══════════════════════════════════════════ */
+:root {
+  --surface-page: #F0F2F5;
+  --surface-card: #FFFFFF;
+  --surface-card-alt: #F7F8FA;
+  --surface-raised: #FFFFFF;
+  --surface-inset: #F3F4F6;
+  --surface-overlay: rgba(0, 0, 0, 0.45);
+  --text-primary: #1A1D21;
+  --text-secondary: #4B5563;
+  --text-muted: #6B7280;
+  --text-inverse: #FFFFFF;
+  --border-default: #E5E7EB;
+  --border-light: #F0F1F3;
+  --border-focus: #0D9488;
+  --accent-teal: #0D9488;
+  --accent-teal-light: #CCFBF1;
+  --accent-teal-muted: rgba(13, 148, 136, 0.1);
+  --accent-teal-text: #065F53;
+  --accent-peach: #F59E0B;
+  --accent-peach-light: #FEF3C7;
+  --accent-peach-muted: rgba(245, 158, 11, 0.1);
+  --accent-blue: #3B82F6;
+  --accent-blue-muted: rgba(59, 130, 246, 0.1);
+  --status-healthy: #10B981;
+  --status-healthy-bg: #D1FAE5;
+  --status-warning: #F59E0B;
+  --status-warning-bg: #FEF3C7;
+  --status-danger: #EF4444;
+  --status-danger-bg: #FEE2E2;
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.07);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.1);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
+  --shadow-card-hover: 0 4px 16px rgba(0,0,0,0.08);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+  --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --transition-fast: 150ms ease;
+  --transition-base: 200ms ease;
+  --transition-slow: 300ms ease;
+}
+
+[data-theme="dark"] {
+  --surface-page: #0F1117;
+  --surface-card: #1A1D24;
+  --surface-card-alt: #21242C;
+  --surface-raised: #252830;
+  --surface-inset: #161921;
+  --surface-overlay: rgba(0, 0, 0, 0.65);
+  --text-primary: #F1F3F5;
+  --text-secondary: #ABB5C2;
+  --text-muted: #8891A0;
+  --text-inverse: #1A1D21;
+  --border-default: #2F3440;
+  --border-light: #2A2E37;
+  --border-focus: #14B8A6;
+  --accent-teal: #14B8A6;
+  --accent-teal-light: #0F2D2A;
+  --accent-teal-muted: rgba(20, 184, 166, 0.12);
+  --accent-teal-text: #5EEAD4;
+  --accent-peach: #FBBF24;
+  --accent-peach-light: #2D2410;
+  --accent-peach-muted: rgba(251, 191, 36, 0.12);
+  --accent-blue: #60A5FA;
+  --accent-blue-muted: rgba(96, 165, 250, 0.12);
+  --status-healthy: #34D399;
+  --status-healthy-bg: rgba(52, 211, 153, 0.12);
+  --status-warning: #FBBF24;
+  --status-warning-bg: rgba(251, 191, 36, 0.12);
+  --status-danger: #F87171;
+  --status-danger-bg: rgba(248, 113, 113, 0.12);
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.25);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.35);
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.2), 0 1px 2px rgba(0,0,0,0.15);
+  --shadow-card-hover: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+/* ═══════════════════════════════════════════
+   RESET & BASE
+   ═══════════════════════════════════════════ */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html {
+  font-family: var(--font-primary);
+  background: var(--surface-page);
+  color: var(--text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  transition: background-color var(--transition-base), color var(--transition-base);
+}
+
+a { color: var(--accent-teal); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+/* ═══════════════════════════════════════════
+   NAVIGATION
+   ═══════════════════════════════════════════ */
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: color-mix(in srgb, var(--surface-card) 85%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-default);
+  transition: background var(--transition-base);
+}
+
+.nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+.nav-brand:hover { text-decoration: none; }
+
+.nav-brand svg {
+  width: 28px;
+  height: 28px;
+  color: var(--accent-teal);
+}
+
+.nav-brand span {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nav-link {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.nav-link:hover {
+  color: var(--text-primary);
+  background: var(--surface-card-alt);
+  text-decoration: none;
+}
+
+.nav-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent-teal);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity var(--transition-fast);
+}
+.nav-cta:hover { opacity: 0.9; text-decoration: none; }
+.nav-cta svg { width: 16px; height: 16px; }
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.theme-toggle:hover {
+  background: var(--surface-card-alt);
+  color: var(--accent-peach);
+  border-color: var(--accent-peach);
+}
+.theme-toggle svg { width: 16px; height: 16px; }
+.theme-toggle .icon-moon { display: none; }
+[data-theme="light"] .theme-toggle .icon-sun { display: none; }
+[data-theme="light"] .theme-toggle .icon-moon { display: block; }
+
+/* ═══════════════════════════════════════════
+   CONTAINER
+   ═══════════════════════════════════════════ */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ═══════════════════════════════════════════
+   HERO SECTION
+   ═══════════════════════════════════════════ */
+.hero {
+  padding: 140px 0 80px;
+  text-align: center;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-teal);
+  background: var(--accent-teal-muted);
+  border: 1px solid color-mix(in srgb, var(--accent-teal) 20%, transparent);
+  border-radius: var(--radius-full);
+  margin-bottom: 24px;
+}
+.hero-badge svg { width: 14px; height: 14px; }
+
+.hero h1 {
+  font-size: clamp(36px, 5vw, 56px);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+  margin-bottom: 20px;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero h1 .accent { color: var(--accent-teal); }
+
+.hero-desc {
+  font-size: 18px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  max-width: 560px;
+  margin: 0 auto 36px;
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent-teal);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-decoration: none;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+.btn-primary:hover { opacity: 0.92; transform: translateY(-1px); text-decoration: none; }
+.btn-primary svg { width: 18px; height: 18px; }
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-decoration: none;
+  transition: all var(--transition-fast);
+}
+.btn-secondary:hover {
+  border-color: var(--accent-teal);
+  color: var(--accent-teal);
+  text-decoration: none;
+}
+.btn-secondary svg { width: 18px; height: 18px; }
+
+.hero-meta {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ═══════════════════════════════════════════
+   DASHBOARD MOCKUP
+   ═══════════════════════════════════════════ */
+.mockup-wrapper {
+  max-width: 960px;
+  margin: 48px auto 0;
+  perspective: 1000px;
+}
+
+.mockup {
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--border-light);
+  overflow: hidden;
+  transform: rotateX(2deg);
+  transition: transform 0.6s ease;
+}
+.mockup:hover { transform: rotateX(0); }
+
+.mockup-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--surface-card-alt);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.mockup-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.mockup-dot:nth-child(1) { background: #EF4444; }
+.mockup-dot:nth-child(2) { background: #F59E0B; }
+.mockup-dot:nth-child(3) { background: #10B981; }
+
+.mockup-url {
+  flex: 1;
+  text-align: center;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.mockup-body {
+  padding: 24px;
+}
+
+.mockup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.mockup-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.mockup-tabs {
+  display: flex;
+  gap: 2px;
+  background: var(--surface-inset);
+  padding: 3px;
+  border-radius: 6px;
+}
+
+.mockup-tab {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+.mockup-tab.active {
+  background: var(--surface-card);
+  color: var(--accent-teal);
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
+}
+
+.mockup-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.mock-card {
+  padding: 16px;
+  background: var(--surface-card-alt);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+}
+
+.mock-card-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.mock-card-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.mock-card-sub {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.mock-progress {
+  height: 4px;
+  background: var(--surface-inset);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.mock-progress-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 1.5s ease-out;
+}
+
+.mock-chart {
+  height: 120px;
+  background: var(--surface-card-alt);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  position: relative;
+  overflow: hidden;
+}
+
+.mock-chart svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* ═══════════════════════════════════════════
+   PROVIDERS STRIP
+   ═══════════════════════════════════════════ */
+.providers {
+  padding: 48px 0;
+  text-align: center;
+  border-top: 1px solid var(--border-light);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.providers-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 24px;
+}
+
+.providers-grid {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 48px;
+  flex-wrap: wrap;
+}
+
+.provider-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  cursor: default;
+}
+.provider-item:hover {
+  border-color: var(--accent-teal);
+  box-shadow: var(--shadow-sm);
+}
+
+.provider-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+}
+
+.provider-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.provider-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════════
+   FEATURES SECTION
+   ═══════════════════════════════════════════ */
+.features {
+  padding: 80px 0;
+}
+
+.section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-teal);
+  margin-bottom: 12px;
+}
+
+.section-title {
+  font-size: clamp(28px, 3.5vw, 38px);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.section-desc {
+  font-size: 16px;
+  color: var(--text-secondary);
+  max-width: 540px;
+  line-height: 1.7;
+  margin-bottom: 48px;
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.feature-card {
+  padding: 28px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+  cursor: default;
+}
+.feature-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--border-focus);
+}
+
+.feature-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.feature-icon svg { width: 20px; height: 20px; }
+
+.feature-icon.teal { background: var(--accent-teal-muted); color: var(--accent-teal); }
+.feature-icon.peach { background: var(--accent-peach-muted); color: var(--accent-peach); }
+.feature-icon.blue { background: var(--accent-blue-muted); color: var(--accent-blue); }
+
+.feature-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.feature-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+/* ═══════════════════════════════════════════
+   HOW IT WORKS / ARCHITECTURE
+   ═══════════════════════════════════════════ */
+.architecture {
+  padding: 80px 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.arch-diagram {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  align-items: center;
+  gap: 0;
+  max-width: 840px;
+  margin: 0 auto;
+}
+
+.arch-node {
+  text-align: center;
+  padding: 24px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+}
+
+.arch-node-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 12px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.arch-node-icon svg { width: 24px; height: 24px; }
+
+.arch-node-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.arch-node-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.arch-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  padding: 0 8px;
+}
+.arch-arrow svg { width: 24px; height: 24px; }
+
+.arch-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  max-width: 640px;
+  margin: 48px auto 0;
+}
+
+.arch-stat {
+  text-align: center;
+  padding: 20px 12px;
+  background: var(--accent-teal-muted);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--accent-teal) 15%, var(--border-light));
+}
+
+.arch-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.arch-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+/* ═══════════════════════════════════════════
+   INSTALL SECTION
+   ═══════════════════════════════════════════ */
+.install {
+  padding: 80px 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.install-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: start;
+}
+
+.install-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.install-step {
+  display: flex;
+  gap: 16px;
+}
+
+.step-num {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent-teal);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-content h4 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.step-content p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.code-block {
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+.code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--surface-card-alt);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.code-lang {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.code-copy {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-teal);
+  background: var(--accent-teal-muted);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  transition: background var(--transition-fast);
+}
+.code-copy:hover { background: var(--accent-teal-light); }
+
+.code-body {
+  padding: 20px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.code-comment { color: var(--text-muted); }
+.code-cmd { color: var(--accent-teal); }
+.code-string { color: var(--accent-peach); }
+
+/* ═══════════════════════════════════════════
+   COMPARISON / WHY SECTION
+   ═══════════════════════════════════════════ */
+.comparison {
+  padding: 80px 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.comparison-table-wrap {
+  overflow-x: auto;
+}
+
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  margin-top: 32px;
+}
+
+.comparison-table th,
+.comparison-table td {
+  padding: 14px 20px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.comparison-table th {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--surface-card-alt);
+}
+
+.comparison-table td {
+  color: var(--text-primary);
+}
+
+.comparison-table tr:hover td {
+  background: var(--surface-card-alt);
+}
+
+.check { color: var(--status-healthy); }
+.cross { color: var(--text-muted); opacity: 0.4; }
+
+/* ═══════════════════════════════════════════
+   CTA SECTION
+   ═══════════════════════════════════════════ */
+.cta-section {
+  padding: 80px 0;
+  text-align: center;
+  border-top: 1px solid var(--border-light);
+}
+
+.cta-card {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 48px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+}
+
+.cta-card h2 {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin-bottom: 12px;
+}
+
+.cta-card p {
+  font-size: 16px;
+  color: var(--text-secondary);
+  margin-bottom: 32px;
+  line-height: 1.7;
+}
+
+.cta-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ═══════════════════════════════════════════
+   FOOTER
+   ═══════════════════════════════════════════ */
+.footer {
+  padding: 32px 0;
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-card);
+}
+
+.footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.footer-brand svg { width: 20px; height: 20px; color: var(--accent-teal); }
+
+.footer-links {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.footer-link {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+.footer-link:hover { color: var(--accent-teal); text-decoration: none; }
+
+.footer-copy {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════ */
+.fade-in {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@keyframes float {
+  0%, 100% { transform: rotateX(2deg) translateY(0); }
+  50% { transform: rotateX(2deg) translateY(-4px); }
+}
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .features-grid { grid-template-columns: repeat(2, 1fr); }
+  .arch-diagram { grid-template-columns: 1fr; gap: 12px; }
+  .arch-arrow { transform: rotate(90deg); padding: 4px 0; }
+  .arch-stats { grid-template-columns: repeat(2, 1fr); }
+  .install-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .hero { padding: 100px 0 48px; }
+  .hero h1 { font-size: 32px; }
+  .hero-desc { font-size: 16px; }
+  .nav-links .nav-link { display: none; }
+  .features-grid { grid-template-columns: 1fr; }
+  .mockup-cards { grid-template-columns: 1fr; }
+  .providers-grid { gap: 16px; flex-direction: column; }
+  .comparison-table { font-size: 12px; }
+  .comparison-table th, .comparison-table td { padding: 10px 12px; }
+  .cta-card { padding: 32px 24px; }
+  .footer-inner { flex-direction: column; text-align: center; }
+  .arch-stats { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 480px) {
+  .hero-actions { flex-direction: column; }
+  .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
+  .cta-actions { flex-direction: column; }
+  .cta-actions .btn-primary, .cta-actions .btn-secondary { width: 100%; justify-content: center; }
+  .arch-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
+}
+
+/* ═══════════════════════════════════════════
+   REDUCED MOTION
+   ═══════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  html { scroll-behavior: auto; }
+  .fade-in { opacity: 1; transform: none; }
+  .mockup { transform: none; }
+  .mockup:hover { transform: none; }
+}
+
+/* Mobile nav toggle */
+.nav-toggle {
+  display: none;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.nav-toggle svg { width: 18px; height: 18px; }
+
+@media (max-width: 768px) {
+  .nav-toggle { display: flex; }
+}
+    </style>
+    <script>
+        (function() {
+            var saved = localStorage.getItem('syntrack-theme');
+            var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            var theme = saved || (prefersDark ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', theme);
+        })();
+    </script>
+</head>
+<body>
+
+<!-- Navigation -->
+<nav class="nav" role="navigation" aria-label="Main navigation">
+    <div class="nav-inner">
+        <a href="#" class="nav-brand" aria-label="SynTrack home">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/>
+            </svg>
+            <span>SynTrack</span>
+        </a>
+        <div class="nav-links">
+            <a href="#features" class="nav-link">Features</a>
+            <a href="#how-it-works" class="nav-link">How It Works</a>
+            <a href="#install" class="nav-link">Install</a>
+            <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+                <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="5"/>
+                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                </svg>
+                <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+            </button>
+            <a href="https://github.com/onllm-dev/syntrack" class="nav-cta" target="_blank" rel="noopener noreferrer">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                GitHub
+            </a>
+        </div>
+    </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+    <div class="container">
+        <div class="fade-in">
+            <div class="hero-badge">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                Free &amp; Open Source
+            </div>
+            <h1>Know your <span class="accent">AI API</span> usage before it knows you</h1>
+            <p class="hero-desc">Lightweight background agent that tracks Synthetic and Z.ai quota usage, detects reset cycles, and serves a real-time dashboard. Single binary, ~25 MB RAM.</p>
+            <div class="hero-actions">
+                <a href="#install" class="btn-primary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                    Get Started
+                </a>
+                <a href="https://github.com/onllm-dev/syntrack" class="btn-secondary" target="_blank" rel="noopener noreferrer">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                    View on GitHub
+                </a>
+            </div>
+            <p class="hero-meta">v1.5.0 &middot; Go &middot; MIT License</p>
+        </div>
+
+        <!-- Dashboard Mockup -->
+        <div class="mockup-wrapper fade-in">
+            <div class="mockup" id="dashboard-mockup">
+                <div class="mockup-bar">
+                    <span class="mockup-dot"></span>
+                    <span class="mockup-dot"></span>
+                    <span class="mockup-dot"></span>
+                    <span class="mockup-url">localhost:9211</span>
+                </div>
+                <div class="mockup-body">
+                    <div class="mockup-header">
+                        <div class="mockup-title">Dashboard</div>
+                        <div class="mockup-tabs">
+                            <span class="mockup-tab active">Synthetic</span>
+                            <span class="mockup-tab">Z.ai</span>
+                            <span class="mockup-tab">Both</span>
+                        </div>
+                    </div>
+                    <div class="mockup-cards">
+                        <div class="mock-card">
+                            <div class="mock-card-label">Subscription</div>
+                            <div class="mock-card-value" id="anim-sub">0%</div>
+                            <div class="mock-card-sub">154 / 1,350</div>
+                            <div class="mock-progress"><div class="mock-progress-fill" id="prog-sub" style="width:0%;background:var(--status-healthy)"></div></div>
+                        </div>
+                        <div class="mock-card">
+                            <div class="mock-card-label">Search (Hourly)</div>
+                            <div class="mock-card-value" id="anim-search">0%</div>
+                            <div class="mock-card-sub">42 / 250</div>
+                            <div class="mock-progress"><div class="mock-progress-fill" id="prog-search" style="width:0%;background:var(--status-warning)"></div></div>
+                        </div>
+                        <div class="mock-card">
+                            <div class="mock-card-label">Tool Calls</div>
+                            <div class="mock-card-value" id="anim-tool">0%</div>
+                            <div class="mock-card-sub">7,635 / 16,200</div>
+                            <div class="mock-progress"><div class="mock-progress-fill" id="prog-tool" style="width:0%;background:var(--accent-peach)"></div></div>
+                        </div>
+                    </div>
+                    <div class="mock-chart">
+                        <svg viewBox="0 0 800 120" preserveAspectRatio="none">
+                            <defs>
+                                <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--accent-teal)" stop-opacity="0.3"/><stop offset="100%" stop-color="var(--accent-teal)" stop-opacity="0"/></linearGradient>
+                                <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--accent-peach)" stop-opacity="0.2"/><stop offset="100%" stop-color="var(--accent-peach)" stop-opacity="0"/></linearGradient>
+                            </defs>
+                            <path d="M0,90 C100,85 150,70 250,60 C350,50 400,35 500,45 C600,55 700,30 800,25 L800,120 L0,120Z" fill="url(#g1)"/>
+                            <path d="M0,90 C100,85 150,70 250,60 C350,50 400,35 500,45 C600,55 700,30 800,25" fill="none" stroke="var(--accent-teal)" stroke-width="2"/>
+                            <path d="M0,100 C100,95 200,80 300,85 C400,90 500,65 600,70 C700,75 750,55 800,50 L800,120 L0,120Z" fill="url(#g2)"/>
+                            <path d="M0,100 C100,95 200,80 300,85 C400,90 500,65 600,70 C700,75 750,55 800,50" fill="none" stroke="var(--accent-peach)" stroke-width="1.5" stroke-dasharray="4 3"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Providers -->
+<section class="providers" id="providers">
+    <div class="container">
+        <p class="providers-label">Supported Providers</p>
+        <div class="providers-grid fade-in">
+            <div class="provider-item">
+                <div class="provider-icon" style="background: #6366F1;">S</div>
+                <div>
+                    <div class="provider-name">Synthetic</div>
+                    <div class="provider-desc">synthetic.new</div>
+                </div>
+            </div>
+            <div class="provider-item">
+                <div class="provider-icon" style="background: #0EA5E9;">Z</div>
+                <div>
+                    <div class="provider-name">Z.ai</div>
+                    <div class="provider-desc">z.ai</div>
+                </div>
+            </div>
+            <div class="provider-item">
+                <div class="provider-icon" style="background: var(--accent-teal);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="18" height="18"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+                </div>
+                <div>
+                    <div class="provider-name">Both View</div>
+                    <div class="provider-desc">Side-by-side comparison</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Features -->
+<section class="features" id="features">
+    <div class="container">
+        <div class="fade-in">
+            <div class="section-label">Features</div>
+            <h2 class="section-title">Telemetry your API provider doesn't give you</h2>
+            <p class="section-desc">SynTrack fills the gap between "current usage snapshot" and the historical, per-cycle, cross-session intelligence developers actually need.</p>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card fade-in">
+                <div class="feature-icon teal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
+                </div>
+                <h3 class="feature-title">Historical Usage Trends</h3>
+                <p class="feature-desc">Chart.js time-series with 1h, 6h, 24h, 7d, and 30d ranges. See patterns your provider's dashboard never shows.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon peach">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                </div>
+                <h3 class="feature-title">Reset Cycle Detection</h3>
+                <p class="feature-desc">Automatically detects when quotas reset by tracking renewsAt changes. Per-cycle peak, total delta, and average rate.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon blue">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+                <h3 class="feature-title">Live Countdown Timers</h3>
+                <p class="feature-desc">Real-time countdown to each quota reset. Color-coded status badges — healthy, warning, danger, critical.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon teal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                </div>
+                <h3 class="feature-title">Rate Projections</h3>
+                <p class="feature-desc">Current consumption rate extrapolated to reset time. Know if you'll hit the limit before it resets.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon peach">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                </div>
+                <h3 class="feature-title">Session Tracking</h3>
+                <p class="feature-desc">Every agent run logs peak consumption. Compare usage across coding sessions — "this session used 342 requests."</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon blue">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                </div>
+                <h3 class="feature-title">Usage Insights</h3>
+                <p class="feature-desc">Provider-specific stats: cycle utilization, billing period usage, weekly pace, tool call share, tokens-per-call efficiency.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Architecture -->
+<section class="architecture" id="how-it-works">
+    <div class="container">
+        <div class="fade-in" style="text-align:center;margin-bottom:48px;">
+            <div class="section-label">Architecture</div>
+            <h2 class="section-title">How it works</h2>
+            <p class="section-desc" style="margin-left:auto;margin-right:auto;">A background agent polls your API quotas, stores snapshots in SQLite, and serves a dashboard. That's it.</p>
+        </div>
+        <div class="arch-diagram fade-in">
+            <div class="arch-node">
+                <div class="arch-node-icon" style="background:var(--accent-teal-muted);color:var(--accent-teal);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                </div>
+                <div class="arch-node-title">API Providers</div>
+                <div class="arch-node-desc">Synthetic + Z.ai</div>
+            </div>
+            <div class="arch-arrow">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+            <div class="arch-node">
+                <div class="arch-node-icon" style="background:var(--accent-peach-muted);color:var(--accent-peach);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                </div>
+                <div class="arch-node-title">SynTrack Agent</div>
+                <div class="arch-node-desc">Background polling</div>
+            </div>
+            <div class="arch-arrow">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </div>
+            <div class="arch-node">
+                <div class="arch-node-icon" style="background:var(--accent-blue-muted);color:var(--accent-blue);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></svg>
+                </div>
+                <div class="arch-node-title">Dashboard</div>
+                <div class="arch-node-desc">:9211</div>
+            </div>
+        </div>
+        <div class="arch-stats fade-in">
+            <div class="arch-stat">
+                <div class="arch-stat-value">~25 MB</div>
+                <div class="arch-stat-label">RAM Idle</div>
+            </div>
+            <div class="arch-stat">
+                <div class="arch-stat-value">0</div>
+                <div class="arch-stat-label">Dependencies</div>
+            </div>
+            <div class="arch-stat">
+                <div class="arch-stat-value">1</div>
+                <div class="arch-stat-label">Binary</div>
+            </div>
+            <div class="arch-stat">
+                <div class="arch-stat-value">60s</div>
+                <div class="arch-stat-label">Poll Interval</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Install -->
+<section class="install" id="install">
+    <div class="container">
+        <div class="fade-in">
+            <div class="section-label">Quick Start</div>
+            <h2 class="section-title">Running in under a minute</h2>
+            <p class="section-desc">Download or build from source. Configure your API keys. Run.</p>
+        </div>
+        <div class="install-grid fade-in">
+            <div class="install-steps">
+                <div class="install-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <h4>Download or build</h4>
+                        <p>Grab a release binary for macOS, Linux, or Windows. Or build from source with Go 1.25+.</p>
+                    </div>
+                </div>
+                <div class="install-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <h4>Configure API keys</h4>
+                        <p>Copy <code>.env.example</code> to <code>.env</code> and add your Synthetic and/or Z.ai API keys.</p>
+                    </div>
+                </div>
+                <div class="install-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <h4>Start tracking</h4>
+                        <p>Run <code>./syntrack</code>. It daemonizes, polls every 60 seconds, and serves a dashboard at <code>:9211</code>.</p>
+                    </div>
+                </div>
+                <div class="install-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <h4>View your dashboard</h4>
+                        <p>Open <code>http://localhost:9211</code> in your browser. Dark mode, live countdowns, charts, insights.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="code-block">
+                <div class="code-header">
+                    <span class="code-lang">bash</span>
+                    <button class="code-copy" onclick="copyCode(this)" aria-label="Copy to clipboard">Copy</button>
+                </div>
+                <div class="code-body"><span class="code-comment"># Download (macOS ARM64)</span>
+<span class="code-cmd">curl</span> -L -o syntrack \
+  https://github.com/onllm-dev/syntrack/releases/latest/download/syntrack-darwin-arm64
+<span class="code-cmd">chmod</span> +x syntrack
+
+<span class="code-comment"># Or build from source</span>
+<span class="code-cmd">git clone</span> https://github.com/onllm-dev/syntrack.git
+<span class="code-cmd">cd</span> syntrack && <span class="code-cmd">make</span> build
+
+<span class="code-comment"># Configure</span>
+<span class="code-cmd">cp</span> .env.example .env
+<span class="code-comment"># Edit .env with your API keys</span>
+
+<span class="code-comment"># Run</span>
+<span class="code-cmd">./syntrack</span>            <span class="code-comment"># background mode</span>
+<span class="code-cmd">./syntrack</span> --debug     <span class="code-comment"># foreground mode</span>
+<span class="code-cmd">./syntrack</span> stop        <span class="code-comment"># stop running instance</span>
+<span class="code-cmd">./syntrack</span> status      <span class="code-comment"># check if running</span></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Comparison -->
+<section class="comparison" id="comparison">
+    <div class="container">
+        <div class="fade-in" style="text-align:center;margin-bottom:32px;">
+            <div class="section-label">Why SynTrack</div>
+            <h2 class="section-title">What your provider doesn't show you</h2>
+            <p class="section-desc" style="margin-left:auto;margin-right:auto;">API providers show current usage. SynTrack shows everything else.</p>
+        </div>
+        <div class="comparison-table-wrap fade-in">
+            <table class="comparison-table" role="table">
+                <thead>
+                    <tr>
+                        <th scope="col">Capability</th>
+                        <th scope="col">Provider Dashboard</th>
+                        <th scope="col">SynTrack</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Current quota usage</td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                    <tr>
+                        <td>Historical usage trends</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                    <tr>
+                        <td>Reset cycle detection &amp; history</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                    <tr>
+                        <td>Per-cycle consumption stats</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                    <tr>
+                        <td>Usage rate projections</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                    <tr>
+                        <td>Per-session tracking</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                    <tr>
+                        <td>Multi-provider unified view</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                    <tr>
+                        <td>Live countdown timers</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                    <tr>
+                        <td>Open source</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section" id="cta">
+    <div class="container">
+        <div class="cta-card fade-in">
+            <h2>Start tracking your API usage</h2>
+            <p>SynTrack is free, open source, and takes under a minute to set up. No accounts, no cloud, no telemetry sent anywhere. Your data stays on your machine.</p>
+            <div class="cta-actions">
+                <a href="https://github.com/onllm-dev/syntrack" class="btn-primary" target="_blank" rel="noopener noreferrer">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                    View on GitHub
+                </a>
+                <a href="https://github.com/onllm-dev/syntrack/releases" class="btn-secondary" target="_blank" rel="noopener noreferrer">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                    Download Latest
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+    <div class="container">
+        <div class="footer-inner">
+            <div class="footer-brand">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/>
+                </svg>
+                SynTrack
+            </div>
+            <div class="footer-links">
+                <a href="https://github.com/onllm-dev/syntrack" class="footer-link" target="_blank" rel="noopener noreferrer">GitHub</a>
+                <a href="https://github.com/onllm-dev/syntrack/releases" class="footer-link" target="_blank" rel="noopener noreferrer">Releases</a>
+                <a href="https://github.com/onllm-dev/syntrack/blob/main/LICENSE" class="footer-link" target="_blank" rel="noopener noreferrer">MIT License</a>
+                <a href="https://onllm.dev" class="footer-link" target="_blank" rel="noopener noreferrer">onllm.dev</a>
+            </div>
+            <div class="footer-copy">Powered by <a href="https://onllm.dev" target="_blank" rel="noopener noreferrer" style="color:var(--accent-teal);">onllm.dev</a></div>
+        </div>
+    </div>
+</footer>
+
+<script>
+/* Theme Toggle */
+(function() {
+    var toggle = document.getElementById('theme-toggle');
+    if (!toggle) return;
+    toggle.addEventListener('click', function() {
+        var html = document.documentElement;
+        var current = html.getAttribute('data-theme');
+        var next = current === 'dark' ? 'light' : 'dark';
+        html.setAttribute('data-theme', next);
+        localStorage.setItem('syntrack-theme', next);
+    });
+})();
+
+/* Fade-in on scroll */
+(function() {
+    var els = document.querySelectorAll('.fade-in');
+    if (!els.length) return;
+
+    var observer = new IntersectionObserver(function(entries) {
+        entries.forEach(function(entry) {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                observer.unobserve(entry.target);
+            }
+        });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    els.forEach(function(el) { observer.observe(el); });
+})();
+
+/* Animate mockup numbers */
+(function() {
+    var targets = [
+        { id: 'anim-sub', prog: 'prog-sub', end: 11.4, color: 'var(--status-healthy)' },
+        { id: 'anim-search', prog: 'prog-search', end: 16.8, color: 'var(--status-healthy)' },
+        { id: 'anim-tool', prog: 'prog-tool', end: 47.1, color: 'var(--accent-peach)' }
+    ];
+    var animated = false;
+
+    function animate() {
+        if (animated) return;
+        animated = true;
+        targets.forEach(function(t) {
+            var el = document.getElementById(t.id);
+            var prog = document.getElementById(t.prog);
+            if (!el || !prog) return;
+
+            var start = 0;
+            var duration = 1200;
+            var startTime = null;
+
+            function step(ts) {
+                if (!startTime) startTime = ts;
+                var p = Math.min((ts - startTime) / duration, 1);
+                var ease = 1 - Math.pow(1 - p, 3);
+                var val = start + (t.end - start) * ease;
+                el.textContent = val.toFixed(1) + '%';
+                prog.style.width = val + '%';
+                if (p < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
+        });
+    }
+
+    var mockup = document.getElementById('dashboard-mockup');
+    if (mockup) {
+        var obs = new IntersectionObserver(function(entries) {
+            if (entries[0].isIntersecting) {
+                setTimeout(animate, 300);
+                obs.disconnect();
+            }
+        }, { threshold: 0.3 });
+        obs.observe(mockup);
+    }
+})();
+
+/* Copy code block */
+function copyCode(btn) {
+    var block = btn.closest('.code-block');
+    var code = block.querySelector('.code-body');
+    if (!code) return;
+    var text = code.textContent;
+    navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+    });
+}
+
+/* Smooth scroll for anchor links */
+document.querySelectorAll('a[href^="#"]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+        var target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+            e.preventDefault();
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    });
+});
+</script>
+
+</body>
+</html>
