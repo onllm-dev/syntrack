@@ -798,18 +798,19 @@ a:hover { text-decoration: underline; }
 }
 
 .mock-chart {
-  height: 120px;
   background: var(--surface-card-alt);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
   position: relative;
   overflow: hidden;
+  padding: 8px 8px 4px;
 }
-
-.mock-chart svg {
-  width: 100%;
-  height: 100%;
-}
+.mock-chart canvas { width: 100% !important; height: 100% !important; }
+.mock-chart-title { font-size: 9px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.mock-legend { display: flex; gap: 10px; justify-content: center; margin-top: 4px; }
+.mock-legend-item { display: flex; align-items: center; gap: 3px; font-size: 8px; color: var(--text-muted); }
+.mock-legend-dot { width: 6px; height: 6px; border-radius: 50%; }
+.mock-dual-label { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
 
 /* ═══════════════════════════════════════════
    PROVIDERS STRIP
@@ -2038,16 +2039,19 @@ a:hover { text-decoration: underline; }
                         </div>
                     </div>
                     <div class="mock-chart">
-                        <svg viewBox="0 0 800 120" preserveAspectRatio="none">
-                            <defs>
-                                <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--accent-teal)" stop-opacity="0.3"/><stop offset="100%" stop-color="var(--accent-teal)" stop-opacity="0"/></linearGradient>
-                                <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--accent-peach)" stop-opacity="0.2"/><stop offset="100%" stop-color="var(--accent-peach)" stop-opacity="0"/></linearGradient>
-                            </defs>
-                            <path d="M0,90 C100,85 150,70 250,60 C350,50 400,35 500,45 C600,55 700,30 800,25 L800,120 L0,120Z" fill="url(#g1)"/>
-                            <path d="M0,90 C100,85 150,70 250,60 C350,50 400,35 500,45 C600,55 700,30 800,25" fill="none" stroke="var(--accent-teal)" stroke-width="2"/>
-                            <path d="M0,100 C100,95 200,80 300,85 C400,90 500,65 600,70 C700,75 750,55 800,50 L800,120 L0,120Z" fill="url(#g2)"/>
-                            <path d="M0,100 C100,95 200,80 300,85 C400,90 500,65 600,70 C700,75 750,55 800,50" fill="none" stroke="var(--accent-peach)" stroke-width="1.5" stroke-dasharray="4 3"/>
-                        </svg>
+                        <div class="mock-chart-title">Usage over time — Last 6 hours</div>
+                        <div id="chart-single" style="position:relative;height:110px;"><canvas id="mock-chart-canvas"></canvas></div>
+                        <div id="chart-dual" style="display:none;">
+                            <div class="mock-dual-label" style="color:var(--accent-teal);">Synthetic</div>
+                            <div style="position:relative;height:48px;"><canvas id="mock-chart-syn"></canvas></div>
+                            <div class="mock-dual-label" style="color:var(--accent-peach);margin-top:4px;">Z.ai</div>
+                            <div style="position:relative;height:48px;"><canvas id="mock-chart-zai"></canvas></div>
+                        </div>
+                        <div class="mock-legend" id="mock-legend">
+                            <span class="mock-legend-item"><span class="mock-legend-dot" style="background:#0D9488"></span>Subscription</span>
+                            <span class="mock-legend-item"><span class="mock-legend-dot" style="background:#8B5CF6"></span>Search</span>
+                            <span class="mock-legend-item"><span class="mock-legend-dot" style="background:#F59E0B"></span>Tool Calls</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -2264,9 +2268,9 @@ a:hover { text-decoration: underline; }
                         <span class="method-code-lang">bash</span>
                         <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
                     </div>
-                    <div class="method-code-body"><span class="code-comment"># Download (macOS ARM64 example)</span>
+                    <div class="method-code-body"><span class="code-comment"># Download (Linux AMD64 example)</span>
 <span class="code-cmd">curl</span> -L -o syntrack \
-  https://github.com/onllm-dev/syntrack/releases/latest/download/syntrack-darwin-arm64
+  https://github.com/onllm-dev/syntrack/releases/latest/download/syntrack-linux-amd64
 <span class="code-cmd">chmod</span> +x syntrack
 
 <span class="code-comment"># Create config</span>
