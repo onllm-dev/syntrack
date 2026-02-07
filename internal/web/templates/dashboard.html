@@ -27,6 +27,9 @@
                 <span class="status-indicator" id="status-dot" aria-label="Connection status"></span>
             </div>
         </div>
+        <button class="header-btn" id="change-password-btn" aria-label="Change password" title="Change password">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </button>
         <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
             <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="5"/>
@@ -469,11 +472,13 @@
 
     <footer class="app-footer">
         <div class="footer-content">
-            <span class="footer-brand">SynTrack v{{.Version}}</span>
-            <div class="footer-actions">
-                <button class="footer-btn" id="change-password-btn">Change Password</button>
+            <span class="footer-brand"><a href="https://syntrack.onllm.dev" class="footer-link" target="_blank" rel="noopener">syntrack.onllm.dev</a> v{{.Version}}</span>
+            <span class="footer-heart">Built with &#10084;&#65039; by <a href="https://prakersh.in" class="footer-link" target="_blank" rel="noopener">Prakersh</a></span>
+            <div class="footer-links">
+                <a href="https://onllm.dev" class="footer-link" target="_blank" rel="noopener">onllm.dev</a>
+                <span class="footer-sep">&#183;</span>
+                <a href="https://github.com/onllm-dev/syntrack" class="footer-link" target="_blank" rel="noopener">GitHub</a>
             </div>
-            <span class="footer-copy">Open Source</span>
         </div>
     </footer>
 </div>

@@ -1559,24 +1559,30 @@ button, input, select { font-family: inherit; }
   color: var(--text-muted);
 }
 
-.footer-copy {
+.footer-heart {
   font-size: 12px;
   color: var(--text-muted);
 }
 
-.footer-btn {
-  background: none;
-  border: none;
-  color: var(--accent-teal);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  transition: background var(--transition-fast);
+.footer-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
 }
-.footer-btn:hover {
-  background: var(--accent-teal-muted);
+
+.footer-sep {
+  color: var(--text-muted);
+}
+
+.footer-link {
+  color: var(--accent-teal);
+  text-decoration: none;
+  transition: opacity var(--transition-fast);
+}
+.footer-link:hover {
+  opacity: 0.8;
+  text-decoration: underline;
 }
 
 /* ═══════════════════════════════════════════
