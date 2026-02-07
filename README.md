@@ -214,4 +214,10 @@ GNU General Public License v3.0. See [LICENSE](LICENSE).
 
 ---
 
-Built with [Go](https://go.dev), [Chart.js](https://www.chartjs.org/), and [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite).
+## Acknowledgments
+
+- Powered by [onllm.dev](https://onllm.dev)
+- [Synthetic](https://synthetic.new) for the API
+- [Z.ai](https://z.ai) for the API
+- [Chart.js](https://www.chartjs.org/) for charts
+- [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) for pure Go SQLite
