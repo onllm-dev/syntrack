@@ -299,6 +299,12 @@ button, input, select { font-family: inherit; }
   gap: 12px;
 }
 
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .header-btn {
   display: flex;
   align-items: center;
