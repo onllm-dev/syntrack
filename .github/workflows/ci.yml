@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Lint
+        run: |
+          go fmt ./...
+          go vet ./...
+
+      - name: Test with race detection
+        run: go test -race -cover -count=1 ./...
+
+      - name: Build
+        run: go build -o syntrack .

@@ -1831,7 +1831,6 @@ a:hover { text-decoration: underline; }
             <a href="#features" class="nav-link">Features</a>
             <a href="#how-it-works" class="nav-link">How It Works</a>
             <a href="#install" class="nav-link">Install</a>
-            <a href="#alternatives" class="nav-link">Alternatives</a>
             <a href="#faq" class="nav-link">FAQ</a>
             <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
                 <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2377,108 +2376,6 @@ a:hover { text-decoration: underline; }
     </div>
 </section>
 
-<!-- Alternatives / Competitive Comparison -->
-<section class="comparison" id="alternatives" style="padding-top:40px;">
-    <div class="container">
-        <div class="fade-in" style="text-align:center;margin-bottom:32px;">
-            <div class="section-label">Alternatives</div>
-            <h2 class="section-title">SynTrack vs other monitoring tools</h2>
-            <p class="section-desc" style="margin-left:auto;margin-right:auto;">Existing tools either monitor the wrong thing, target the wrong use case, or require heavyweight deployments. SynTrack fills the gap.</p>
-        </div>
-        <div class="comparison-table-wrap fade-in">
-            <table class="comparison-table" role="table">
-                <thead>
-                    <tr>
-                        <th scope="col">Feature</th>
-                        <th scope="col">Quotio</th>
-                        <th scope="col">Helicone</th>
-                        <th scope="col">Langfuse</th>
-                        <th scope="col" class="highlight-col">SynTrack</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Synthetic API tracking</td>
-                        <td><span class="cross" aria-label="No">&#10005;</span></td>
-                        <td><span class="cross" aria-label="No">&#10005;</span></td>
-                        <td><span class="cross" aria-label="No">&#10005;</span></td>
-                        <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
-                    </tr>
-                    <tr>
-                        <td>Z.ai API tracking</td>
-                        <td><span class="cross" aria-label="No">&#10005;</span></td>
-                        <td><span class="cross" aria-label="No">&#10005;</span></td>
-                        <td><span class="cross" aria-label="No">&#10005;</span></td>
-                        <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
-                    </tr>
-                    <tr>
-                        <td>Cross-platform (macOS, Linux, Windows)</td>
-                        <td><span class="cross" aria-label="No">&#10005;</span> macOS only</td>
-                        <td><span class="check" aria-label="Yes">&#10003;</span> SaaS</td>
-                        <td><span class="check" aria-label="Yes">&#10003;</span> SaaS/Docker</td>
-                        <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
-                    </tr>
-                    <tr>
-                        <td>Historical usage across resets</td>
-                        <td><span class="cross" aria-label="No">&#10005;</span></td>
-                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
-                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
-                        <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
-                    </tr>
-                    <tr>
-                        <td>Reset cycle detection</td>
-                        <td><span class="cross" aria-label="No">&#10005;</span></td>
-                        <td><span class="cross" aria-label="No">&#10005;</span></td>
-                        <td><span class="cross" aria-label="No">&#10005;</span></td>
-                        <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
-                    </tr>
-                    <tr>
-                        <td>Self-hosted, zero telemetry</td>
-                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
-                        <td><span class="cross" aria-label="No">&#10005;</span></td>
-                        <td><span class="check" aria-label="Partial">~</span> Docker</td>
-                        <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
-                    </tr>
-                    <tr>
-                        <td>Single binary, no dependencies</td>
-                        <td><span class="check" aria-label="Yes">&#10003;</span> .app</td>
-                        <td><span class="cross" aria-label="No">&#10005;</span></td>
-                        <td><span class="cross" aria-label="No">&#10005;</span></td>
-                        <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
-                    </tr>
-                    <tr>
-                        <td>Flat-rate subscription tracking</td>
-                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
-                        <td><span class="cross" aria-label="No">&#10005;</span> Per-token</td>
-                        <td><span class="cross" aria-label="No">&#10005;</span> Per-token</td>
-                        <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
-                    </tr>
-                    <tr>
-                        <td>Memory footprint</td>
-                        <td>~50 MB</td>
-                        <td>Cloud</td>
-                        <td>Cloud/Docker</td>
-                        <td class="highlight-col">~25 MB</td>
-                    </tr>
-                    <tr>
-                        <td>Price</td>
-                        <td>Free</td>
-                        <td>$25/mo+</td>
-                        <td>Free tier</td>
-                        <td class="highlight-col">Free forever</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        <p class="fade-in" style="text-align:center;font-size:13px;color:var(--text-muted);margin-top:16px;max-width:640px;margin-left:auto;margin-right:auto;">
-            <a href="https://github.com/nguyenphutrong/quotio" target="_blank" rel="noopener noreferrer" style="color:var(--accent-teal);">Quotio</a> is a macOS menu bar app for Claude, Gemini, and OpenAI quotas.
-            <a href="https://www.helicone.ai/" target="_blank" rel="noopener noreferrer" style="color:var(--accent-teal);">Helicone</a> and
-            <a href="https://langfuse.com/" target="_blank" rel="noopener noreferrer" style="color:var(--accent-teal);">Langfuse</a> are LLM observability platforms for custom AI pipelines.
-            SynTrack is purpose-built for flat-rate AI coding API subscriptions.
-        </p>
-    </div>
-</section>
-
 <!-- Who is SynTrack for? -->
 <section class="features" id="use-cases" style="padding-top:40px;">
     <div class="container">
@@ -2763,8 +2660,8 @@ a:hover { text-decoration: underline; }
     var allTargets = {
         synthetic: [
             { id: 'anim-sub', prog: 'prog-sub', end: 11.4 },
-            { id: 'anim-search', prog: 'prog-search', end: 16.8 },
-            { id: 'anim-tool', prog: 'prog-tool', end: 47.1 }
+            { id: 'anim-search', prog: 'prog-search', end: 95.2 },
+            { id: 'anim-tool', prog: 'prog-tool', end: 87.6 }
         ],
         zai: [
             { id: 'anim-zai-tok', prog: 'prog-zai-tok', end: 12.0 },
@@ -2773,8 +2670,8 @@ a:hover { text-decoration: underline; }
         ],
         both: [
             { id: 'anim-both-sub', prog: 'prog-both-sub', end: 11.4 },
-            { id: 'anim-both-search', prog: 'prog-both-search', end: 16.8 },
-            { id: 'anim-both-tool', prog: 'prog-both-tool', end: 47.1 },
+            { id: 'anim-both-search', prog: 'prog-both-search', end: 95.2 },
+            { id: 'anim-both-tool', prog: 'prog-both-tool', end: 87.6 },
             { id: 'anim-both-tok', prog: 'prog-both-tok', end: 12.0 },
             { id: 'anim-both-time', prog: 'prog-both-time', end: 5.6 },
             { id: 'anim-both-ztool', prog: 'prog-both-ztool', end: 8.5 }
@@ -2782,8 +2679,8 @@ a:hover { text-decoration: underline; }
     };
 
     function getBarColor(pct) {
-        if (pct >= 80) return 'var(--status-danger)';
-        if (pct >= 50) return 'var(--status-warning)';
+        if (pct >= 95) return 'var(--status-danger)';
+        if (pct >= 85) return 'var(--status-warning)';
         return 'var(--status-healthy)';
     }
 
@@ -2821,6 +2718,7 @@ a:hover { text-decoration: underline; }
             animatedViews[tab] = true;
             setTimeout(function() { animateTargets(allTargets[tab]); }, 100);
         }
+        if (window._switchChart) window._switchChart(tab);
     };
 
     var mockup = document.getElementById('dashboard-mockup');
@@ -3152,6 +3050,388 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
         }
     });
 });
+</script>
+
+<!-- Chart.js CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+<script>
+/* ═══════════════════════════════════════════
+   DYNAMIC TIME + CHART.JS INITIALIZATION
+   ═══════════════════════════════════════════ */
+(function() {
+    /* ── Seeded PRNG for reproducible but random-looking data ── */
+    var _s = 42;
+    function seed(v) { _s = v; }
+    function rand() { _s = (_s * 16807) % 2147483647; return (_s - 1) / 2147483646; }
+
+    /* ── Generate developer activity mask (realistic work sessions) ── */
+    function genActivity(sd) {
+        seed(sd);
+        var pts = 72; /* 6 hours at 5-min intervals */
+        var mask = new Array(pts);
+        for (var i = 0; i < pts; i++) mask[i] = 0;
+
+        /* Create 2-4 work sessions across the 6 hours */
+        var sessions = 2 + Math.floor(rand() * 3);
+        for (var s = 0; s < sessions; s++) {
+            var start = Math.floor(rand() * (pts - 12));
+            var len = 6 + Math.floor(rand() * 18);
+            var end = Math.min(start + len, pts);
+            var peak = 0.4 + rand() * 0.6;
+            for (var j = start; j < end; j++) {
+                /* Bell curve within session */
+                var mid = (start + end) / 2;
+                var dist = Math.abs(j - mid) / ((end - start) / 2);
+                var intensity = peak * Math.max(0, 1 - dist * dist);
+                /* Add some noise */
+                intensity *= (0.6 + rand() * 0.8);
+                mask[j] = Math.max(mask[j], intensity);
+            }
+        }
+        return mask;
+    }
+
+    /* ── Time formatting helpers ── */
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+    function fmtTime(d) { var h = d.getHours(), m = d.getMinutes(), s = d.getSeconds(); var ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return h + ':' + pad(m) + ':' + pad(s) + ' ' + ap; }
+    function fmtCountdown(secs) {
+        if (secs <= 0) return '0s';
+        var h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+        if (h > 0) return h + 'h ' + pad(m) + 'm ' + pad(s) + 's';
+        if (m > 0) return m + 'm ' + pad(s) + 's';
+        return s + 's';
+    }
+    function fmtResetTime(d) { var h = d.getHours(), m = d.getMinutes(); var ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return 'Resets ' + h + ':' + pad(m) + ' ' + ap; }
+
+    /* ── Reset offsets from page load (in seconds) ── */
+    var now = new Date();
+    var subOff = 3 * 3600 + 12 * 60 + 37;    /* ~3h 12m 37s */
+    var searchOff = 7 * 60 + 23;               /* ~7m 23s */
+    var toolOff = 2 * 3600 + 4 * 60 + 51;     /* ~2h 4m 51s */
+    var zaiOff = 23 * 3600 + 45 * 60 + 18;    /* ~23h 45m 18s */
+
+    var subReset = new Date(now.getTime() + subOff * 1000);
+    var searchReset = new Date(now.getTime() + searchOff * 1000);
+    var toolReset = new Date(now.getTime() + toolOff * 1000);
+    var zaiReset = new Date(now.getTime() + zaiOff * 1000);
+
+    /* ── Dynamic time ticker ── */
+    function tick() {
+        var t = new Date();
+        var el = document.getElementById('mock-time');
+        if (el) el.textContent = fmtTime(t);
+
+        var secsToSub = Math.max(0, Math.floor((subReset - t) / 1000));
+        var secsToSearch = Math.max(0, Math.floor((searchReset - t) / 1000));
+        var secsToTool = Math.max(0, Math.floor((toolReset - t) / 1000));
+        var secsToZai = Math.max(0, Math.floor((zaiReset - t) / 1000));
+
+        /* Search resets every ~1h; simulate a reset when countdown hits 0 */
+        if (secsToSearch <= 0) {
+            searchReset = new Date(t.getTime() + (57 * 60 + 41) * 1000);
+            secsToSearch = 57 * 60 + 41;
+        }
+
+        /* Update countdown elements in Synthetic view */
+        var cdSub = document.getElementById('mock-cd-sub');
+        if (cdSub) cdSub.textContent = fmtCountdown(secsToSub);
+
+        /* Update reset time text */
+        var rSub = document.getElementById('mock-reset-sub');
+        if (rSub) rSub.textContent = fmtResetTime(subReset);
+        var rSearch = document.getElementById('mock-reset-search');
+        if (rSearch) rSearch.textContent = fmtResetTime(searchReset);
+        var rTool = document.getElementById('mock-reset-tool');
+        if (rTool) rTool.textContent = fmtResetTime(toolReset);
+
+        /* Update countdown text in all card-countdown elements by traversing DOM */
+        updateCardCountdowns('mock-synthetic', [
+            { label: 'Subscription', val: fmtCountdown(secsToSub) },
+            { label: 'Search', val: fmtCountdown(secsToSearch) },
+            { label: 'Tool Calls', val: fmtCountdown(secsToTool) }
+        ]);
+        updateCardCountdowns('mock-zai', [
+            { label: 'Tokens', val: fmtCountdown(secsToZai) },
+            { label: 'Time', val: fmtCountdown(secsToZai) },
+            { label: 'Tool Calls', val: fmtCountdown(secsToZai) }
+        ]);
+        updateCardCountdowns('mock-both', [
+            { label: 'Subscription', val: fmtCountdown(secsToSub) },
+            { label: 'Search', val: fmtCountdown(secsToSearch) },
+            { label: 'Tool Calls', val: fmtCountdown(secsToTool) },
+            { label: 'Tokens', val: fmtCountdown(secsToZai) },
+            { label: 'Time', val: fmtCountdown(secsToZai) }
+        ]);
+    }
+
+    function updateCardCountdowns(viewId, items) {
+        var view = document.getElementById(viewId);
+        if (!view) return;
+        var cards = view.querySelectorAll('.mock-card');
+        cards.forEach(function(card) {
+            var labelEl = card.querySelector('.mock-card-label');
+            if (!labelEl) return;
+            var txt = labelEl.textContent.trim();
+            items.forEach(function(it) {
+                if (txt.indexOf(it.label) !== -1) {
+                    var cd = card.querySelector('.mock-card-countdown');
+                    if (cd) cd.textContent = it.val;
+                }
+            });
+        });
+    }
+
+    tick();
+    setInterval(tick, 1000);
+
+    /* ── Generate chart data ── */
+    if (typeof Chart === 'undefined') return;
+
+    var POINTS = 72;
+    var labels = [];
+    var startTime = new Date(now.getTime() - 6 * 3600 * 1000);
+    for (var i = 0; i < POINTS; i++) {
+        var t = new Date(startTime.getTime() + i * 5 * 60 * 1000);
+        var h = t.getHours() % 12 || 12;
+        labels.push(h + ':' + pad(t.getMinutes()));
+    }
+
+    /* Synthetic data: cumulative usage with activity bursts and resets */
+    var actSub = genActivity(1337);
+    var actSearch = genActivity(7891);
+    var actTool = genActivity(4242);
+
+    /* Target end percentages */
+    var subEnd = 11.4, searchEnd = 95.2, toolEnd = 87.6;
+
+    function buildCurve(activity, endPct) {
+        var total = 0;
+        for (var j = 0; j < POINTS; j++) total += activity[j];
+        if (total === 0) total = 1;
+        var cumulative = [];
+        var sum = 0;
+        for (var j = 0; j < POINTS; j++) {
+            sum += activity[j];
+            /* Scale so final point = endPct, and add small upward drift */
+            var base = (sum / total) * endPct * 0.85;
+            var drift = (j / POINTS) * endPct * 0.15;
+            cumulative.push(Math.min(100, base + drift));
+        }
+        return cumulative;
+    }
+
+    var synSubData = buildCurve(actSub, subEnd);
+    var synSearchData = buildCurve(actSearch, searchEnd);
+    var synToolData = buildCurve(actTool, toolEnd);
+
+    /* Z.ai data: derived from different seeds, monotonically increasing (no resets) */
+    var actZTok = genActivity(5555);
+    var actZTime = genActivity(9876);
+    var actZTool = genActivity(3141);
+
+    var zaiTokEnd = 12.0, zaiTimeEnd = 5.6, zaiToolEnd = 8.5;
+    var zaiTokData = buildCurve(actZTok, zaiTokEnd);
+    var zaiTimeData = buildCurve(actZTime, zaiTimeEnd);
+    var zaiToolData = buildCurve(actZTool, zaiToolEnd);
+
+    /* Ensure Z.ai data is monotonically increasing */
+    function monotonic(arr) {
+        for (var k = 1; k < arr.length; k++) {
+            if (arr[k] < arr[k - 1]) arr[k] = arr[k - 1];
+        }
+        return arr;
+    }
+    monotonic(zaiTokData);
+    monotonic(zaiTimeData);
+    monotonic(zaiToolData);
+
+    /* ── Chart colors ── */
+    var TEAL = '#0D9488';
+    var PURPLE = '#8B5CF6';
+    var AMBER = '#F59E0B';
+    var BLUE = '#3B82F6';
+    var ROSE = '#F43F5E';
+    var EMERALD = '#10B981';
+
+    function makeGradient(ctx, color, h) {
+        var g = ctx.createLinearGradient(0, 0, 0, h);
+        g.addColorStop(0, color + '40');
+        g.addColorStop(1, color + '05');
+        return g;
+    }
+
+    function calcYMax(datasets) {
+        var mx = 0;
+        datasets.forEach(function(ds) {
+            ds.forEach(function(v) { if (v > mx) mx = v; });
+        });
+        return Math.min(100, Math.max(10, Math.ceil(mx * 2 / 5) * 5));
+    }
+
+    var commonOpts = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 800 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: 'rgba(15,23,42,0.9)',
+                titleFont: { size: 10, family: 'Inter' },
+                bodyFont: { size: 10, family: 'JetBrains Mono' },
+                padding: 8,
+                cornerRadius: 6,
+                callbacks: {
+                    label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(1) + '%'; }
+                }
+            }
+        },
+        scales: {
+            x: {
+                display: true,
+                ticks: { font: { size: 7, family: 'JetBrains Mono' }, color: '#64748B', maxRotation: 0, maxTicksLimit: 6 },
+                grid: { display: false }
+            },
+            y: {
+                display: true,
+                min: 0,
+                ticks: { font: { size: 7, family: 'JetBrains Mono' }, color: '#64748B', callback: function(v) { return v + '%'; }, maxTicksLimit: 4 },
+                grid: { color: 'rgba(100,116,139,0.1)' }
+            }
+        },
+        elements: {
+            point: { radius: 0, hoverRadius: 3 },
+            line: { tension: 0.3, borderWidth: 1.5 }
+        }
+    };
+
+    function makeDataset(label, data, color) {
+        return {
+            label: label,
+            data: data,
+            borderColor: color,
+            backgroundColor: function(ctx) {
+                var chart = ctx.chart;
+                var area = chart.chartArea;
+                if (!area) return color + '20';
+                return makeGradient(chart.ctx, color, area.bottom - area.top);
+            },
+            fill: true
+        };
+    }
+
+    /* ── Create charts ── */
+    var synYMax = calcYMax([synSubData, synSearchData, synToolData]);
+    var zaiYMax = calcYMax([zaiTokData, zaiTimeData, zaiToolData]);
+
+    var mainCanvas = document.getElementById('mock-chart-canvas');
+    var synCanvas = document.getElementById('mock-chart-syn');
+    var zaiCanvas = document.getElementById('mock-chart-zai');
+
+    var mainChart = null, synMiniChart = null, zaiMiniChart = null;
+
+    if (mainCanvas) {
+        var mainOpts = JSON.parse(JSON.stringify(commonOpts));
+        mainOpts.scales.y.max = synYMax;
+        mainChart = new Chart(mainCanvas, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    makeDataset('Subscription', synSubData, TEAL),
+                    makeDataset('Search', synSearchData, PURPLE),
+                    makeDataset('Tool Calls', synToolData, AMBER)
+                ]
+            },
+            options: mainOpts
+        });
+    }
+
+    if (synCanvas) {
+        var synOpts = JSON.parse(JSON.stringify(commonOpts));
+        synOpts.scales.y.max = synYMax;
+        synOpts.scales.x.ticks.maxTicksLimit = 4;
+        synOpts.scales.y.ticks.maxTicksLimit = 3;
+        synMiniChart = new Chart(synCanvas, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    makeDataset('Subscription', synSubData, TEAL),
+                    makeDataset('Search', synSearchData, PURPLE),
+                    makeDataset('Tool Calls', synToolData, AMBER)
+                ]
+            },
+            options: synOpts
+        });
+    }
+
+    if (zaiCanvas) {
+        var zaiOpts = JSON.parse(JSON.stringify(commonOpts));
+        zaiOpts.scales.y.max = zaiYMax;
+        zaiOpts.scales.x.ticks.maxTicksLimit = 4;
+        zaiOpts.scales.y.ticks.maxTicksLimit = 3;
+        zaiMiniChart = new Chart(zaiCanvas, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    makeDataset('Tokens', zaiTokData, BLUE),
+                    makeDataset('Time', zaiTimeData, ROSE),
+                    makeDataset('Tool Calls', zaiToolData, EMERALD)
+                ]
+            },
+            options: zaiOpts
+        });
+    }
+
+    /* ── Tab switching for charts ── */
+    var synLegend = '<span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + TEAL + '"></span>Subscription</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + PURPLE + '"></span>Search</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + AMBER + '"></span>Tool Calls</span>';
+    var zaiLegend = '<span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + BLUE + '"></span>Tokens</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + ROSE + '"></span>Time</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + EMERALD + '"></span>Tool Calls</span>';
+
+    window._switchChart = function(tab) {
+        var single = document.getElementById('chart-single');
+        var dual = document.getElementById('chart-dual');
+        var legend = document.getElementById('mock-legend');
+
+        if (tab === 'both') {
+            if (single) single.style.display = 'none';
+            if (dual) dual.style.display = '';
+            if (legend) legend.innerHTML = synLegend;
+            if (synMiniChart) synMiniChart.resize();
+            if (zaiMiniChart) zaiMiniChart.resize();
+        } else if (tab === 'zai') {
+            if (single) single.style.display = '';
+            if (dual) dual.style.display = 'none';
+            if (legend) legend.innerHTML = zaiLegend;
+            /* Swap main chart to Z.ai data */
+            if (mainChart) {
+                mainChart.data.datasets = [
+                    makeDataset('Tokens', zaiTokData, BLUE),
+                    makeDataset('Time', zaiTimeData, ROSE),
+                    makeDataset('Tool Calls', zaiToolData, EMERALD)
+                ];
+                mainChart.options.scales.y.max = zaiYMax;
+                mainChart.update();
+            }
+        } else {
+            if (single) single.style.display = '';
+            if (dual) dual.style.display = 'none';
+            if (legend) legend.innerHTML = synLegend;
+            /* Swap main chart to Synthetic data */
+            if (mainChart) {
+                mainChart.data.datasets = [
+                    makeDataset('Subscription', synSubData, TEAL),
+                    makeDataset('Search', synSearchData, PURPLE),
+                    makeDataset('Tool Calls', synToolData, AMBER)
+                ];
+                mainChart.options.scales.y.max = synYMax;
+                mainChart.update();
+            }
+        }
+    };
+})();
 </script>
 
 </body>
