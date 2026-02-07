@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	_ "embed"
 	"fmt"
 	"log/slog"
 	"net"
@@ -24,7 +25,16 @@ import (
 	"github.com/onllm-dev/syntrack/internal/web"
 )
 
+//go:embed VERSION
+var embeddedVersion string
+
 var version = "dev"
+
+func init() {
+	if version == "dev" {
+		version = strings.TrimSpace(embeddedVersion)
+	}
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -308,8 +318,10 @@ func run() error {
 	if hasCommand("status", "--status") {
 		return runStatus(testMode)
 	}
-	if hasCommand("--version", "-v") {
+	if hasCommand("--version", "-v", "version") {
 		fmt.Printf("SynTrack v%s\n", version)
+		fmt.Println("https://github.com/onllm-dev/syntrack")
+		fmt.Println("Powered by onllm.dev")
 		return nil
 	}
 	if hasCommand("--help", "-h") {
@@ -802,7 +814,7 @@ func printHelp() {
 	fmt.Println("  status, --status   Show status of the running instance")
 	fmt.Println()
 	fmt.Println("Options:")
-	fmt.Println("  --version          Print version and exit")
+	fmt.Println("  version, --version Print version and exit")
 	fmt.Println("  --help             Print this help message")
 	fmt.Println("  --interval SEC     Polling interval in seconds (default: 60)")
 	fmt.Println("  --port PORT        Dashboard HTTP port (default: 9211)")
