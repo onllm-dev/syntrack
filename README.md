@@ -13,7 +13,7 @@ onWatch fills the gap between "current usage snapshot" and the historical, per-c
 [![Platform](https://img.shields.io/badge/macOS%20%7C%20Linux%20%7C%20Windows-orange?style=for-the-badge&logo=apple&logoColor=white)](#quick-start)
 [![Website](https://img.shields.io/badge/onwatch.onllm.dev-7C3AED?style=for-the-badge&logo=globe&logoColor=white)](https://onwatch.onllm.dev)
 
-![Dashboard Dark Mode](./screenshots/dashboard-dark.png)
+![Anthropic Dashboard — Light Mode](./screenshots/anthropic-light.png)
 
 > Powered by [onllm.dev](https://onllm.dev) | [Landing Page](https://onwatch.onllm.dev)
 
