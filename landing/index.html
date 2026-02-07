@@ -546,9 +546,19 @@ a:hover { text-decoration: underline; }
 }
 .btn-secondary svg { width: 18px; height: 18px; }
 
+.install-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-top: 20px;
+  margin-bottom: 6px;
+}
+
 .hero-install {
   max-width: 600px;
-  margin: 20px auto 16px;
+  margin: 0 auto 16px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -882,6 +892,24 @@ a:hover { text-decoration: underline; }
 .provider-desc {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.provider-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--accent-peach);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.provider-item.coming-soon {
+  opacity: 0.7;
 }
 
 /* ═══════════════════════════════════════════
@@ -1874,7 +1902,7 @@ a:hover { text-decoration: underline; }
                     Powered by onllm.dev
                 </a>
             </div>
-            <h1>Know your <span class="accent">AI API</span> usage before it knows you</h1>
+            <h1>Never get throttled <span class="accent">mid-task</span> again</h1>
             <p class="hero-desc">Open-source background agent that tracks your Synthetic and Z.ai API quota usage across every reset cycle. Historical trends, rate projections, per-session tracking, and a Material Design 3 dashboard. Single binary, ~25&nbsp;MB RAM, zero telemetry. Works with Cline, Roo Code, Kilo Code, Claude Code, and any tool using Synthetic or Z.ai API keys.</p>
             <div class="hero-actions">
                 <a href="#install" class="btn-primary">
@@ -1886,6 +1914,7 @@ a:hover { text-decoration: underline; }
                     View on GitHub
                 </a>
             </div>
+            <div class="install-label">One-command install</div>
             <div class="hero-install" onclick="copyHeroCmd(this)" title="Click to copy" role="button" tabindex="0" aria-label="Copy install command">
                 <code><span class="install-prefix">$</span> curl -fsSL https://raw.githubusercontent.com/onllm-dev/syntrack/main/install.sh | bash</code>
                 <span class="copy-hint">Copy</span>
@@ -2078,26 +2107,51 @@ a:hover { text-decoration: underline; }
         <p class="providers-label">Supported Providers</p>
         <div class="providers-grid fade-in">
             <div class="provider-item">
-                <div class="provider-icon" style="background: #6366F1;">S</div>
+                <div class="provider-icon" style="background: #6366F1;">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                        <path d="M16.5 6C16.5 6 15 4 12 4S7.5 6 7.5 6C6 8 6 10 7 12c1 2 2.5 3 5 6 2.5-3 4-4 5-6 1-2 1-4-.5-6z" fill="#fff" opacity="0.9"/>
+                        <text x="12" y="15" text-anchor="middle" fill="#6366F1" font-size="10" font-weight="800" font-family="Inter,sans-serif">S</text>
+                    </svg>
+                </div>
                 <div>
                     <div class="provider-name">Synthetic</div>
                     <div class="provider-desc">synthetic.new</div>
                 </div>
             </div>
             <div class="provider-item">
-                <div class="provider-icon" style="background: #0EA5E9;">Z</div>
+                <div class="provider-icon" style="background: #0EA5E9;">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                        <path d="M6 7h12L6 17h12" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
                 <div>
                     <div class="provider-name">Z.ai</div>
                     <div class="provider-desc">z.ai</div>
                 </div>
             </div>
             <div class="provider-item">
-                <div class="provider-icon" style="background: var(--accent-teal);">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" width="18" height="18"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+                <div class="provider-icon" style="background: linear-gradient(135deg, #6366F1, #0EA5E9);">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                        <rect x="3" y="4" width="7.5" height="16" rx="2" fill="#fff" opacity="0.9"/>
+                        <rect x="13.5" y="4" width="7.5" height="16" rx="2" fill="#fff" opacity="0.6"/>
+                    </svg>
                 </div>
                 <div>
                     <div class="provider-name">Both View</div>
                     <div class="provider-desc">Side-by-side comparison</div>
+                </div>
+            </div>
+            <div class="provider-item coming-soon">
+                <div class="provider-icon" style="background: #D97757;">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                        <path d="M12 4L4 20h16L12 4z" fill="#fff" opacity="0.15"/>
+                        <path d="M12 6l-6.5 13h13L12 6z" stroke="#fff" stroke-width="1.5" stroke-linejoin="round" fill="none"/>
+                        <circle cx="12" cy="15" r="1.5" fill="#fff"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="provider-name">Anthropic <span class="provider-badge">Coming Soon</span></div>
+                    <div class="provider-desc">anthropic.com</div>
                 </div>
             </div>
         </div>
