@@ -1414,10 +1414,9 @@ func (h *Handler) buildSyntheticInsights(hidden map[string]bool) insightsRespons
 	sessions, _ := h.store.QuerySessionHistory()
 	latest, _ := h.store.QueryLatest()
 
-	var subLimit, toolLimit float64
+	var subLimit float64
 	if latest != nil {
 		subLimit = latest.Sub.Limit
-		toolLimit = latest.ToolCall.Limit
 	}
 
 	// Aggregate totals using billing-period grouping (not raw mini-cycle deltas).
@@ -1426,7 +1425,6 @@ func (h *Handler) buildSyntheticInsights(hidden map[string]bool) insightsRespons
 	sub7 := cycleSumConsumptionSince(subCycles, d7)
 	search30 := cycleSumConsumption(searchCycles)
 	tool30 := cycleSumConsumption(toolCycles)
-	tool7 := cycleSumConsumptionSince(toolCycles, d7)
 	total30 := sub30 + search30 + tool30
 
 	subAvg := billingPeriodAvg(subCycles)
@@ -1464,9 +1462,8 @@ func (h *Handler) buildSyntheticInsights(hidden map[string]bool) insightsRespons
 		avgSessionConsumption = totalCons / float64(recentN)
 	}
 
-	// ═══ Stats Cards ═══
-	resp.Stats = append(resp.Stats, insightStat{Value: compactNum(sub30), Label: "Sub Requests (30d)"})
-	resp.Stats = append(resp.Stats, insightStat{Value: compactNum(sub7), Label: "Sub Requests (7d)"})
+	// ═══ Stats Cards (quick KPI numbers — no duplicates with insights below) ═══
+	resp.Stats = append(resp.Stats, insightStat{Value: compactNum(sub30), Label: "Requests (30d)"})
 	resp.Stats = append(resp.Stats, insightStat{Value: compactNum(total30), Label: "Total API Calls (30d)"})
 	resp.Stats = append(resp.Stats, insightStat{Value: compactNum(tool30), Label: "Tool Calls (30d)"})
 	resp.Stats = append(resp.Stats, insightStat{Value: fmt.Sprintf("%d", len(sessions)), Label: "Sessions Tracked"})
@@ -1507,20 +1504,9 @@ func (h *Handler) buildSyntheticInsights(hidden map[string]bool) insightsRespons
 		})
 	}
 
-	// 2. 30-Day Usage
 	subBillingCount := billingPeriodCount(subCycles)
-	if !hidden["usage_30d"] && subBillingCount > 0 {
-		resp.Insights = append(resp.Insights, insightItem{
-			Key:  "usage_30d",
-			Type: "factual", Severity: "info",
-			Title:    "30-Day Usage",
-			Metric:   compactNum(sub30),
-			Sublabel: fmt.Sprintf("%d billing period(s)", subBillingCount),
-			Desc:     fmt.Sprintf("%.0f subscription requests across %d billing period(s). Average: %.0f/period, peak: %.0f/period.", sub30, subBillingCount, subAvg, subPeak),
-		})
-	}
 
-	// 3. Weekly Pace
+	// 2. Weekly Pace
 	if !hidden["weekly_pace"] && sub7 > 0 {
 		proj := sub7 * (30.0 / 7.0)
 		weeklyPct := float64(0)
@@ -1582,25 +1568,7 @@ func (h *Handler) buildSyntheticInsights(hidden map[string]bool) insightsRespons
 		resp.Insights = append(resp.Insights, item)
 	}
 
-	// 5. Tool Call Share (as %)
-	if !hidden["tool_share"] && total30 > 0 && tool30 > 0 {
-		toolPct := (tool30 / total30) * 100
-		toolAvg := billingPeriodAvg(toolCycles)
-		toolUtil := float64(0)
-		if toolLimit > 0 {
-			toolUtil = (toolAvg / toolLimit) * 100
-		}
-		resp.Insights = append(resp.Insights, insightItem{
-			Key:  "tool_share",
-			Type: "factual", Severity: "info",
-			Title:    "Tool Call Share",
-			Metric:   fmt.Sprintf("%.0f%%", toolPct),
-			Sublabel: "of total usage",
-			Desc:     fmt.Sprintf("Tool calls are %.0f%% of total consumption. Avg %.0f/cycle (%.0f%% of %.0f limit). 7-day: %s.", toolPct, toolAvg, toolUtil, toolLimit, compactNum(tool7)),
-		})
-	}
-
-	// 6. Session Avg
+	// 5. Session Avg
 	if !hidden["session_avg"] && recentN > 0 {
 		avgH := avgSessionDurMin / 60
 		resp.Insights = append(resp.Insights, insightItem{
@@ -1618,7 +1586,7 @@ func (h *Handler) buildSyntheticInsights(hidden map[string]bool) insightsRespons
 		})
 	}
 
-	// 7. Consumption Trend (needs at least 4 billing periods to be meaningful)
+	// 6. Consumption Trend (needs at least 4 billing periods to be meaningful)
 	if !hidden["trend"] && subBillingCount >= 4 {
 		mid := len(subCycles) / 2
 		recentAvg := billingPeriodAvg(subCycles[:mid])
@@ -1649,22 +1617,6 @@ func (h *Handler) buildSyntheticInsights(hidden map[string]bool) insightsRespons
 				Desc:     desc,
 			})
 		}
-	}
-
-	// 8. Tracking Coverage
-	if !hidden["coverage"] && trackingDays > 0 {
-		var totalSnaps int
-		for _, s := range sessions {
-			totalSnaps += s.SnapshotCount
-		}
-		resp.Insights = append(resp.Insights, insightItem{
-			Key:      "coverage",
-			Type:     "factual", Severity: "positive",
-			Title:    "Coverage",
-			Metric:   fmt.Sprintf("%dd", trackingDays),
-			Sublabel: fmt.Sprintf("%d sessions", len(sessions)),
-			Desc:     fmt.Sprintf("Monitoring for %d days — %d sessions, %d snapshots captured.", trackingDays, len(sessions), totalSnaps),
-		})
 	}
 
 	// If no insights at all, add a getting-started message
@@ -1713,7 +1665,6 @@ func (h *Handler) buildZaiInsights(hidden map[string]bool) insightsResponse {
 	// Z.ai API: "usage" = budget, "currentValue" = actual consumption
 	tokensBudget := latest.TokensUsage
 	tokensUsed := latest.TokensCurrentValue
-	tokensPercent := float64(latest.TokensPercentage)
 	tokensRemaining := latest.TokensRemaining
 
 	timeBudget := latest.TimeUsage
@@ -1750,7 +1701,7 @@ func (h *Handler) buildZaiInsights(hidden map[string]bool) insightsResponse {
 		avgTokensPerCall = tokensUsed / totalToolCalls
 	}
 
-	// ═══ Stats Cards ═══
+	// ═══ Stats Cards (quick KPI numbers — no duplicates with insights below) ═══
 	resp.Stats = append(resp.Stats, insightStat{
 		Value: fmt.Sprintf("%d%%", latest.TokensPercentage),
 		Label: "Tokens Used",
@@ -1760,62 +1711,17 @@ func (h *Handler) buildZaiInsights(hidden map[string]bool) insightsResponse {
 		Label: "Tokens Left",
 	})
 	resp.Stats = append(resp.Stats, insightStat{
-		Value: compactNum(dailyTokenBudget),
-		Label: "Daily Token Limit",
-	})
-	resp.Stats = append(resp.Stats, insightStat{
-		Value: compactNum(monthlyTokenCapacity),
-		Label: "Monthly Capacity",
-	})
-	resp.Stats = append(resp.Stats, insightStat{
 		Value: fmt.Sprintf("%.0f", totalToolCalls),
 		Label: "Tool Calls",
 	})
-	if totalToolCalls > 0 {
-		resp.Stats = append(resp.Stats, insightStat{
-			Value: compactNum(avgTokensPerCall),
-			Label: "Avg Tokens/Call",
-		})
-	}
 	resp.Stats = append(resp.Stats, insightStat{
 		Value: fmt.Sprintf("%.0f / %.0f", timeUsed, timeBudget),
 		Label: "Time Budget",
 	})
-	if len(snapshots24h) > 0 {
-		resp.Stats = append(resp.Stats, insightStat{
-			Value: fmt.Sprintf("%d", len(snapshots24h)),
-			Label: "Snapshots (24h)",
-		})
-	}
 
 	// ═══ Deep Insights ═══
 
-	// 1. Token Budget Status
-	if !hidden["token_budget"] {
-		tokensSev := severityFromPercent(tokensPercent)
-		tokenDesc := fmt.Sprintf("%s tokens consumed of %s budget (%d%%).", compactNum(tokensUsed), compactNum(tokensBudget), latest.TokensPercentage)
-		if latest.TokensNextResetTime != nil {
-			untilReset := time.Until(*latest.TokensNextResetTime)
-			if untilReset > 0 {
-				tokenDesc += fmt.Sprintf(" Resets in %s.", formatDuration(untilReset))
-			}
-		}
-		if tokensPercent >= 100 {
-			tokenDesc += " Budget exhausted — requests may be throttled."
-		} else if tokensRemaining > 0 {
-			tokenDesc += fmt.Sprintf(" %s tokens remaining.", compactNum(tokensRemaining))
-		}
-		resp.Insights = append(resp.Insights, insightItem{
-			Key:  "token_budget",
-			Type: "factual", Severity: tokensSev,
-			Title:    "Token Budget",
-			Metric:   fmt.Sprintf("%d%%", latest.TokensPercentage),
-			Sublabel: fmt.Sprintf("%s of %s", compactNum(tokensUsed), compactNum(tokensBudget)),
-			Desc:     tokenDesc,
-		})
-	}
-
-	// 2. Token Consumption Rate (computed from historical snapshots)
+	// 1. Token Consumption Rate (computed from historical snapshots)
 	if !hidden["token_rate"] && len(snapshots24h) >= 2 {
 		oldest := snapshots24h[0]
 		newest := snapshots24h[len(snapshots24h)-1]
@@ -1864,46 +1770,8 @@ func (h *Handler) buildZaiInsights(hidden map[string]bool) insightsResponse {
 		}
 	}
 
-	// 4. Tool Call Breakdown (per-model details)
-	if !hidden["tool_breakdown"] && latest.TimeUsageDetails != "" {
-		var details []api.ZaiUsageDetail
-		if err := json.Unmarshal([]byte(latest.TimeUsageDetails), &details); err == nil && len(details) > 0 {
-			// Build breakdown description
-			parts := make([]string, 0, len(details))
-			var maxTool string
-			var maxUsage, totalDetailUsage float64
-			for _, d := range details {
-				parts = append(parts, fmt.Sprintf("%s: %.0f", d.ModelCode, d.Usage))
-				totalDetailUsage += d.Usage
-				if d.Usage > maxUsage {
-					maxUsage = d.Usage
-					maxTool = d.ModelCode
-				}
-			}
-			breakdownStr := strings.Join(parts, ", ")
-
-			desc := fmt.Sprintf("%.0f total tool calls across %d tools. Breakdown: %s.", totalDetailUsage, len(details), breakdownStr)
-			if maxTool != "" && len(details) > 1 && totalDetailUsage > 0 {
-				pct := (maxUsage / totalDetailUsage) * 100
-				desc += fmt.Sprintf(" %s accounts for %.0f%% of tracked calls.", maxTool, pct)
-			}
-			desc += fmt.Sprintf(" Time budget: %.0f/%.0f used.", timeUsed, timeBudget)
-
-			toolCallPct := 0.0
-			if timeBudget > 0 {
-				toolCallPct = (totalDetailUsage / timeBudget) * 100
-			}
-
-			resp.Insights = append(resp.Insights, insightItem{
-				Key:  "tool_breakdown",
-				Type: "factual", Severity: severityFromPercent(toolCallPct),
-				Title:    "Tool Breakdown",
-				Metric:   fmt.Sprintf("%.0f", totalDetailUsage),
-				Sublabel: fmt.Sprintf("calls (%d tools)", len(details)),
-				Desc:     desc,
-			})
-		}
-	} else if !hidden["time_budget"] {
+	// 4. Time Budget (only when no per-tool details — Top Tool insight covers breakdown)
+	if !hidden["time_budget"] && latest.TimeUsageDetails == "" {
 		// No per-tool details — show basic time budget insight
 		timeSev := severityFromPercent(timePercent)
 		resp.Insights = append(resp.Insights, insightItem{
@@ -2066,25 +1934,6 @@ func (h *Handler) buildZaiInsights(hidden map[string]bool) insightsResponse {
 				})
 			}
 		}
-	}
-
-	// 10. Tracking Coverage
-	if !hidden["coverage"] && len(snapshots7d) > 0 {
-		oldest := snapshots7d[0]
-		trackingHours := now.Sub(oldest.CapturedAt).Hours()
-		trackingDays := trackingHours / 24
-		label := fmt.Sprintf("%.0fh", trackingHours)
-		if trackingDays >= 1 {
-			label = fmt.Sprintf("%.1fd", trackingDays)
-		}
-		resp.Insights = append(resp.Insights, insightItem{
-			Key:      "coverage",
-			Type:     "factual", Severity: "positive",
-			Title:    "Coverage",
-			Metric:   label,
-			Sublabel: fmt.Sprintf("%d snapshots", len(snapshots7d)),
-			Desc:     fmt.Sprintf("Monitoring Z.ai for %s — %d snapshots captured.", label, len(snapshots7d)),
-		})
 	}
 
 	return resp
