@@ -809,8 +809,8 @@ func TestHandler_Providers_WithBothProviders(t *testing.T) {
 	if !ok {
 		t.Fatal("expected providers array")
 	}
-	if len(providers) != 2 {
-		t.Errorf("expected 2 providers, got %d", len(providers))
+	if len(providers) != 3 {
+		t.Errorf("expected 3 providers (synthetic, zai, both), got %d", len(providers))
 	}
 }
 

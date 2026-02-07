@@ -313,12 +313,18 @@ func run() error {
 		ag = agent.New(syntheticClient, db, tr, cfg.PollInterval, logger)
 	}
 
-	var zaiAg *agent.ZaiAgent
-	if zaiClient != nil {
-		zaiAg = agent.NewZaiAgent(zaiClient, db, cfg.PollInterval, logger)
+	// Create Z.ai tracker
+	var zaiTr *tracker.ZaiTracker
+	if cfg.HasProvider("zai") {
+		zaiTr = tracker.NewZaiTracker(db, logger)
 	}
 
-	handler := web.NewHandler(db, tr, logger, nil, cfg)
+	var zaiAg *agent.ZaiAgent
+	if zaiClient != nil {
+		zaiAg = agent.NewZaiAgent(zaiClient, db, zaiTr, cfg.PollInterval, logger)
+	}
+
+	handler := web.NewHandler(db, tr, logger, nil, cfg, zaiTr)
 	server := web.NewServer(cfg.Port, handler, logger, cfg.AdminUser, cfg.AdminPass)
 
 	// Setup signal handling

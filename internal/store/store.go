@@ -302,17 +302,21 @@ func (s *Store) QueryLatest() (*api.Snapshot, error) {
 	return &snapshot, nil
 }
 
-// QueryRange returns snapshots within a time range
-func (s *Store) QueryRange(start, end time.Time) ([]*api.Snapshot, error) {
-	rows, err := s.db.Query(
-		`SELECT id, captured_at, sub_limit, sub_requests, sub_renews_at,
+// QueryRange returns snapshots within a time range with optional limit.
+// Pass limit=0 for no limit.
+func (s *Store) QueryRange(start, end time.Time, limit ...int) ([]*api.Snapshot, error) {
+	query := `SELECT id, captured_at, sub_limit, sub_requests, sub_renews_at,
 		 search_limit, search_requests, search_renews_at,
 		 tool_limit, tool_requests, tool_renews_at
-		FROM quota_snapshots 
+		FROM quota_snapshots
 		WHERE captured_at BETWEEN ? AND ?
-		ORDER BY captured_at ASC`,
-		start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano),
-	)
+		ORDER BY captured_at ASC`
+	args := []interface{}{start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano)}
+	if len(limit) > 0 && limit[0] > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit[0])
+	}
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query range: %w", err)
 	}
@@ -446,7 +450,7 @@ func (s *Store) QueryActiveSession() (*Session, error) {
 }
 
 // QuerySessionHistory returns sessions ordered by start time, optionally filtered by provider.
-// If provider is empty, all sessions are returned.
+// If provider is empty, all sessions are returned. Second variadic param is limit.
 func (s *Store) QuerySessionHistory(provider ...string) ([]*Session, error) {
 	query := `SELECT id, started_at, ended_at, poll_interval,
 		 max_sub_requests, max_search_requests, max_tool_requests, snapshot_count
@@ -560,13 +564,16 @@ func (s *Store) QueryActiveCycle(quotaType string) (*ResetCycle, error) {
 	return &cycle, nil
 }
 
-// QueryCycleHistory returns completed cycles for a quota type
-func (s *Store) QueryCycleHistory(quotaType string) ([]*ResetCycle, error) {
-	rows, err := s.db.Query(
-		`SELECT id, quota_type, cycle_start, cycle_end, renews_at, peak_requests, total_delta
-		FROM reset_cycles WHERE quota_type = ? AND cycle_end IS NOT NULL ORDER BY cycle_start DESC`,
-		quotaType,
-	)
+// QueryCycleHistory returns completed cycles for a quota type with optional limit.
+func (s *Store) QueryCycleHistory(quotaType string, limit ...int) ([]*ResetCycle, error) {
+	query := `SELECT id, quota_type, cycle_start, cycle_end, renews_at, peak_requests, total_delta
+		FROM reset_cycles WHERE quota_type = ? AND cycle_end IS NOT NULL ORDER BY cycle_start DESC`
+	args := []interface{}{quotaType}
+	if len(limit) > 0 && limit[0] > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit[0])
+	}
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query cycles: %w", err)
 	}

@@ -10,25 +10,28 @@ import (
 	"github.com/google/uuid"
 	"github.com/onllm-dev/syntrack/internal/api"
 	"github.com/onllm-dev/syntrack/internal/store"
+	"github.com/onllm-dev/syntrack/internal/tracker"
 )
 
 // ZaiAgent manages the background polling loop for Z.ai quota tracking.
 type ZaiAgent struct {
 	client    *api.ZaiClient
 	store     *store.Store
+	tracker   *tracker.ZaiTracker
 	interval  time.Duration
 	logger    *slog.Logger
 	sessionID string
 }
 
 // NewZaiAgent creates a new ZaiAgent with the given dependencies.
-func NewZaiAgent(client *api.ZaiClient, store *store.Store, interval time.Duration, logger *slog.Logger) *ZaiAgent {
+func NewZaiAgent(client *api.ZaiClient, store *store.Store, tr *tracker.ZaiTracker, interval time.Duration, logger *slog.Logger) *ZaiAgent {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &ZaiAgent{
 		client:   client,
 		store:    store,
+		tracker:  tr,
 		interval: interval,
 		logger:   logger,
 	}
@@ -100,6 +103,23 @@ func (a *ZaiAgent) poll(ctx context.Context) {
 	// Increment snapshot count for successful storage
 	if err := a.store.IncrementSnapshotCount(a.sessionID); err != nil {
 		a.logger.Error("Failed to increment Z.ai snapshot count", "error", err)
+	}
+
+	// Process with tracker (log error but don't stop)
+	if a.tracker != nil {
+		if err := a.tracker.Process(snapshot); err != nil {
+			a.logger.Error("Z.ai tracker processing failed", "error", err)
+		}
+	}
+
+	// Update session max values (tokens = sub, time = search, tool calls = tool)
+	if err := a.store.UpdateSessionMaxRequests(
+		a.sessionID,
+		snapshot.TokensCurrentValue,
+		snapshot.TimeCurrentValue,
+		0, // tool calls derived from time usage details
+	); err != nil {
+		a.logger.Error("Failed to update Z.ai session max", "error", err)
 	}
 
 	// Log poll completion

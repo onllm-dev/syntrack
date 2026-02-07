@@ -15,6 +15,8 @@ async function authFetch(url) {
 
 // ── Provider State ──
 function getCurrentProvider() {
+  const bothView = document.getElementById('both-view');
+  if (bothView) return 'both';
   const grid = document.getElementById('quota-grid');
   return (grid && grid.dataset.provider) || 'synthetic';
 }
@@ -26,6 +28,8 @@ function providerParam() {
 // ── Global State ──
 const State = {
   chart: null,
+  chartSyn: null,
+  chartZai: null,
   modalChart: null,
   countdownInterval: null,
   refreshInterval: null,
@@ -88,6 +92,7 @@ function toggleQuotaVisibility(quotaType) {
 }
 
 function updateChartVisibility() {
+  if (getCurrentProvider() === 'both') return; // Both mode uses separate charts
   if (!State.chart) return;
   
   const provider = getCurrentProvider();
@@ -393,16 +398,18 @@ function initTheme() {
 
 // ── Card Updates ──
 
-function updateCard(quotaType, data) {
-  const prev = State.currentQuotas[quotaType];
-  State.currentQuotas[quotaType] = data;
+function updateCard(quotaType, data, suffix) {
+  const key = suffix ? `${quotaType}_${suffix}` : quotaType;
+  const prev = State.currentQuotas[key];
+  State.currentQuotas[key] = data;
 
-  const progressEl = document.getElementById(`progress-${quotaType}`);
-  const fractionEl = document.getElementById(`fraction-${quotaType}`);
-  const percentEl = document.getElementById(`percent-${quotaType}`);
-  const statusEl = document.getElementById(`status-${quotaType}`);
-  const resetEl = document.getElementById(`reset-${quotaType}`);
-  const countdownEl = document.getElementById(`countdown-${quotaType}`);
+  const idSuffix = suffix ? `${quotaType}-${suffix}` : quotaType;
+  const progressEl = document.getElementById(`progress-${idSuffix}`);
+  const fractionEl = document.getElementById(`fraction-${idSuffix}`);
+  const percentEl = document.getElementById(`percent-${idSuffix}`);
+  const statusEl = document.getElementById(`status-${idSuffix}`);
+  const resetEl = document.getElementById(`reset-${idSuffix}`);
+  const countdownEl = document.getElementById(`countdown-${idSuffix}`);
 
   if (progressEl) {
     progressEl.style.width = `${data.percent}%`;
@@ -456,7 +463,7 @@ function updateCard(quotaType, data) {
   }
 
   // Render per-tool breakdown for Z.ai Time Limit card
-  const detailsEl = document.getElementById(`usage-details-${quotaType}`);
+  const detailsEl = document.getElementById(`usage-details-${idSuffix}`);
   if (detailsEl && data.usageDetails && data.usageDetails.length > 0) {
     detailsEl.innerHTML = data.usageDetails.map(d =>
       `<div class="usage-detail-row">
@@ -509,7 +516,19 @@ async function fetchCurrent() {
 
     requestAnimationFrame(() => {
       const provider = getCurrentProvider();
-      if (provider === 'zai') {
+      if (provider === 'both') {
+        // "both" response: { synthetic: {...}, zai: {...} }
+        if (data.synthetic) {
+          updateCard('subscription', data.synthetic.subscription);
+          updateCard('search', data.synthetic.search);
+          updateCard('toolCalls', data.synthetic.toolCalls, 'syn');
+        }
+        if (data.zai) {
+          updateCard('tokensLimit', data.zai.tokensLimit);
+          updateCard('timeLimit', data.zai.timeLimit);
+          updateCard('toolCalls', data.zai.toolCalls, 'zai');
+        }
+      } else if (provider === 'zai') {
         updateCard('tokensLimit', data.tokensLimit);
         updateCard('timeLimit', data.timeLimit);
         updateCard('toolCalls', data.toolCalls);
@@ -591,19 +610,35 @@ async function fetchDeepInsights() {
     if (!res.ok) throw new Error('Failed to fetch insights');
     const data = await res.json();
 
+    const provider = getCurrentProvider();
+    let allStats = [];
+    let allInsights = [];
+
+    if (provider === 'both') {
+      // "both" response: { synthetic: {stats, insights}, zai: {stats, insights} }
+      if (data.synthetic) {
+        if (data.synthetic.stats) allStats = allStats.concat(data.synthetic.stats.map(s => ({ ...s, label: `${s.label} (Syn)` })));
+        if (data.synthetic.insights) allInsights = allInsights.concat(data.synthetic.insights.map(i => ({ ...i, title: `${i.title} (Syn)` })));
+      }
+      if (data.zai) {
+        if (data.zai.stats) allStats = allStats.concat(data.zai.stats.map(s => ({ ...s, label: `${s.label} (Z.ai)` })));
+        if (data.zai.insights) allInsights = allInsights.concat(data.zai.insights.map(i => ({ ...i, title: `${i.title} (Z.ai)` })));
+      }
+    } else {
+      if (data.stats) allStats = data.stats;
+      allInsights = data.insights || [];
+    }
+    allInsights = allInsights.concat(computeClientInsights());
+
     // Render stat summary cards
-    if (statsEl && data.stats && data.stats.length > 0) {
-      statsEl.innerHTML = data.stats.map(s =>
+    if (statsEl && allStats.length > 0) {
+      statsEl.innerHTML = allStats.map(s =>
         `<div class="insight-stat">
           <div class="insight-stat-value">${s.value}</div>
           <div class="insight-stat-label">${s.label}</div>
         </div>`
       ).join('');
     }
-
-    // Combine server insights + client-side live insights
-    let allInsights = data.insights || [];
-    allInsights = allInsights.concat(computeClientInsights());
 
     if (allInsights.length > 0) {
       cardsEl.innerHTML = allInsights.map((i, idx) => {
@@ -626,7 +661,6 @@ async function fetchDeepInsights() {
       cardsEl.querySelectorAll('.insight-card').forEach(card => {
         const toggle = () => {
           const wasExpanded = card.classList.contains('expanded');
-          // Collapse all others
           cardsEl.querySelectorAll('.insight-card.expanded').forEach(c => c.classList.remove('expanded'));
           if (!wasExpanded) card.classList.add('expanded');
         };
@@ -647,6 +681,8 @@ async function fetchDeepInsights() {
 function computeClientInsights() {
   const insights = [];
   const provider = getCurrentProvider();
+
+  if (provider === 'both') return insights; // Server handles both-mode insights
 
   // Live remaining quota — show percentage remaining + time
   const quotaTypes = provider === 'zai'
@@ -755,6 +791,7 @@ function computeYMax(datasets, chart) {
 }
 
 function initChart() {
+  if (getCurrentProvider() === 'both') return; // Both mode uses dual charts
   const ctx = document.getElementById('usage-chart');
   if (!ctx || typeof Chart === 'undefined') return;
 
@@ -825,6 +862,11 @@ function initChart() {
 }
 
 function updateChartTheme() {
+  if (getCurrentProvider() === 'both') {
+    // Re-fetch to rebuild both charts with new theme colors
+    fetchHistory();
+    return;
+  }
   if (!State.chart) return;
   const colors = getThemeColors();
   const style = getComputedStyle(document.documentElement);
@@ -862,18 +904,22 @@ async function fetchHistory(range) {
     if (!res.ok) throw new Error('Failed to fetch history');
     const data = await res.json();
 
+    const provider = getCurrentProvider();
+
+    if (provider === 'both') {
+      // "both" response: { synthetic: [...], zai: [...] }
+      updateBothCharts(data);
+      return;
+    }
+
     if (!State.chart) initChart();
     if (!State.chart) return;
 
-    const provider = getCurrentProvider();
     State.chart.data.labels = data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
 
     if (provider === 'zai') {
-      // Z.ai has 2 datasets: tokens and time
-      // Ensure chart has correct datasets for Z.ai
       while (State.chart.data.datasets.length > 2) State.chart.data.datasets.pop();
       if (State.chart.data.datasets.length < 2) {
-        // Reinitialize for Z.ai
         State.chart.data.datasets = [
           { label: 'Tokens', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-subscription').trim() || '#0D9488', backgroundColor: 'rgba(13, 148, 136, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, hidden: State.hiddenQuotas.has('tokensLimit') },
           { label: 'Time', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-search').trim() || '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, hidden: State.hiddenQuotas.has('timeLimit') },
@@ -886,7 +932,6 @@ async function fetchHistory(range) {
       State.chart.data.datasets[1].data = data.map(d => d.timePercent);
       State.chart.data.datasets[1].hidden = State.hiddenQuotas.has('timeLimit');
     } else {
-      // Synthetic has 3 datasets
       while (State.chart.data.datasets.length < 3) {
         State.chart.data.datasets.push({ label: '', data: [], borderColor: '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 });
       }
@@ -902,27 +947,120 @@ async function fetchHistory(range) {
       State.chart.data.datasets[2].hidden = State.hiddenQuotas.has('toolCalls');
     }
 
-    // Dynamic Y-axis
     State.chartYMax = computeYMax(State.chart.data.datasets, State.chart);
     State.chart.options.scales.y.max = State.chartYMax;
-
     State.chart.update();
   } catch (err) {
     console.error('History fetch error:', err);
   }
 }
 
+// ── "Both" Mode: Dual Charts ──
+
+function updateBothCharts(data) {
+  const container = document.querySelector('.chart-container');
+  if (!container) return;
+
+  // Create dual chart layout if not exists
+  if (!container.classList.contains('both-charts')) {
+    container.classList.add('both-charts');
+    container.innerHTML = `
+      <div class="chart-half"><h4 class="chart-half-label">Synthetic</h4><canvas id="usage-chart-syn"></canvas></div>
+      <div class="chart-half"><h4 class="chart-half-label">Z.ai</h4><canvas id="usage-chart-zai"></canvas></div>
+    `;
+    // Hide the original single chart canvas
+    const origCanvas = document.getElementById('usage-chart');
+    if (origCanvas) origCanvas.style.display = 'none';
+  }
+
+  const style = getComputedStyle(document.documentElement);
+  const colors = getThemeColors();
+
+  // Synthetic chart
+  const synCanvas = document.getElementById('usage-chart-syn');
+  if (synCanvas && data.synthetic) {
+    if (State.chartSyn) State.chartSyn.destroy();
+    const synData = data.synthetic;
+    State.chartSyn = new Chart(synCanvas, {
+      type: 'line',
+      data: {
+        labels: synData.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        datasets: [
+          { label: 'Subscription', data: synData.map(d => d.subscriptionPercent), borderColor: style.getPropertyValue('--chart-subscription').trim() || '#0D9488', backgroundColor: 'rgba(13,148,136,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
+          { label: 'Search', data: synData.map(d => d.searchPercent), borderColor: style.getPropertyValue('--chart-search').trim() || '#F59E0B', backgroundColor: 'rgba(245,158,11,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
+          { label: 'Tool Calls', data: synData.map(d => d.toolCallsPercent), borderColor: style.getPropertyValue('--chart-toolcalls').trim() || '#3B82F6', backgroundColor: 'rgba(59,130,246,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 }
+        ]
+      },
+      options: buildChartOptions(colors)
+    });
+  }
+
+  // Z.ai chart
+  const zaiCanvas = document.getElementById('usage-chart-zai');
+  if (zaiCanvas && data.zai) {
+    if (State.chartZai) State.chartZai.destroy();
+    const zaiData = data.zai;
+    State.chartZai = new Chart(zaiCanvas, {
+      type: 'line',
+      data: {
+        labels: zaiData.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        datasets: [
+          { label: 'Tokens', data: zaiData.map(d => d.tokensPercent), borderColor: style.getPropertyValue('--chart-subscription').trim() || '#0D9488', backgroundColor: 'rgba(13,148,136,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
+          { label: 'Time', data: zaiData.map(d => d.timePercent), borderColor: style.getPropertyValue('--chart-search').trim() || '#F59E0B', backgroundColor: 'rgba(245,158,11,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 }
+        ]
+      },
+      options: buildChartOptions(colors)
+    });
+  }
+}
+
+function buildChartOptions(colors) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { labels: { color: colors.text, usePointStyle: true, boxWidth: 8 } },
+      tooltip: {
+        mode: 'index', intersect: false,
+        backgroundColor: colors.surfaceContainer || '#1E1E1E',
+        titleColor: colors.onSurface || '#E6E1E5',
+        bodyColor: colors.text || '#CAC4D0',
+        borderColor: colors.outline || '#938F99',
+        borderWidth: 1, padding: 12, displayColors: true, usePointStyle: true,
+        callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%` }
+      }
+    },
+    scales: {
+      x: { grid: { color: colors.grid, drawBorder: false }, ticks: { color: colors.text, maxTicksLimit: 4 } },
+      y: { grid: { color: colors.grid, drawBorder: false }, ticks: { color: colors.text, callback: v => v + '%' }, min: 0, max: 100 }
+    }
+  };
+}
+
 // ── Cycles Table (client-side search/sort/paginate) ──
 
 async function fetchCycles(quotaType) {
+  const provider = getCurrentProvider();
   if (quotaType === undefined) {
     const select = document.getElementById('cycle-quota-select');
-    quotaType = select ? select.value : (getCurrentProvider() === 'zai' ? 'tokens' : 'subscription');
+    quotaType = select ? select.value : (provider === 'zai' ? 'tokens' : 'subscription');
   }
   try {
     const res = await authFetch(`${API_BASE}/api/cycles?type=${quotaType}&${providerParam()}`);
     if (!res.ok) throw new Error('Failed to fetch cycles');
-    State.allCyclesData = (await res.json()) || [];
+    const data = await res.json();
+
+    if (provider === 'both') {
+      // "both" response: { synthetic: [...], zai: [...] }
+      let merged = [];
+      if (data.synthetic) merged = merged.concat(data.synthetic.map(c => ({ ...c, _provider: 'Syn' })));
+      if (data.zai) merged = merged.concat(data.zai.map(c => ({ ...c, _provider: 'Z.ai' })));
+      merged.sort((a, b) => new Date(b.cycleStart).getTime() - new Date(a.cycleStart).getTime());
+      State.allCyclesData = merged;
+    } else {
+      State.allCyclesData = data || [];
+    }
     State.cyclesPage = 1;
     renderCyclesTable();
   } catch (err) {
@@ -957,7 +1095,8 @@ function groupCyclesData(cycles, groupMs) {
         firstCycleId: c.id,
         cycleCount: 0,
         earliestStart: c.cycleStart,
-        latestEnd: c.cycleEnd
+        latestEnd: c.cycleEnd,
+        _provider: c._provider
       });
     }
     const bucket = buckets.get(bucketKey);
@@ -1050,12 +1189,17 @@ function renderCyclesTable() {
     }
   }
 
+  const isBothCycles = getCurrentProvider() === 'both';
+  const cycleColSpan = isBothCycles ? 8 : 7;
+
   if (total === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No cycle data in this range.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="${cycleColSpan}" class="empty-state">No cycle data in this range.</td></tr>`;
   } else {
     tbody.innerHTML = pageData.map(row => {
       const d = row._display;
+      const providerCol = isBothCycles ? `<td><span class="badge">${row._provider || row.cycles?.[0]?._provider || '-'}</span></td>` : '';
       return `<tr>
+        ${providerCol}
         <td>${d.id}${d.isActive ? ' <span class="badge">Active</span>' : ''}</td>
         <td>${d.start.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
         <td>${row.latestEnd ? new Date(row.latestEnd).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Active'}</td>
@@ -1088,7 +1232,19 @@ async function fetchSessions() {
   try {
     const res = await authFetch(`${API_BASE}/api/sessions?${providerParam()}`);
     if (!res.ok) throw new Error('Failed to fetch sessions');
-    State.allSessionsData = await res.json();
+    const data = await res.json();
+    const provider = getCurrentProvider();
+
+    if (provider === 'both') {
+      // "both" response: { synthetic: [...], zai: [...] }
+      let merged = [];
+      if (data.synthetic) merged = merged.concat(data.synthetic.map(s => ({ ...s, _provider: 'Syn' })));
+      if (data.zai) merged = merged.concat(data.zai.map(s => ({ ...s, _provider: 'Z.ai' })));
+      merged.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+      State.allSessionsData = merged;
+    } else {
+      State.allSessionsData = data;
+    }
     State.sessionsPage = 1;
     renderSessionsTable();
   } catch (err) {
@@ -1121,8 +1277,9 @@ function renderSessionsTable() {
   if (!tbody) return;
 
   const provider = getCurrentProvider();
+  const isBoth = provider === 'both';
   const isZai = provider === 'zai';
-  const colSpan = isZai ? 5 : 7;
+  const colSpan = isBoth ? 6 : isZai ? 5 : 7;
 
   let data = State.allSessionsData.map((s, i) => ({ ...s, _computed: getSessionComputedFields(s), _index: i }));
 
@@ -1164,6 +1321,19 @@ function renderSessionsTable() {
 
   if (total === 0) {
     tbody.innerHTML = `<tr><td colspan="${colSpan}" class="empty-state">No sessions recorded yet.</td></tr>`;
+  } else if (isBoth) {
+    // Both: show Provider, Session, Start, End, Duration, Snapshots
+    tbody.innerHTML = pageData.map(session => {
+      const c = session._computed;
+      return `<tr class="session-row">
+        <td><span class="badge">${session._provider || '-'}</span></td>
+        <td>${session.id.slice(0, 8)}${c.isActive ? ' <span class="badge">Active</span>' : ''}</td>
+        <td>${c.start.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+        <td>${session.endedAt ? new Date(session.endedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Active'}</td>
+        <td>${c.durationStr}</td>
+        <td>${session.snapshotCount || 0}</td>
+      </tr>`;
+    }).join('');
   } else if (isZai) {
     // Z.ai: show Session, Start, End, Duration, Snapshots
     tbody.innerHTML = pageData.map(session => {
@@ -1639,11 +1809,13 @@ function setupTableControls() {
 }
 
 function setupProviderSelector() {
-  const select = document.getElementById('provider-select');
-  if (!select) return;
-  select.addEventListener('change', (e) => {
-    const provider = e.target.value;
-    window.location.href = `/?provider=${provider}`;
+  const tabs = document.getElementById('provider-tabs');
+  if (!tabs) return;
+  tabs.querySelectorAll('.provider-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const provider = tab.dataset.provider;
+      window.location.href = `/?provider=${provider}`;
+    });
   });
 }
 
@@ -1772,9 +1944,9 @@ document.addEventListener('DOMContentLoaded', () => {
   setupCardModals();
   setupQuotaToggles();
 
-  if (document.getElementById('usage-chart')) {
+  if (document.getElementById('usage-chart') || document.getElementById('both-view')) {
     const provider = getCurrentProvider();
-    const defaultCycleType = provider === 'zai' ? 'tokens' : 'subscription';
+    const defaultCycleType = provider === 'both' ? 'subscription' : provider === 'zai' ? 'tokens' : 'subscription';
     initChart();
     fetchCurrent().then(() => fetchDeepInsights());
     fetchHistory('6h');
@@ -1782,5 +1954,34 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchSessions();
     startCountdowns();
     startAutoRefresh();
+
+    // Update sessions table header for "both" mode
+    if (provider === 'both') {
+      const sessionsHead = document.querySelector('#sessions-table thead tr');
+      if (sessionsHead) {
+        sessionsHead.innerHTML = `
+          <th>Provider</th>
+          <th data-sort-key="id" role="button" tabindex="0">Session <span class="sort-arrow"></span></th>
+          <th data-sort-key="start" role="button" tabindex="0">Started <span class="sort-arrow"></span></th>
+          <th data-sort-key="end" role="button" tabindex="0">Ended <span class="sort-arrow"></span></th>
+          <th data-sort-key="duration" role="button" tabindex="0">Duration <span class="sort-arrow"></span></th>
+          <th data-sort-key="snapshots" role="button" tabindex="0">Snapshots <span class="sort-arrow"></span></th>
+        `;
+      }
+      // Update cycles table for "both" - add provider column
+      const cyclesHead = document.querySelector('#cycles-table thead tr');
+      if (cyclesHead) {
+        cyclesHead.innerHTML = `
+          <th>Provider</th>
+          <th data-sort-key="id" role="button" tabindex="0">Cycle <span class="sort-arrow"></span></th>
+          <th data-sort-key="start" role="button" tabindex="0">Start <span class="sort-arrow"></span></th>
+          <th data-sort-key="end" role="button" tabindex="0">End <span class="sort-arrow"></span></th>
+          <th data-sort-key="duration" role="button" tabindex="0">Duration <span class="sort-arrow"></span></th>
+          <th data-sort-key="peak" role="button" tabindex="0">Peak <span class="sort-arrow"></span></th>
+          <th data-sort-key="total" role="button" tabindex="0">Total <span class="sort-arrow"></span></th>
+          <th data-sort-key="rate" role="button" tabindex="0">Rate <span class="sort-arrow"></span></th>
+        `;
+      }
+    }
   }
 });

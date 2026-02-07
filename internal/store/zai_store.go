@@ -105,18 +105,21 @@ func (s *Store) QueryLatestZai() (*api.ZaiSnapshot, error) {
 	return &snapshot, nil
 }
 
-// QueryZaiRange returns Z.ai snapshots within a time range
-func (s *Store) QueryZaiRange(start, end time.Time) ([]*api.ZaiSnapshot, error) {
-	rows, err := s.db.Query(
-		`SELECT id, captured_at, time_limit, time_unit, time_number, time_usage,
+// QueryZaiRange returns Z.ai snapshots within a time range with optional limit.
+func (s *Store) QueryZaiRange(start, end time.Time, limit ...int) ([]*api.ZaiSnapshot, error) {
+	query := `SELECT id, captured_at, time_limit, time_unit, time_number, time_usage,
 		 time_current_value, time_remaining, time_percentage, time_usage_details,
 		 tokens_limit, tokens_unit, tokens_number, tokens_usage,
 		 tokens_current_value, tokens_remaining, tokens_percentage, tokens_next_reset
 		FROM zai_snapshots
 		WHERE captured_at BETWEEN ? AND ?
-		ORDER BY captured_at ASC`,
-		start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano),
-	)
+		ORDER BY captured_at ASC`
+	args := []interface{}{start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano)}
+	if len(limit) > 0 && limit[0] > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit[0])
+	}
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query zai range: %w", err)
 	}
@@ -311,13 +314,16 @@ func (s *Store) QueryZaiHourlyUsage(start, end time.Time) ([]*ZaiHourlyUsage, er
 	return usages, rows.Err()
 }
 
-// QueryZaiCycleHistory returns completed cycles for a Z.ai quota type
-func (s *Store) QueryZaiCycleHistory(quotaType string) ([]*ZaiResetCycle, error) {
-	rows, err := s.db.Query(
-		`SELECT id, quota_type, cycle_start, cycle_end, next_reset, peak_value, total_delta
-		FROM zai_reset_cycles WHERE quota_type = ? AND cycle_end IS NOT NULL ORDER BY cycle_start DESC`,
-		quotaType,
-	)
+// QueryZaiCycleHistory returns completed cycles for a Z.ai quota type with optional limit.
+func (s *Store) QueryZaiCycleHistory(quotaType string, limit ...int) ([]*ZaiResetCycle, error) {
+	query := `SELECT id, quota_type, cycle_start, cycle_end, next_reset, peak_value, total_delta
+		FROM zai_reset_cycles WHERE quota_type = ? AND cycle_end IS NOT NULL ORDER BY cycle_start DESC`
+	args := []interface{}{quotaType}
+	if len(limit) > 0 && limit[0] > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit[0])
+	}
+	rows, err := s.db.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query zai cycles: %w", err)
 	}
@@ -339,6 +345,47 @@ func (s *Store) QueryZaiCycleHistory(quotaType string) ([]*ZaiResetCycle, error)
 		cycle.CycleStart, _ = time.Parse(time.RFC3339Nano, cycleStart)
 		endTime, _ := time.Parse(time.RFC3339Nano, cycleEnd)
 		cycle.CycleEnd = &endTime
+		if nextReset.Valid {
+			resetTime, _ := time.Parse(time.RFC3339Nano, nextReset.String)
+			cycle.NextReset = &resetTime
+		}
+
+		cycles = append(cycles, &cycle)
+	}
+
+	return cycles, rows.Err()
+}
+
+// QueryZaiCyclesSince returns all Z.ai cycles (completed and active) for a quota type since a given time.
+func (s *Store) QueryZaiCyclesSince(quotaType string, since time.Time) ([]*ZaiResetCycle, error) {
+	rows, err := s.db.Query(
+		`SELECT id, quota_type, cycle_start, cycle_end, next_reset, peak_value, total_delta
+		FROM zai_reset_cycles WHERE quota_type = ? AND cycle_start >= ? ORDER BY cycle_start DESC`,
+		quotaType, since.Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query zai cycles since: %w", err)
+	}
+	defer rows.Close()
+
+	var cycles []*ZaiResetCycle
+	for rows.Next() {
+		var cycle ZaiResetCycle
+		var cycleStart string
+		var cycleEnd, nextReset sql.NullString
+
+		err := rows.Scan(
+			&cycle.ID, &cycle.QuotaType, &cycleStart, &cycleEnd, &nextReset, &cycle.PeakValue, &cycle.TotalDelta,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan zai cycle: %w", err)
+		}
+
+		cycle.CycleStart, _ = time.Parse(time.RFC3339Nano, cycleStart)
+		if cycleEnd.Valid {
+			endTime, _ := time.Parse(time.RFC3339Nano, cycleEnd.String)
+			cycle.CycleEnd = &endTime
+		}
 		if nextReset.Valid {
 			resetTime, _ := time.Parse(time.RFC3339Nano, nextReset.String)
 			cycle.NextReset = &resetTime

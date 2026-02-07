@@ -19,6 +19,7 @@ import (
 type Handler struct {
 	store         *store.Store
 	tracker       *tracker.Tracker
+	zaiTracker    *tracker.ZaiTracker
 	logger        *slog.Logger
 	dashboardTmpl *template.Template
 	loginTmpl     *template.Template
@@ -27,7 +28,7 @@ type Handler struct {
 }
 
 // NewHandler creates a new Handler instance
-func NewHandler(store *store.Store, tracker *tracker.Tracker, logger *slog.Logger, sessions *SessionStore, cfg *config.Config) *Handler {
+func NewHandler(store *store.Store, tracker *tracker.Tracker, logger *slog.Logger, sessions *SessionStore, cfg *config.Config, zaiTracker ...*tracker.ZaiTracker) *Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -46,7 +47,7 @@ func NewHandler(store *store.Store, tracker *tracker.Tracker, logger *slog.Logge
 		loginTmpl = template.New("empty")
 	}
 
-	return &Handler{
+	h := &Handler{
 		store:         store,
 		tracker:       tracker,
 		logger:        logger,
@@ -55,6 +56,10 @@ func NewHandler(store *store.Store, tracker *tracker.Tracker, logger *slog.Logge
 		sessions:      sessions,
 		config:        cfg,
 	}
+	if len(zaiTracker) > 0 && zaiTracker[0] != nil {
+		h.zaiTracker = zaiTracker[0]
+	}
+	return h
 }
 
 // respondJSON sends a JSON response
@@ -129,6 +134,14 @@ func (h *Handler) getProviderFromRequest(r *http.Request) (string, error) {
 	// Normalize provider name
 	provider = strings.ToLower(provider)
 
+	// "both" is a virtual provider — allowed when both are configured
+	if provider == "both" {
+		if h.config.HasBothProviders() {
+			return "both", nil
+		}
+		return "", fmt.Errorf("'both' requires both Synthetic and Z.ai to be configured")
+	}
+
 	// Validate provider is available
 	if !h.config.HasProvider(provider) {
 		return "", fmt.Errorf("provider '%s' is not configured", provider)
@@ -145,6 +158,9 @@ func (h *Handler) Providers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	providers := h.config.AvailableProviders()
+	if h.config.HasBothProviders() {
+		providers = append(providers, "both")
+	}
 	current := ""
 	if len(providers) > 0 {
 		current = providers[0]
@@ -178,13 +194,17 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	currentProvider := ""
 	if h.config != nil {
 		providers = h.config.AvailableProviders()
+		// Add "both" option when both providers are available
+		if h.config.HasBothProviders() {
+			providers = append(providers, "both")
+		}
 		if len(providers) > 0 {
 			currentProvider = providers[0]
 		}
 		// Allow overriding via query param
 		if reqProvider := r.URL.Query().Get("provider"); reqProvider != "" {
 			reqProvider = strings.ToLower(reqProvider)
-			if h.config.HasProvider(reqProvider) {
+			if h.config.HasProvider(reqProvider) || (reqProvider == "both" && h.config.HasBothProviders()) {
 				currentProvider = reqProvider
 			}
 		}
@@ -212,6 +232,8 @@ func (h *Handler) Current(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch provider {
+	case "both":
+		h.currentBoth(w, r)
 	case "zai":
 		h.currentZai(w, r)
 	case "synthetic":
@@ -221,8 +243,25 @@ func (h *Handler) Current(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// currentBoth returns combined quota status for both providers.
+func (h *Handler) currentBoth(w http.ResponseWriter, r *http.Request) {
+	response := map[string]interface{}{}
+	if h.config.HasProvider("synthetic") {
+		response["synthetic"] = h.buildSyntheticCurrent()
+	}
+	if h.config.HasProvider("zai") {
+		response["zai"] = h.buildZaiCurrent()
+	}
+	respondJSON(w, http.StatusOK, response)
+}
+
 // currentSynthetic returns Synthetic quota status
 func (h *Handler) currentSynthetic(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, h.buildSyntheticCurrent())
+}
+
+// buildSyntheticCurrent builds the Synthetic current quota response map.
+func (h *Handler) buildSyntheticCurrent() map[string]interface{} {
 	now := time.Now().UTC()
 	response := map[string]interface{}{
 		"capturedAt":   now.Format(time.RFC3339),
@@ -235,8 +274,7 @@ func (h *Handler) currentSynthetic(w http.ResponseWriter, r *http.Request) {
 		latest, err := h.store.QueryLatest()
 		if err != nil {
 			h.logger.Error("failed to query latest snapshot", "error", err)
-			respondJSON(w, http.StatusOK, response)
-			return
+			return response
 		}
 
 		if latest != nil {
@@ -247,11 +285,16 @@ func (h *Handler) currentSynthetic(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	respondJSON(w, http.StatusOK, response)
+	return response
 }
 
 // currentZai returns Z.ai quota status
 func (h *Handler) currentZai(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, h.buildZaiCurrent())
+}
+
+// buildZaiCurrent builds the Z.ai current quota response map.
+func (h *Handler) buildZaiCurrent() map[string]interface{} {
 	now := time.Now().UTC()
 	response := map[string]interface{}{
 		"capturedAt":  now.Format(time.RFC3339),
@@ -264,19 +307,33 @@ func (h *Handler) currentZai(w http.ResponseWriter, r *http.Request) {
 		latest, err := h.store.QueryLatestZai()
 		if err != nil {
 			h.logger.Error("failed to query latest Z.ai snapshot", "error", err)
-			respondJSON(w, http.StatusOK, response)
-			return
+			return response
 		}
 
 		if latest != nil {
 			response["capturedAt"] = latest.CapturedAt.Format(time.RFC3339)
-			response["tokensLimit"] = buildZaiTokensQuotaResponse(latest)
-			response["timeLimit"] = buildZaiTimeQuotaResponse(latest)
+			tokensResp := buildZaiTokensQuotaResponse(latest)
+			timeResp := buildZaiTimeQuotaResponse(latest)
+
+			// Enrich with tracker data (rate, projection)
+			if h.zaiTracker != nil {
+				if tokensSummary, err := h.zaiTracker.UsageSummary("tokens"); err == nil && tokensSummary != nil {
+					tokensResp["currentRate"] = tokensSummary.CurrentRate
+					tokensResp["projectedUsage"] = tokensSummary.ProjectedUsage
+				}
+				if timeSummary, err := h.zaiTracker.UsageSummary("time"); err == nil && timeSummary != nil {
+					timeResp["currentRate"] = timeSummary.CurrentRate
+					timeResp["projectedUsage"] = timeSummary.ProjectedUsage
+				}
+			}
+
+			response["tokensLimit"] = tokensResp
+			response["timeLimit"] = timeResp
 			response["toolCalls"] = buildZaiToolCallsResponse(latest)
 		}
 	}
 
-	respondJSON(w, http.StatusOK, response)
+	return response
 }
 
 func buildEmptyQuotaResponse(name, description string) map[string]interface{} {
@@ -497,6 +554,8 @@ func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch provider {
+	case "both":
+		h.historyBoth(w, r)
 	case "zai":
 		h.historyZai(w, r)
 	case "synthetic":
@@ -504,6 +563,74 @@ func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
+}
+
+// historyBoth returns both providers' history.
+func (h *Handler) historyBoth(w http.ResponseWriter, r *http.Request) {
+	response := map[string]interface{}{}
+
+	rangeStr := r.URL.Query().Get("range")
+	duration, err := parseTimeRange(rangeStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	now := time.Now().UTC()
+	start := now.Add(-duration)
+
+	if h.config.HasProvider("synthetic") && h.store != nil {
+		snapshots, err := h.store.QueryRange(start, now, 200)
+		if err == nil {
+			var synData []map[string]interface{}
+			for _, s := range snapshots {
+				subPct, searchPct, toolPct := 0.0, 0.0, 0.0
+				if s.Sub.Limit > 0 {
+					subPct = (s.Sub.Requests / s.Sub.Limit) * 100
+				}
+				if s.Search.Limit > 0 {
+					searchPct = (s.Search.Requests / s.Search.Limit) * 100
+				}
+				if s.ToolCall.Limit > 0 {
+					toolPct = (s.ToolCall.Requests / s.ToolCall.Limit) * 100
+				}
+				synData = append(synData, map[string]interface{}{
+					"capturedAt":          s.CapturedAt.Format(time.RFC3339),
+					"subscription":        s.Sub.Requests,
+					"subscriptionLimit":   s.Sub.Limit,
+					"subscriptionPercent": subPct,
+					"search":              s.Search.Requests,
+					"searchLimit":         s.Search.Limit,
+					"searchPercent":       searchPct,
+					"toolCalls":           s.ToolCall.Requests,
+					"toolCallsLimit":      s.ToolCall.Limit,
+					"toolCallsPercent":    toolPct,
+				})
+			}
+			response["synthetic"] = synData
+		}
+	}
+
+	if h.config.HasProvider("zai") && h.store != nil {
+		snapshots, err := h.store.QueryZaiRange(start, now, 200)
+		if err == nil {
+			var zaiData []map[string]interface{}
+			for _, s := range snapshots {
+				zaiData = append(zaiData, map[string]interface{}{
+					"capturedAt":    s.CapturedAt.Format(time.RFC3339),
+					"tokensLimit":   s.TokensUsage,
+					"tokensUsage":   s.TokensCurrentValue,
+					"tokensPercent": float64(s.TokensPercentage),
+					"timeLimit":     s.TimeUsage,
+					"timeUsage":     s.TimeCurrentValue,
+					"timePercent":   float64(s.TimePercentage),
+				})
+			}
+			response["zai"] = zaiData
+		}
+	}
+
+	respondJSON(w, http.StatusOK, response)
 }
 
 // historySynthetic returns Synthetic usage history
@@ -616,6 +743,8 @@ func (h *Handler) Cycles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch provider {
+	case "both":
+		h.cyclesBoth(w, r)
 	case "zai":
 		h.cyclesZai(w, r)
 	case "synthetic":
@@ -623,6 +752,51 @@ func (h *Handler) Cycles(w http.ResponseWriter, r *http.Request) {
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
+}
+
+// cyclesBoth returns combined cycles from both providers.
+func (h *Handler) cyclesBoth(w http.ResponseWriter, r *http.Request) {
+	response := map[string]interface{}{}
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, response)
+		return
+	}
+
+	if h.config.HasProvider("synthetic") {
+		quotaType := r.URL.Query().Get("type")
+		if quotaType == "" {
+			quotaType = "subscription"
+		}
+		var synCycles []map[string]interface{}
+		if active, err := h.store.QueryActiveCycle(quotaType); err == nil && active != nil {
+			synCycles = append(synCycles, cycleToMap(active))
+		}
+		if history, err := h.store.QueryCycleHistory(quotaType, 50); err == nil {
+			for _, c := range history {
+				synCycles = append(synCycles, cycleToMap(c))
+			}
+		}
+		response["synthetic"] = synCycles
+	}
+
+	if h.config.HasProvider("zai") {
+		zaiType := r.URL.Query().Get("zaiType")
+		if zaiType == "" {
+			zaiType = "tokens"
+		}
+		var zaiCycles []map[string]interface{}
+		if active, err := h.store.QueryActiveZaiCycle(zaiType); err == nil && active != nil {
+			zaiCycles = append(zaiCycles, zaiCycleToMap(active))
+		}
+		if history, err := h.store.QueryZaiCycleHistory(zaiType, 50); err == nil {
+			for _, c := range history {
+				zaiCycles = append(zaiCycles, zaiCycleToMap(c))
+			}
+		}
+		response["zai"] = zaiCycles
+	}
+
+	respondJSON(w, http.StatusOK, response)
 }
 
 // cyclesSynthetic returns Synthetic reset cycles
@@ -774,6 +948,8 @@ func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch provider {
+	case "both":
+		h.summaryBoth(w, r)
 	case "zai":
 		h.summaryZai(w, r)
 	case "synthetic":
@@ -781,6 +957,34 @@ func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
+}
+
+// summaryBoth returns combined summaries from both providers.
+func (h *Handler) summaryBoth(w http.ResponseWriter, r *http.Request) {
+	response := map[string]interface{}{}
+	if h.config.HasProvider("synthetic") {
+		synResp := map[string]interface{}{
+			"subscription": buildEmptySummaryResponse("subscription"),
+			"search":       buildEmptySummaryResponse("search"),
+			"toolCalls":    buildEmptySummaryResponse("toolcall"),
+		}
+		if h.store != nil && h.tracker != nil {
+			for _, qt := range []string{"subscription", "search", "toolcall"} {
+				if s, err := h.tracker.UsageSummary(qt); err == nil && s != nil {
+					key := qt
+					if qt == "toolcall" {
+						key = "toolCalls"
+					}
+					synResp[key] = buildSummaryResponse(s)
+				}
+			}
+		}
+		response["synthetic"] = synResp
+	}
+	if h.config.HasProvider("zai") {
+		response["zai"] = h.buildZaiSummaryMap()
+	}
+	respondJSON(w, http.StatusOK, response)
 }
 
 // summarySynthetic returns Synthetic usage summary
@@ -809,32 +1013,41 @@ func (h *Handler) summarySynthetic(w http.ResponseWriter, r *http.Request) {
 
 // summaryZai returns Z.ai usage summary
 func (h *Handler) summaryZai(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, h.buildZaiSummaryMap())
+}
+
+// buildZaiSummaryMap builds the Z.ai summary response.
+func (h *Handler) buildZaiSummaryMap() map[string]interface{} {
 	response := map[string]interface{}{
 		"tokensLimit": buildEmptyZaiSummaryResponse("tokens"),
 		"timeLimit":   buildEmptyZaiSummaryResponse("time"),
 	}
 
+	// Try tracker-based summary first (has cycle data)
+	if h.zaiTracker != nil {
+		if tokensSummary, err := h.zaiTracker.UsageSummary("tokens"); err == nil && tokensSummary != nil {
+			response["tokensLimit"] = buildZaiTrackerSummaryResponse(tokensSummary)
+		}
+		if timeSummary, err := h.zaiTracker.UsageSummary("time"); err == nil && timeSummary != nil {
+			response["timeLimit"] = buildZaiTrackerSummaryResponse(timeSummary)
+		}
+		return response
+	}
+
+	// Fallback to snapshot-only summary
 	if h.store != nil {
-		// Get latest snapshot for current values
 		latest, err := h.store.QueryLatestZai()
 		if err != nil {
 			h.logger.Error("failed to query latest Z.ai snapshot", "error", err)
-			respondJSON(w, http.StatusOK, response)
-			return
+			return response
 		}
-
 		if latest != nil {
-			// Build tokens summary
-			tokensSummary := buildZaiTokensSummary(latest)
-			response["tokensLimit"] = tokensSummary
-
-			// Build time summary
-			timeSummary := buildZaiTimeSummary(latest)
-			response["timeLimit"] = timeSummary
+			response["tokensLimit"] = buildZaiTokensSummary(latest)
+			response["timeLimit"] = buildZaiTimeSummary(latest)
 		}
 	}
 
-	respondJSON(w, http.StatusOK, response)
+	return response
 }
 
 func buildEmptySummaryResponse(quotaType string) map[string]interface{} {
@@ -948,6 +1161,37 @@ func buildZaiTimeSummary(snapshot *api.ZaiSnapshot) map[string]interface{} {
 	}
 }
 
+// buildZaiTrackerSummaryResponse builds a summary response from ZaiTracker data.
+func buildZaiTrackerSummaryResponse(summary *tracker.ZaiSummary) map[string]interface{} {
+	result := map[string]interface{}{
+		"quotaType":       summary.QuotaType,
+		"currentUsage":    summary.CurrentUsage,
+		"currentLimit":    summary.CurrentLimit,
+		"usagePercent":    summary.UsagePercent,
+		"currentRate":     summary.CurrentRate,
+		"projectedUsage":  summary.ProjectedUsage,
+		"completedCycles": summary.CompletedCycles,
+		"avgPerCycle":     summary.AvgPerCycle,
+		"peakCycle":       summary.PeakCycle,
+		"totalTracked":    summary.TotalTracked,
+		"trackingSince":   nil,
+	}
+
+	if summary.RenewsAt != nil {
+		result["renewsAt"] = summary.RenewsAt.Format(time.RFC3339)
+		result["timeUntilReset"] = formatDuration(summary.TimeUntilReset)
+	} else {
+		result["renewsAt"] = time.Now().UTC().Format(time.RFC3339)
+		result["timeUntilReset"] = "N/A"
+	}
+
+	if !summary.TrackingSince.IsZero() {
+		result["trackingSince"] = summary.TrackingSince.Format(time.RFC3339)
+	}
+
+	return result
+}
+
 // Sessions returns session data (API endpoint)
 func (h *Handler) Sessions(w http.ResponseWriter, r *http.Request) {
 	provider, err := h.getProviderFromRequest(r)
@@ -958,6 +1202,11 @@ func (h *Handler) Sessions(w http.ResponseWriter, r *http.Request) {
 
 	if h.store == nil {
 		respondJSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+
+	if provider == "both" {
+		h.sessionsBoth(w, r)
 		return
 	}
 
@@ -986,6 +1235,45 @@ func (h *Handler) Sessions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		response = append(response, sessionMap)
+	}
+
+	respondJSON(w, http.StatusOK, response)
+}
+
+// sessionsBoth returns sessions from both providers.
+func (h *Handler) sessionsBoth(w http.ResponseWriter, r *http.Request) {
+	response := map[string]interface{}{}
+
+	buildSessionList := func(provider string) []map[string]interface{} {
+		sessions, err := h.store.QuerySessionHistory(provider)
+		if err != nil {
+			return nil
+		}
+		var list []map[string]interface{}
+		for _, s := range sessions {
+			m := map[string]interface{}{
+				"id":                s.ID,
+				"startedAt":         s.StartedAt.Format(time.RFC3339),
+				"endedAt":           nil,
+				"pollInterval":      s.PollInterval,
+				"maxSubRequests":    s.MaxSubRequests,
+				"maxSearchRequests": s.MaxSearchRequests,
+				"maxToolRequests":   s.MaxToolRequests,
+				"snapshotCount":     s.SnapshotCount,
+			}
+			if s.EndedAt != nil {
+				m["endedAt"] = s.EndedAt.Format(time.RFC3339)
+			}
+			list = append(list, m)
+		}
+		return list
+	}
+
+	if h.config.HasProvider("synthetic") {
+		response["synthetic"] = buildSessionList("synthetic")
+	}
+	if h.config.HasProvider("zai") {
+		response["zai"] = buildSessionList("zai")
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -1021,6 +1309,8 @@ func (h *Handler) Insights(w http.ResponseWriter, r *http.Request) {
 	}
 
 	switch provider {
+	case "both":
+		h.insightsBoth(w, r)
 	case "zai":
 		h.insightsZai(w, r)
 	case "synthetic":
@@ -1030,13 +1320,33 @@ func (h *Handler) Insights(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// insightsBoth returns combined insights from both providers.
+func (h *Handler) insightsBoth(w http.ResponseWriter, r *http.Request) {
+	response := map[string]interface{}{}
+
+	if h.config.HasProvider("synthetic") {
+		synResp := h.buildSyntheticInsights()
+		response["synthetic"] = synResp
+	}
+	if h.config.HasProvider("zai") {
+		zaiResp := h.buildZaiInsights()
+		response["zai"] = zaiResp
+	}
+
+	respondJSON(w, http.StatusOK, response)
+}
+
 // insightsSynthetic returns Synthetic deep analytics
 func (h *Handler) insightsSynthetic(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, h.buildSyntheticInsights())
+}
+
+// buildSyntheticInsights builds the Synthetic insights response.
+func (h *Handler) buildSyntheticInsights() insightsResponse {
 	resp := insightsResponse{Stats: []insightStat{}, Insights: []insightItem{}}
 
 	if h.store == nil {
-		respondJSON(w, http.StatusOK, resp)
-		return
+		return resp
 	}
 
 	now := time.Now().UTC()
@@ -1306,23 +1616,26 @@ func (h *Handler) insightsSynthetic(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	respondJSON(w, http.StatusOK, resp)
+	return resp
 }
 
 // insightsZai returns Z.ai deep analytics with historical data
 func (h *Handler) insightsZai(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, h.buildZaiInsights())
+}
+
+// buildZaiInsights builds the Z.ai insights response.
+func (h *Handler) buildZaiInsights() insightsResponse {
 	resp := insightsResponse{Stats: []insightStat{}, Insights: []insightItem{}}
 
 	if h.store == nil {
-		respondJSON(w, http.StatusOK, resp)
-		return
+		return resp
 	}
 
 	latest, err := h.store.QueryLatestZai()
 	if err != nil {
 		h.logger.Error("failed to query Z.ai data for insights", "error", err)
-		respondJSON(w, http.StatusOK, resp)
-		return
+		return resp
 	}
 
 	if latest == nil {
@@ -1331,8 +1644,7 @@ func (h *Handler) insightsZai(w http.ResponseWriter, r *http.Request) {
 			Title: "Getting Started",
 			Desc:  "Keep SynTrack running to collect Z.ai usage data. Insights appear after a few snapshots.",
 		})
-		respondJSON(w, http.StatusOK, resp)
-		return
+		return resp
 	}
 
 	now := time.Now().UTC()
@@ -1701,7 +2013,7 @@ func (h *Handler) insightsZai(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	respondJSON(w, http.StatusOK, resp)
+	return resp
 }
 
 // severityFromPercent returns a severity string based on a usage percentage

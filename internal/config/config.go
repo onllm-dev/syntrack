@@ -238,6 +238,11 @@ func (c *Config) HasProvider(name string) bool {
 	return false
 }
 
+// HasBothProviders returns true if both Synthetic and Z.ai are configured.
+func (c *Config) HasBothProviders() bool {
+	return c.SyntheticAPIKey != "" && c.ZaiAPIKey != ""
+}
+
 // String returns a redacted string representation of the config.
 func (c *Config) String() string {
 	var sb strings.Builder

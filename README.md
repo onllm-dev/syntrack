@@ -13,10 +13,10 @@ Track your [Synthetic](https://synthetic.new) and [Z.ai](https://z.ai) API usage
 API providers show current quota usage but not historical trends or per-cycle consumption. SynTrack fills this gap:
 
 - Track usage across reset cycles for Synthetic and Z.ai
-- See which quotas approach limits
-- Get projected usage before reset
+- See which quotas approach limits with rate projections
+- View both providers side-by-side in a unified "Both" view
 - Monitor in real-time with live countdowns
-- Switch between providers in a single dashboard
+- Full cycle tracking for both providers with reset detection
 - Run silently in the background (~26 MB RAM idle, ~28 MB with dashboard)
 
 ---
@@ -26,16 +26,19 @@ API providers show current quota usage but not historical trends or per-cycle co
 | Feature | Description |
 |---------|-------------|
 | Multi-provider | Supports Synthetic and Z.ai; runs both in parallel |
+| "Both" view | Side-by-side dashboard showing all quotas from both providers |
 | Background polling | Polls quota APIs every 60 seconds (configurable) |
-| Reset detection | Detects quota resets and tracks per-cycle usage |
+| Reset detection | Detects quota resets for both providers and tracks per-cycle usage |
+| Z.ai cycle tracking | Token reset detection via next-reset-time, time reset via value-drop |
+| Rate & projection | Current consumption rate and projected usage before reset |
 | Live countdown | Real-time timers for all quota types |
 | Material Design 3 | Dashboard with dark and light mode |
-| Time-series chart | Chart.js area chart with 1h, 6h, 24h, 7d, 30d ranges |
+| Time-series chart | Chart.js area chart with 1h, 6h, 24h, 7d, 30d ranges; dual charts in Both view |
 | Usage insights | Provider-specific stats: plan capacity, tokens-per-call, cycle utilization |
 | Session tracking | Track consumption per agent session |
-| SQLite storage | Append-only log, WAL mode |
+| SQLite storage | Append-only log, WAL mode, server-side pagination |
 | Single binary | No runtime dependencies, all assets embedded |
-| Provider switching | Toggle between Synthetic and Z.ai views in the dashboard |
+| Provider tabs | Tab selector to switch between Synthetic, Z.ai, and Both views |
 
 ---
 
@@ -112,7 +115,7 @@ Logs go to `.syntrack.log`. The process daemonizes automatically.
 
 Open http://localhost:9211 and log in with your `.env` credentials.
 
-If both providers are configured, use the provider dropdown to switch between Synthetic and Z.ai views.
+If both providers are configured, use the provider tabs in the header to switch between Synthetic, Z.ai, and Both views.
 
 ### 5. Stop or Check Status
 
@@ -165,9 +168,23 @@ CLI flags override environment variables.
 
 ![Dashboard Light Mode](./screenshot/dashboard-light.png)
 
-### Provider Switching
+### Provider Tabs
 
-When both Synthetic and Z.ai are configured, a dropdown in the header lets you switch between providers. Each view shows quota cards, charts, and insights specific to that provider.
+When both Synthetic and Z.ai are configured, tab buttons in the header let you switch between three views:
+
+- **Synthetic** — Subscription, Search, and Tool Call quota cards
+- **Z.ai** — Tokens, Time, and Tool Call quota cards
+- **Both** — Side-by-side view of all quotas from both providers
+
+### "Both" Provider View
+
+![Both View Dark Mode](./screenshot/dashboard-both-dark.png)
+
+The "Both" view displays two columns — Synthetic on the left, Z.ai on the right — each with their 3 quota cards stacked vertically. Charts render side-by-side, and insights/cycles/sessions merge data from both providers with provider badges for identification.
+
+### Z.ai View
+
+![Z.ai View Dark Mode](./screenshot/dashboard-zai-dark.png)
 
 ### Quota Cards
 
@@ -175,13 +192,14 @@ Each provider displays cards for its quota types:
 
 **Synthetic:** Subscription, Search (Hourly), Tool Call Discounts — each with independent reset timers.
 
-**Z.ai:** Tokens Limit, Time Limit, and Tool Calls — each with per-tool breakdown and reset countdown.
+**Z.ai:** Tokens Limit, Time Limit, and Tool Calls — with per-tool breakdown, rate projections, and reset countdown.
 
 Every card shows:
 - Current usage vs. limit with color-coded progress bar
 - Live countdown to next reset
 - Status badge (healthy / warning / danger / critical)
 - Consumption rate and projected usage
+- Eye toggle to show/hide on the usage graph
 
 ### Usage Insights
 
@@ -191,22 +209,21 @@ Each provider shows stat cards and expandable insight cards tailored to its data
 
 **Z.ai insights** surface plan capacity and efficiency: daily token budget (200M) and monthly capacity (6B), average tokens per tool call, top tool by call volume, and per-tool breakdowns (search-prime, web-reader, zread). Both providers show live quota status and monitoring coverage.
 
-Example:
-
-> "Each tool call consumes ~1.0M tokens on average. At this rate, your daily budget supports ~193 calls."
+In **Both** view, insights from both providers are combined with (Syn) / (Z.ai) labels.
 
 ### Time-Series Chart
 
 - Area chart showing quotas as percentages
 - Time range selector: 1h, 6h, 24h, 7d, 30d
+- In "Both" view: dual side-by-side charts (Synthetic left, Z.ai right)
 
 ### Reset Cycle History
 
-Table of completed cycles: start/end times, peak usage, total requests. Filter by quota type and time range.
+Table of completed cycles: start/end times, peak usage, total requests. Filter by quota type and time range. In "Both" view, a provider column distinguishes cycles from each provider.
 
 ### Session Tracking
 
-Each agent run creates a session with a unique UUID. The session tracks maximum request counts observed. View session history with per-session consumption breakdown.
+Each agent run creates a session with a unique UUID. The session tracks maximum request counts observed. View session history with per-session consumption breakdown. In "Both" view, sessions from both providers are merged with provider badges.
 
 ### Dark/Light Mode
 
@@ -240,7 +257,7 @@ Each agent run creates a session with a unique UUID. The session tracks maximum 
               └───────────┘ └────────────┘
 ```
 
-Both agents run in parallel goroutines. Each polls its API at the configured interval and stores snapshots. The dashboard reads from the shared SQLite store.
+Both agents run in parallel goroutines. Each polls its API at the configured interval and stores snapshots. Each agent has a dedicated tracker (Synthetic Tracker and Z.ai Tracker) that detects resets, manages cycles, calculates rates, and projects usage. The dashboard reads from the shared SQLite store.
 
 **RAM budget:** ~30 MB idle, ~50 MB during dashboard render.
 
@@ -273,7 +290,7 @@ SynTrack is designed for minimal resource consumption as a background agent.
 
 ## API Endpoints
 
-All endpoints require authentication (session cookie or Basic Auth). Append `?provider=synthetic` or `?provider=zai` to select the provider (defaults to first configured).
+All endpoints require authentication (session cookie or Basic Auth). Append `?provider=synthetic`, `?provider=zai`, or `?provider=both` to select the provider (defaults to first configured). The `both` provider returns combined data from both providers.
 
 | Endpoint | Description |
 |----------|-------------|
