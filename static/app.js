@@ -7,7 +7,10 @@ const REFRESH_INTERVAL = 60000;
 async function authFetch(url, options) {
   const res = await fetch(url, options);
   if (res.status === 401) {
-    window.location.href = '/login';
+    // Don't redirect if already on the login page (avoids infinite refresh loop)
+    if (window.location.pathname !== '/login') {
+      window.location.href = '/login';
+    }
     throw new Error('Session expired');
   }
   return res;
@@ -2120,9 +2123,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Load persisted state
+  // Load persisted state (localStorage only — no API calls before auth check)
   loadHiddenQuotas();
-  loadHiddenInsights();
 
   initTheme();
   initTimezoneBadge();
@@ -2136,6 +2138,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupCardModals();
 
   if (document.getElementById('usage-chart') || document.getElementById('both-view')) {
+    // Load hidden insights from API (dashboard-only — requires auth)
+    loadHiddenInsights();
     const provider = getCurrentProvider();
     const defaultCycleType = provider === 'both' ? 'subscription' : provider === 'zai' ? 'tokens' : 'subscription';
     initChart();

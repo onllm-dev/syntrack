@@ -539,6 +539,8 @@ Description=SynTrack - AI API Quota Tracker
 Documentation=https://github.com/${REPO}
 After=network-online.target
 Wants=network-online.target
+StartLimitBurst=3
+StartLimitIntervalSec=120
 
 [Service]
 Type=simple
@@ -576,6 +578,8 @@ Description=SynTrack - AI API Quota Tracker
 Documentation=https://github.com/${REPO}
 After=network-online.target
 Wants=network-online.target
+StartLimitBurst=3
+StartLimitIntervalSec=120
 
 [Service]
 Type=simple

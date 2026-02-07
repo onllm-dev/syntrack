@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync"
@@ -149,7 +150,11 @@ func generateToken() string {
 }
 
 // SessionAuthMiddleware uses session cookies for browser requests and Basic Auth for API.
-func SessionAuthMiddleware(sessions *SessionStore) func(http.Handler) http.Handler {
+func SessionAuthMiddleware(sessions *SessionStore, logger ...*slog.Logger) func(http.Handler) http.Handler {
+	var log *slog.Logger
+	if len(logger) > 0 && logger[0] != nil {
+		log = logger[0]
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			path := r.URL.Path
@@ -189,6 +194,9 @@ func SessionAuthMiddleware(sessions *SessionStore) func(http.Handler) http.Handl
 						return
 					}
 				}
+				if log != nil {
+					log.Debug("Auth rejected", "path", path, "method", r.Method, "remote", r.RemoteAddr)
+				}
 				// Return JSON 401 without WWW-Authenticate to prevent browser popup
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
@@ -197,6 +205,9 @@ func SessionAuthMiddleware(sessions *SessionStore) func(http.Handler) http.Handl
 			}
 
 			// Browser requests: redirect to login page
+			if log != nil {
+				log.Debug("Unauthenticated request, redirecting to login", "path", path, "method", r.Method, "remote", r.RemoteAddr)
+			}
 			http.Redirect(w, r, "/login", http.StatusFound)
 		})
 	}

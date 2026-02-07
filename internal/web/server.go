@@ -62,7 +62,7 @@ func NewServer(port int, handler *Handler, logger *slog.Logger, username, passwo
 	if username != "" && passwordHash != "" {
 		sessions := NewSessionStore(username, passwordHash, handler.store)
 		handler.sessions = sessions
-		finalHandler = SessionAuthMiddleware(sessions)(mux)
+		finalHandler = SessionAuthMiddleware(sessions, logger)(mux)
 	}
 
 	return &Server{
