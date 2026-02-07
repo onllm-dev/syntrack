@@ -820,70 +820,242 @@ a:hover { text-decoration: underline; }
 }
 
 /* ═══════════════════════════════════════════
-   INSTALL SECTION
+   INSTALL SECTION — Method Cards
    ═══════════════════════════════════════════ */
 .install {
   padding: 80px 0;
   border-top: 1px solid var(--border-light);
 }
 
-.install-oneliner .code-block {
-  border: 2px solid var(--accent-teal);
-  box-shadow: 0 0 24px rgba(13, 148, 136, 0.12);
-}
-[data-theme="dark"] .install-oneliner .code-block {
-  box-shadow: 0 0 24px rgba(20, 184, 166, 0.15);
-}
-.install-oneliner .code-body {
-  font-size: 14px;
-  text-align: center;
-  padding: 20px 24px;
-}
-
-.install-grid {
+.install-methods {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 48px;
-  align-items: start;
-}
-
-.install-steps {
-  display: flex;
-  flex-direction: column;
+  grid-template-columns: repeat(3, 1fr);
   gap: 24px;
 }
 
-.install-step {
+.install-method {
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  box-shadow: var(--shadow-card);
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+  position: relative;
   display: flex;
-  gap: 16px;
+  flex-direction: column;
+}
+.install-method:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
 }
 
-.step-num {
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--accent-teal);
-  color: #fff;
-  font-size: 14px;
+.install-method.recommended {
+  border-color: var(--accent-teal);
+  box-shadow: var(--shadow-card), 0 0 20px rgba(13, 148, 136, 0.08);
+}
+[data-theme="dark"] .install-method.recommended {
+  box-shadow: var(--shadow-card), 0 0 20px rgba(20, 184, 166, 0.1);
+}
+
+.method-badge {
+  position: absolute;
+  top: -10px;
+  right: 20px;
+  padding: 3px 12px;
+  font-size: 11px;
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #fff;
+  background: var(--accent-teal);
+  border-radius: var(--radius-full);
+}
+
+.method-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.method-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
+.method-icon svg { width: 20px; height: 20px; }
+.method-icon.teal { background: var(--accent-teal-muted); color: var(--accent-teal); }
+.method-icon.peach { background: var(--accent-peach-muted); color: var(--accent-peach); }
+.method-icon.blue { background: var(--accent-blue-muted); color: var(--accent-blue); }
 
-.step-content h4 {
-  font-size: 15px;
+.method-title {
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
-  margin-bottom: 4px;
 }
 
-.step-content p {
-  font-size: 14px;
+.method-desc {
+  font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.6;
+  margin-bottom: 16px;
 }
+
+.method-code {
+  background: var(--surface-inset);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-top: auto;
+}
+
+.method-code-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.method-code-lang {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.method-code-copy {
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-teal);
+  background: var(--accent-teal-muted);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  transition: background var(--transition-fast);
+}
+.method-code-copy:hover { background: var(--accent-teal-light); }
+
+.method-code-body {
+  padding: 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+/* ═══════════════════════════════════════════
+   SCREENSHOTS GALLERY
+   ═══════════════════════════════════════════ */
+.gallery {
+  padding: 80px 0;
+  border-top: 1px solid var(--border-light);
+}
+
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.gallery-item {
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+}
+.gallery-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--border-focus);
+}
+
+.gallery-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.gallery-caption {
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.gallery-caption-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.gallery-caption-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+  background: var(--surface-inset);
+  color: var(--text-muted);
+}
+
+/* Lightbox */
+.lightbox {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  background: var(--surface-overlay);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  cursor: zoom-out;
+}
+.lightbox.active { display: flex; }
+
+.lightbox img {
+  max-width: 95vw;
+  max-height: 90vh;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  object-fit: contain;
+  cursor: default;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 20px;
+  transition: all var(--transition-fast);
+}
+.lightbox-close:hover { background: var(--surface-raised); }
 
 .code-block {
   background: var(--surface-card);
@@ -1097,7 +1269,8 @@ a:hover { text-decoration: underline; }
   .arch-diagram { grid-template-columns: 1fr; gap: 12px; }
   .arch-arrow { transform: rotate(90deg); padding: 4px 0; }
   .arch-stats { grid-template-columns: repeat(2, 1fr); }
-  .install-grid { grid-template-columns: 1fr; }
+  .install-methods { grid-template-columns: 1fr; max-width: 560px; margin: 0 auto; }
+  .gallery-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 768px) {
@@ -1182,6 +1355,7 @@ a:hover { text-decoration: underline; }
             <a href="#features" class="nav-link">Features</a>
             <a href="#how-it-works" class="nav-link">How It Works</a>
             <a href="#install" class="nav-link">Install</a>
+            <a href="#screenshots" class="nav-link">Screenshots</a>
             <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
                 <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <circle cx="12" cy="12" r="5"/>
@@ -1436,65 +1610,89 @@ a:hover { text-decoration: underline; }
     <div class="container">
         <div class="fade-in" style="text-align:center;margin-bottom:40px;">
             <div class="section-label">Quick Start</div>
-            <h2 class="section-title">One command. That's it.</h2>
-            <p class="section-desc" style="margin-left:auto;margin-right:auto;">Detects your OS, downloads the right binary, sets up a systemd service, and starts tracking.</p>
+            <h2 class="section-title">Get up and running in minutes</h2>
+            <p class="section-desc" style="margin-left:auto;margin-right:auto;">Choose the method that works best for you. Supports macOS (ARM64, AMD64) and Linux (AMD64, ARM64).</p>
         </div>
 
-        <!-- What the installer does -->
-        <div class="install-grid fade-in" style="margin-top:48px;">
-            <div class="install-steps">
-                <div class="install-step">
-                    <div class="step-num">1</div>
-                    <div class="step-content">
-                        <h4>Detects your platform</h4>
-                        <p>Identifies OS (macOS, Linux) and architecture (x86_64, ARM64). Downloads the matching binary to <code>~/.syntrack/</code>.</p>
+        <div class="install-methods">
+            <!-- Method 1: One-liner Install -->
+            <div class="install-method recommended fade-in">
+                <div class="method-badge">Recommended</div>
+                <div class="method-header">
+                    <div class="method-icon teal">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
                     </div>
+                    <div class="method-title">One-Line Install</div>
                 </div>
-                <div class="install-step">
-                    <div class="step-num">2</div>
-                    <div class="step-content">
-                        <h4>Creates default config</h4>
-                        <p>Generates <code>~/.syntrack/.env</code> with sensible defaults. Add your Synthetic or Z.ai API key to start tracking.</p>
+                <p class="method-desc">Auto-detects your OS and architecture, downloads the binary, creates config, sets up a systemd service, and starts tracking.</p>
+                <div class="method-code">
+                    <div class="method-code-header">
+                        <span class="method-code-lang">bash</span>
+                        <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
                     </div>
-                </div>
-                <div class="install-step">
-                    <div class="step-num">3</div>
-                    <div class="step-content">
-                        <h4>Sets up service management</h4>
-                        <p>On Linux: creates a <code>systemd</code> service with start, stop, status, and auto-restart. On macOS: self-daemonizes natively.</p>
-                    </div>
-                </div>
-                <div class="install-step">
-                    <div class="step-num">4</div>
-                    <div class="step-content">
-                        <h4>Starts tracking</h4>
-                        <p>Polls every 60 seconds, detects reset cycles, and serves a dashboard at <code>http://localhost:9211</code>.</p>
-                    </div>
+                    <div class="method-code-body"><span class="code-cmd">curl</span> -fsSL https://raw.githubusercontent.com/onllm-dev/syntrack/main/install.sh | <span class="code-cmd">bash</span></div>
                 </div>
             </div>
-            <div class="code-block">
-                <div class="code-header">
-                    <span class="code-lang">after install</span>
-                    <button class="code-copy" onclick="copyCode(this)" aria-label="Copy to clipboard">Copy</button>
+
+            <!-- Method 2: Manual Download -->
+            <div class="install-method fade-in">
+                <div class="method-header">
+                    <div class="method-icon peach">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                    </div>
+                    <div class="method-title">Manual Download</div>
                 </div>
-                <div class="code-body"><span class="code-comment"># Edit config</span>
-<span class="code-cmd">nano</span> ~/.syntrack/.env
+                <p class="method-desc">Download the binary for your platform from GitHub Releases, configure your <code>.env</code>, and run directly.</p>
+                <div class="method-code">
+                    <div class="method-code-header">
+                        <span class="method-code-lang">bash</span>
+                        <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
+                    </div>
+                    <div class="method-code-body"><span class="code-comment"># Download (macOS ARM64 example)</span>
+<span class="code-cmd">curl</span> -L -o syntrack \
+  https://github.com/onllm-dev/syntrack/releases/latest/download/syntrack-darwin-arm64
+<span class="code-cmd">chmod</span> +x syntrack
 
-<span class="code-comment"># Linux (systemd)</span>
-<span class="code-cmd">systemctl</span> start syntrack
-<span class="code-cmd">systemctl</span> stop syntrack
-<span class="code-cmd">systemctl</span> status syntrack
-<span class="code-cmd">journalctl</span> -u syntrack -f
+<span class="code-comment"># Create config</span>
+<span class="code-cmd">cat</span> > .env &lt;&lt; <span class="code-string">'EOF'</span>
+<span class="code-string">SYNTHETIC_API_KEY=syn_your_key_here</span>
+<span class="code-string">ZAI_API_KEY=your_zai_key_here</span>
+<span class="code-string">SYNTRACK_ADMIN_USER=admin</span>
+<span class="code-string">SYNTRACK_ADMIN_PASS=changeme</span>
+<span class="code-string">SYNTRACK_PORT=9211</span>
+<span class="code-string">EOF</span>
 
-<span class="code-comment"># macOS</span>
-<span class="code-cmd">syntrack</span>            <span class="code-comment"># start (background)</span>
-<span class="code-cmd">syntrack</span> stop        <span class="code-comment"># stop</span>
-<span class="code-cmd">syntrack</span> status      <span class="code-comment"># check status</span>
-<span class="code-cmd">syntrack</span> --debug     <span class="code-comment"># foreground mode</span>
+<span class="code-comment"># Run</span>
+<span class="code-cmd">./syntrack</span>            <span class="code-comment"># background</span>
+<span class="code-cmd">./syntrack</span> --debug     <span class="code-comment"># foreground</span></div>
+                </div>
+            </div>
 
-<span class="code-comment"># Or build from source</span>
-<span class="code-cmd">git clone</span> https://github.com/onllm-dev/syntrack.git
-<span class="code-cmd">cd</span> syntrack && <span class="code-cmd">make</span> build</div>
+            <!-- Method 3: Build from Source -->
+            <div class="install-method fade-in">
+                <div class="method-header">
+                    <div class="method-icon blue">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                    </div>
+                    <div class="method-title">Build from Source</div>
+                </div>
+                <p class="method-desc">Clone the repository and build with Make. Requires Go 1.25 or later.</p>
+                <div class="method-code">
+                    <div class="method-code-header">
+                        <span class="method-code-lang">bash</span>
+                        <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
+                    </div>
+                    <div class="method-code-body"><span class="code-cmd">git clone</span> https://github.com/onllm-dev/syntrack.git
+<span class="code-cmd">cd</span> syntrack
+<span class="code-cmd">cp</span> .env.example .env
+
+<span class="code-comment"># Edit .env with your API keys</span>
+<span class="code-cmd">nano</span> .env
+
+<span class="code-comment"># Build and run</span>
+<span class="code-cmd">make</span> build
+<span class="code-cmd">./syntrack</span> --debug</div>
+                </div>
             </div>
         </div>
     </div>
@@ -1569,6 +1767,47 @@ a:hover { text-decoration: underline; }
     </div>
 </section>
 
+<!-- Screenshots Gallery -->
+<section class="gallery" id="screenshots">
+    <div class="container">
+        <div class="fade-in" style="text-align:center;margin-bottom:40px;">
+            <div class="section-label">Screenshots</div>
+            <h2 class="section-title">See it in action</h2>
+            <p class="section-desc" style="margin-left:auto;margin-right:auto;">Material Design 3 dashboard with dark and light mode, multi-provider support, and real-time quota tracking.</p>
+        </div>
+        <div class="gallery-grid">
+            <div class="gallery-item fade-in" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/syntrack/main/screenshots/dashboard-dark.png" alt="SynTrack dashboard in dark mode showing Synthetic quota cards, chart, and insights" loading="lazy">
+                <div class="gallery-caption">
+                    <span class="gallery-caption-text">Dashboard — Dark Mode</span>
+                    <span class="gallery-caption-badge">Synthetic</span>
+                </div>
+            </div>
+            <div class="gallery-item fade-in" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/syntrack/main/screenshots/dashboard-light.png" alt="SynTrack dashboard in light mode" loading="lazy">
+                <div class="gallery-caption">
+                    <span class="gallery-caption-text">Dashboard — Light Mode</span>
+                    <span class="gallery-caption-badge">Synthetic</span>
+                </div>
+            </div>
+            <div class="gallery-item fade-in" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/syntrack/main/screenshots/dashboard-zai.png" alt="SynTrack Z.ai provider dashboard with tokens, time, and tool call quotas" loading="lazy">
+                <div class="gallery-caption">
+                    <span class="gallery-caption-text">Z.ai Provider View</span>
+                    <span class="gallery-caption-badge">Z.ai</span>
+                </div>
+            </div>
+            <div class="gallery-item fade-in" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/syntrack/main/screenshots/dashboard-both.png" alt="SynTrack Both view with Synthetic and Z.ai quotas side-by-side" loading="lazy">
+                <div class="gallery-caption">
+                    <span class="gallery-caption-text">Both Providers — Side by Side</span>
+                    <span class="gallery-caption-badge">Both</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
 <!-- CTA -->
 <section class="cta-section" id="cta">
     <div class="container">
@@ -1588,6 +1827,12 @@ a:hover { text-decoration: underline; }
         </div>
     </div>
 </section>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
+    <button class="lightbox-close" aria-label="Close">&times;</button>
+    <img id="lightbox-img" src="" alt="">
+</div>
 
 <!-- Footer -->
 <footer class="footer">
@@ -1699,6 +1944,18 @@ function copyCode(btn) {
     });
 }
 
+/* Copy method code block */
+function copyMethodCode(btn) {
+    var block = btn.closest('.method-code');
+    var code = block.querySelector('.method-code-body');
+    if (!code) return;
+    var text = code.textContent;
+    navigator.clipboard.writeText(text).then(function() {
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+    });
+}
+
 /* Copy hero install command */
 function copyHeroCmd(el) {
     var cmd = 'curl -fsSL https://raw.githubusercontent.com/onllm-dev/syntrack/main/install.sh | bash';
@@ -1724,6 +1981,29 @@ function copyInstallCmd(el) {
         }, 2000);
     });
 }
+
+/* Lightbox */
+function openLightbox(item) {
+    var img = item.querySelector('.gallery-img');
+    if (!img) return;
+    var lb = document.getElementById('lightbox');
+    var lbImg = document.getElementById('lightbox-img');
+    lbImg.src = img.src;
+    lbImg.alt = img.alt;
+    lb.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox(e) {
+    if (e && e.target && e.target.id === 'lightbox-img') return;
+    var lb = document.getElementById('lightbox');
+    lb.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeLightbox(e);
+});
 
 /* Smooth scroll for anchor links */
 document.querySelectorAll('a[href^="#"]').forEach(function(a) {
