@@ -444,35 +444,34 @@ a:hover { text-decoration: underline; }
 }
 
 .hero-badges {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: inline-flex;
+  align-items: stretch;
   justify-content: center;
-  flex-wrap: wrap;
-  margin-bottom: 4px;
+  margin-bottom: 24px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  border: 1px solid rgba(13, 148, 136, 0.2);
 }
 
 .hero-badge {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 16px;
+  padding: 8px 20px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--accent-teal);
-  background: var(--accent-teal-muted);
   text-decoration: none;
   cursor: pointer;
   transition: opacity 0.2s;
+  color: var(--accent-teal);
+  background: var(--accent-teal-muted);
 }
 .hero-badge:hover { opacity: 0.8; text-decoration: none; }
 
 .hero-badge-onllm {
   color: var(--accent-peach);
   background: rgba(245, 158, 11, 0.1);
-  border: 1px solid color-mix(in srgb, var(--accent-teal) 20%, transparent);
-  border-radius: var(--radius-full);
-  margin-bottom: 24px;
+  border-left: 1px solid rgba(13, 148, 136, 0.15);
 }
 .hero-badge svg { width: 14px; height: 14px; }
 
@@ -1911,7 +1910,7 @@ a:hover { text-decoration: underline; }
                             <div class="mock-card">
                                 <div class="mock-card-header">
                                     <div class="mock-card-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>Subscription</div>
-                                    <div class="mock-card-countdown" id="mock-cd-sub">4h 12m</div>
+                                    <div class="mock-card-countdown" id="mock-cd-sub">3h 47m</div>
                                 </div>
                                 <div class="mock-card-value" id="anim-sub">0%</div>
                                 <div class="mock-card-sub">154 / 1,350</div>
@@ -1924,23 +1923,23 @@ a:hover { text-decoration: underline; }
                             <div class="mock-card">
                                 <div class="mock-card-header">
                                     <div class="mock-card-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>Search (Hourly)</div>
-                                    <div class="mock-card-countdown">18m</div>
+                                    <div class="mock-card-countdown">38m</div>
                                 </div>
                                 <div class="mock-card-value" id="anim-search">0%</div>
-                                <div class="mock-card-sub">42 / 250</div>
-                                <div class="mock-progress"><div class="mock-progress-fill" id="prog-search" style="width:0%;background:var(--status-healthy)"></div></div>
+                                <div class="mock-card-sub">238 / 250</div>
+                                <div class="mock-progress"><div class="mock-progress-fill" id="prog-search" style="width:0%;background:var(--status-danger)"></div></div>
                                 <div class="mock-card-footer">
-                                    <span class="mock-badge healthy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Healthy</span>
-                                    <span class="mock-reset">Resets 4:22 PM</span>
+                                    <span class="mock-badge danger"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Danger</span>
+                                    <span class="mock-reset" id="mock-reset-search">Resets 4:38 PM</span>
                                 </div>
                             </div>
                             <div class="mock-card">
                                 <div class="mock-card-header">
                                     <div class="mock-card-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Tool Calls</div>
-                                    <div class="mock-card-countdown">1h 22m</div>
+                                    <div class="mock-card-countdown">16h 22m</div>
                                 </div>
                                 <div class="mock-card-value" id="anim-tool">0%</div>
-                                <div class="mock-card-sub">7,635 / 16,200</div>
+                                <div class="mock-card-sub">14,191 / 16,200</div>
                                 <div class="mock-progress"><div class="mock-progress-fill" id="prog-tool" style="width:0%;background:var(--status-warning)"></div></div>
                                 <div class="mock-card-footer">
                                     <span class="mock-badge warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Warning</span>
@@ -1955,10 +1954,10 @@ a:hover { text-decoration: underline; }
                             <div class="mock-card">
                                 <div class="mock-card-header">
                                     <div class="mock-card-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>Tokens</div>
-                                    <div class="mock-card-countdown">23h 45m</div>
+                                    <div class="mock-card-countdown">17h 14m</div>
                                 </div>
                                 <div class="mock-card-value" id="anim-zai-tok">0%</div>
-                                <div class="mock-card-sub">1.2M / 10M</div>
+                                <div class="mock-card-sub">3.4M / 10M</div>
                                 <div class="mock-progress"><div class="mock-progress-fill" id="prog-zai-tok" style="width:0%;background:var(--status-healthy)"></div></div>
                                 <div class="mock-card-footer">
                                     <span class="mock-badge healthy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Healthy</span>
@@ -1968,10 +1967,10 @@ a:hover { text-decoration: underline; }
                             <div class="mock-card">
                                 <div class="mock-card-header">
                                     <div class="mock-card-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Time</div>
-                                    <div class="mock-card-countdown">23h 45m</div>
+                                    <div class="mock-card-countdown">17h 14m</div>
                                 </div>
                                 <div class="mock-card-value" id="anim-zai-time">0%</div>
-                                <div class="mock-card-sub">28 / 500 min</div>
+                                <div class="mock-card-sub">110 / 500 min</div>
                                 <div class="mock-progress"><div class="mock-progress-fill" id="prog-zai-time" style="width:0%;background:var(--status-healthy)"></div></div>
                                 <div class="mock-card-footer">
                                     <span class="mock-badge healthy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Healthy</span>
@@ -1981,10 +1980,10 @@ a:hover { text-decoration: underline; }
                             <div class="mock-card">
                                 <div class="mock-card-header">
                                     <div class="mock-card-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Tool Calls</div>
-                                    <div class="mock-card-countdown">23h 45m</div>
+                                    <div class="mock-card-countdown">17h 14m</div>
                                 </div>
                                 <div class="mock-card-value" id="anim-zai-tool">0%</div>
-                                <div class="mock-card-sub">85 / 1,000</div>
+                                <div class="mock-card-sub">280 / 1,000</div>
                                 <div class="mock-progress"><div class="mock-progress-fill" id="prog-zai-tool" style="width:0%;background:var(--status-healthy)"></div></div>
                                 <div class="mock-card-footer">
                                     <span class="mock-badge healthy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Healthy</span>
@@ -1998,42 +1997,42 @@ a:hover { text-decoration: underline; }
                         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent-teal);margin:0 0 6px;opacity:0.7;">Synthetic</div>
                         <div class="mockup-cards" style="grid-template-columns: repeat(3, 1fr); gap:8px; margin-bottom:6px;">
                             <div class="mock-card" style="padding:10px 12px;">
-                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Subscription</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">4h 12m</div></div>
+                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Subscription</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">3h 47m</div></div>
                                 <div class="mock-card-value" id="anim-both-sub" style="font-size:16px;">0%</div>
                                 <div class="mock-card-sub" style="font-size:9px;">154 / 1,350</div>
                                 <div class="mock-progress"><div class="mock-progress-fill" id="prog-both-sub" style="width:0%;background:var(--status-healthy)"></div></div>
                             </div>
                             <div class="mock-card" style="padding:10px 12px;">
-                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Search</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">18m</div></div>
+                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Search</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">38m</div></div>
                                 <div class="mock-card-value" id="anim-both-search" style="font-size:16px;">0%</div>
-                                <div class="mock-card-sub" style="font-size:9px;">42 / 250</div>
-                                <div class="mock-progress"><div class="mock-progress-fill" id="prog-both-search" style="width:0%;background:var(--status-healthy)"></div></div>
+                                <div class="mock-card-sub" style="font-size:9px;">238 / 250</div>
+                                <div class="mock-progress"><div class="mock-progress-fill" id="prog-both-search" style="width:0%;background:var(--status-danger)"></div></div>
                             </div>
                             <div class="mock-card" style="padding:10px 12px;">
-                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Tool Calls</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">1h 22m</div></div>
+                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Tool Calls</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">16h 22m</div></div>
                                 <div class="mock-card-value" id="anim-both-tool" style="font-size:16px;">0%</div>
-                                <div class="mock-card-sub" style="font-size:9px;">7,635 / 16,200</div>
+                                <div class="mock-card-sub" style="font-size:9px;">14,191 / 16,200</div>
                                 <div class="mock-progress"><div class="mock-progress-fill" id="prog-both-tool" style="width:0%;background:var(--status-warning)"></div></div>
                             </div>
                         </div>
                         <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent-peach);margin:8px 0 6px;opacity:0.7;">Z.ai</div>
                         <div class="mockup-cards" style="grid-template-columns: repeat(3, 1fr); gap:8px; margin-bottom:0;">
                             <div class="mock-card" style="padding:10px 12px;">
-                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Tokens</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">23h 45m</div></div>
+                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Tokens</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">17h 14m</div></div>
                                 <div class="mock-card-value" id="anim-both-tok" style="font-size:16px;">0%</div>
-                                <div class="mock-card-sub" style="font-size:9px;">1.2M / 10M</div>
+                                <div class="mock-card-sub" style="font-size:9px;">3.4M / 10M</div>
                                 <div class="mock-progress"><div class="mock-progress-fill" id="prog-both-tok" style="width:0%;background:var(--status-healthy)"></div></div>
                             </div>
                             <div class="mock-card" style="padding:10px 12px;">
-                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Time</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">23h 45m</div></div>
+                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Time</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">17h 14m</div></div>
                                 <div class="mock-card-value" id="anim-both-time" style="font-size:16px;">0%</div>
-                                <div class="mock-card-sub" style="font-size:9px;">28 / 500 min</div>
+                                <div class="mock-card-sub" style="font-size:9px;">110 / 500 min</div>
                                 <div class="mock-progress"><div class="mock-progress-fill" id="prog-both-time" style="width:0%;background:var(--status-healthy)"></div></div>
                             </div>
                             <div class="mock-card" style="padding:10px 12px;">
-                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Tool Calls</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">23h 45m</div></div>
+                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Tool Calls</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">17h 14m</div></div>
                                 <div class="mock-card-value" id="anim-both-ztool" style="font-size:16px;">0%</div>
-                                <div class="mock-card-sub" style="font-size:9px;">85 / 1,000</div>
+                                <div class="mock-card-sub" style="font-size:9px;">280 / 1,000</div>
                                 <div class="mock-progress"><div class="mock-progress-fill" id="prog-both-ztool" style="width:0%;background:var(--status-healthy)"></div></div>
                             </div>
                         </div>
@@ -2042,10 +2041,16 @@ a:hover { text-decoration: underline; }
                         <div class="mock-chart-title">Usage over time — Last 6 hours</div>
                         <div id="chart-single" style="position:relative;height:110px;"><canvas id="mock-chart-canvas"></canvas></div>
                         <div id="chart-dual" style="display:none;">
-                            <div class="mock-dual-label" style="color:var(--accent-teal);">Synthetic</div>
-                            <div style="position:relative;height:48px;"><canvas id="mock-chart-syn"></canvas></div>
-                            <div class="mock-dual-label" style="color:var(--accent-peach);margin-top:4px;">Z.ai</div>
-                            <div style="position:relative;height:48px;"><canvas id="mock-chart-zai"></canvas></div>
+                            <div style="display:flex;gap:6px;">
+                                <div style="flex:1;min-width:0;">
+                                    <div class="mock-dual-label" style="color:var(--accent-teal);">Synthetic</div>
+                                    <div style="position:relative;height:90px;"><canvas id="mock-chart-syn"></canvas></div>
+                                </div>
+                                <div style="flex:1;min-width:0;">
+                                    <div class="mock-dual-label" style="color:var(--accent-peach);">Z.ai</div>
+                                    <div style="position:relative;height:90px;"><canvas id="mock-chart-zai"></canvas></div>
+                                </div>
+                            </div>
                         </div>
                         <div class="mock-legend" id="mock-legend">
                             <span class="mock-legend-item"><span class="mock-legend-dot" style="background:#0D9488"></span>Subscription</span>
@@ -2668,17 +2673,17 @@ a:hover { text-decoration: underline; }
             { id: 'anim-tool', prog: 'prog-tool', end: 87.6 }
         ],
         zai: [
-            { id: 'anim-zai-tok', prog: 'prog-zai-tok', end: 12.0 },
-            { id: 'anim-zai-time', prog: 'prog-zai-time', end: 5.6 },
-            { id: 'anim-zai-tool', prog: 'prog-zai-tool', end: 8.5 }
+            { id: 'anim-zai-tok', prog: 'prog-zai-tok', end: 34.0 },
+            { id: 'anim-zai-time', prog: 'prog-zai-time', end: 22.0 },
+            { id: 'anim-zai-tool', prog: 'prog-zai-tool', end: 28.0 }
         ],
         both: [
             { id: 'anim-both-sub', prog: 'prog-both-sub', end: 11.4 },
             { id: 'anim-both-search', prog: 'prog-both-search', end: 95.2 },
             { id: 'anim-both-tool', prog: 'prog-both-tool', end: 87.6 },
-            { id: 'anim-both-tok', prog: 'prog-both-tok', end: 12.0 },
-            { id: 'anim-both-time', prog: 'prog-both-time', end: 5.6 },
-            { id: 'anim-both-ztool', prog: 'prog-both-ztool', end: 8.5 }
+            { id: 'anim-both-tok', prog: 'prog-both-tok', end: 34.0 },
+            { id: 'anim-both-time', prog: 'prog-both-time', end: 22.0 },
+            { id: 'anim-both-ztool', prog: 'prog-both-ztool', end: 28.0 }
         ]
     };
 
@@ -3109,11 +3114,12 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     function fmtResetTime(d) { var h = d.getHours(), m = d.getMinutes(); var ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12; return 'Resets ' + h + ':' + pad(m) + ' ' + ap; }
 
     /* ── Reset offsets from page load (in seconds) ── */
+    /* Sub resets every ~5h, Search every ~1h, Tool Calls every ~24h, Z.ai daily */
     var now = new Date();
-    var subOff = 3 * 3600 + 12 * 60 + 37;    /* ~3h 12m 37s */
-    var searchOff = 7 * 60 + 23;               /* ~7m 23s */
-    var toolOff = 2 * 3600 + 4 * 60 + 51;     /* ~2h 4m 51s */
-    var zaiOff = 23 * 3600 + 45 * 60 + 18;    /* ~23h 45m 18s */
+    var subOff = 3 * 3600 + 47 * 60 + 12;     /* ~3h 47m left of 5h cycle */
+    var searchOff = 38 * 60 + 17;              /* ~38m left of 1h cycle */
+    var toolOff = 16 * 3600 + 22 * 60 + 41;   /* ~16h 22m left of 24h cycle */
+    var zaiOff = 17 * 3600 + 14 * 60 + 33;    /* ~17h 14m left of daily reset */
 
     var subReset = new Date(now.getTime() + subOff * 1000);
     var searchReset = new Date(now.getTime() + searchOff * 1000);
@@ -3230,14 +3236,35 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     var synToolData = buildCurve(actTool, toolEnd);
 
     /* Z.ai data: derived from different seeds, monotonically increasing (no resets) */
+    /* Z.ai has daily resets, so within 6h window the data should be steadily climbing */
+    /* Start from a meaningful base (usage already happened earlier in the day) */
     var actZTok = genActivity(5555);
     var actZTime = genActivity(9876);
     var actZTool = genActivity(3141);
 
-    var zaiTokEnd = 12.0, zaiTimeEnd = 5.6, zaiToolEnd = 8.5;
-    var zaiTokData = buildCurve(actZTok, zaiTokEnd);
-    var zaiTimeData = buildCurve(actZTime, zaiTimeEnd);
-    var zaiToolData = buildCurve(actZTool, zaiToolEnd);
+    var zaiTokBase = 18, zaiTokEnd = 34;     /* 18% -> 34% of daily token limit */
+    var zaiTimeBase = 8, zaiTimeEnd = 22;     /* 8% -> 22% of daily time limit */
+    var zaiToolBase = 12, zaiToolEnd = 28;    /* 12% -> 28% of daily tool call limit */
+
+    function buildCurveWithBase(activity, basePct, endPct) {
+        var range = endPct - basePct;
+        var total = 0;
+        for (var j = 0; j < POINTS; j++) total += activity[j];
+        if (total === 0) total = 1;
+        var cumulative = [];
+        var sum = 0;
+        for (var j = 0; j < POINTS; j++) {
+            sum += activity[j];
+            var base = (sum / total) * range * 0.85;
+            var drift = (j / POINTS) * range * 0.15;
+            cumulative.push(basePct + Math.min(range, base + drift));
+        }
+        return cumulative;
+    }
+
+    var zaiTokData = buildCurveWithBase(actZTok, zaiTokBase, zaiTokEnd);
+    var zaiTimeData = buildCurveWithBase(actZTime, zaiTimeBase, zaiTimeEnd);
+    var zaiToolData = buildCurveWithBase(actZTool, zaiToolBase, zaiToolEnd);
 
     /* Ensure Z.ai data is monotonically increasing */
     function monotonic(arr) {
