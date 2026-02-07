@@ -248,13 +248,13 @@ const anthropicQuotaIcons = {
   extra_usage: '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>' // pie-chart
 };
 
-// Anthropic chart colors (amber/orange palette)
+// Anthropic chart colors (coral / pink / cyan — visually distinct per quota)
 const anthropicChartColors = [
-  { border: '#D97706', bg: 'rgba(217, 119, 6, 0.08)' },
-  { border: '#B45309', bg: 'rgba(180, 83, 9, 0.08)' },
-  { border: '#F59E0B', bg: 'rgba(245, 158, 11, 0.08)' },
-  { border: '#92400E', bg: 'rgba(146, 64, 14, 0.08)' },
-  { border: '#FBBF24', bg: 'rgba(251, 191, 36, 0.08)' }
+  { border: '#D97757', bg: 'rgba(217, 119, 87, 0.08)' },   // five_hour — coral
+  { border: '#EC4899', bg: 'rgba(236, 72, 153, 0.08)' },   // seven_day — pink
+  { border: '#06B6D4', bg: 'rgba(6, 182, 212, 0.08)' },    // seven_day_sonnet — cyan
+  { border: '#A855F7', bg: 'rgba(168, 85, 247, 0.08)' },   // monthly_limit — violet
+  { border: '#14B8A6', bg: 'rgba(20, 184, 166, 0.08)' }    // extra_usage — teal
 ];
 
 // ── Anthropic Dynamic Card Rendering ──
@@ -1655,12 +1655,17 @@ async function fetchCycles(quotaType) {
     const data = await res.json();
 
     if (provider === 'both') {
-      // "both" response: { synthetic: [...], zai: [...] }
-      let merged = [];
-      if (data.synthetic) merged = merged.concat(data.synthetic.map(c => ({ ...c, _provider: 'Syn' })));
-      if (data.zai) merged = merged.concat(data.zai.map(c => ({ ...c, _provider: 'Z.ai' })));
-      merged.sort((a, b) => new Date(b.cycleStart).getTime() - new Date(a.cycleStart).getTime());
-      State.allCyclesData = merged;
+      if (Array.isArray(data)) {
+        // Anthropic or single-provider response: already an array
+        State.allCyclesData = data;
+      } else {
+        // "both" response: { synthetic: [...], zai: [...] }
+        let merged = [];
+        if (data.synthetic) merged = merged.concat(data.synthetic.map(c => ({ ...c, _provider: 'Syn' })));
+        if (data.zai) merged = merged.concat(data.zai.map(c => ({ ...c, _provider: 'Z.ai' })));
+        merged.sort((a, b) => new Date(b.cycleStart).getTime() - new Date(a.cycleStart).getTime());
+        State.allCyclesData = merged;
+      }
     } else {
       State.allCyclesData = data || [];
     }
@@ -1729,7 +1734,9 @@ function renderCyclesTable() {
   const cutoff = now - rangeMs;
 
   // Filter by time range
-  let filtered = State.allCyclesData.filter(c => new Date(c.cycleStart).getTime() >= cutoff);
+  let filtered = State.allCyclesData.filter(c =>
+    new Date(c.cycleStart).getTime() >= cutoff || !c.cycleEnd
+  );
 
   // Group into time buckets
   const grouped = groupCyclesData(filtered, groupMs);
@@ -2452,7 +2459,8 @@ function setupHeaderActions() {
     refreshBtn.addEventListener('click', () => {
       refreshBtn.classList.add('spinning');
       Promise.all([
-        fetchCurrent().then(() => fetchDeepInsights()),
+        fetchCurrent(),
+        fetchDeepInsights(),
         fetchHistory(),
         fetchCycles(),
         fetchSessions()
@@ -2497,7 +2505,7 @@ function setupCardModals() {
 function startAutoRefresh() {
   if (State.refreshInterval) clearInterval(State.refreshInterval);
   State.refreshInterval = setInterval(() => {
-    fetchCurrent().then(() => fetchDeepInsights());
+    fetchCurrent(); fetchDeepInsights();
     fetchHistory();
     fetchCycles();
     fetchSessions();
@@ -2543,7 +2551,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const provider = getCurrentProvider();
     const defaultCycleType = provider === 'both' ? 'subscription' : provider === 'anthropic' ? 'five_hour' : provider === 'zai' ? 'tokens' : 'subscription';
     initChart();
-    fetchCurrent().then(() => fetchDeepInsights());
+    fetchCurrent(); fetchDeepInsights();
     fetchHistory('6h');
     fetchCycles(defaultCycleType);
     fetchSessions();

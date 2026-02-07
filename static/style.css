@@ -85,17 +85,17 @@
   --transition-base: 200ms ease;
   --transition-slow: 300ms ease;
 
-  /* Accent: Anthropic (Amber/Orange) */
-  --accent-anthropic: #D97706;
-  --accent-anthropic-light: #FEF3C7;
-  --accent-anthropic-muted: rgba(217, 119, 6, 0.1);
-  --accent-anthropic-text: #92400E;
+  /* Accent: Anthropic (Coral) */
+  --accent-anthropic: #D97757;
+  --accent-anthropic-light: #FEF2EE;
+  --accent-anthropic-muted: rgba(217, 119, 87, 0.1);
+  --accent-anthropic-text: #9A3412;
 
   /* Chart colors (same in both modes) */
   --chart-subscription: #0D9488;
   --chart-search: #F59E0B;
   --chart-toolcalls: #3B82F6;
-  --chart-anthropic: #D97706;
+  --chart-anthropic: #D97757;
 }
 
 /* ═══════════════════════════════════════════
@@ -161,12 +161,12 @@
   --chart-subscription: #14B8A6;
   --chart-search: #FBBF24;
   --chart-toolcalls: #60A5FA;
-  --chart-anthropic: #FBBF24;
+  --chart-anthropic: #E8956F;
 
-  --accent-anthropic: #FBBF24;
-  --accent-anthropic-light: #2D2410;
-  --accent-anthropic-muted: rgba(251, 191, 36, 0.12);
-  --accent-anthropic-text: #FDE68A;
+  --accent-anthropic: #E8956F;
+  --accent-anthropic-light: #2D1A10;
+  --accent-anthropic-muted: rgba(232, 149, 111, 0.12);
+  --accent-anthropic-text: #FBBAA0;
 }
 
 /* ═══════════════════════════════════════════
@@ -774,7 +774,7 @@ button, input, select { font-family: inherit; }
 
 .insights-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -814,7 +814,7 @@ button, input, select { font-family: inherit; }
 /* Insight Cards Grid */
 .insights-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 10px;
 }
 .insights-cards:empty { display: none; }
