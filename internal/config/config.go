@@ -32,6 +32,7 @@ type Config struct {
 	DBPath       string        // SYNTRACK_DB_PATH
 	LogLevel     string        // SYNTRACK_LOG_LEVEL
 	DebugMode    bool          // --debug flag (foreground mode)
+	TestMode     bool          // --test flag (test mode isolation)
 }
 
 // flagValues holds parsed CLI flags.
@@ -40,6 +41,7 @@ type flagValues struct {
 	port     int
 	db       string
 	debug    bool
+	test     bool
 }
 
 // Load reads configuration from .env file, environment variables, and CLI flags.
@@ -58,6 +60,8 @@ func loadWithArgs(args []string) (*Config, error) {
 		switch {
 		case arg == "--debug":
 			flags.debug = true
+		case arg == "--test":
+			flags.test = true
 		case strings.HasPrefix(arg, "--interval="):
 			val := strings.TrimPrefix(arg, "--interval=")
 			if v, err := strconv.Atoi(val); err == nil {
@@ -143,6 +147,9 @@ func loadFromEnvAndFlags(flags *flagValues) (*Config, error) {
 
 	// Debug mode (CLI flag only)
 	cfg.DebugMode = flags.debug
+
+	// Test mode (CLI flag only)
+	cfg.TestMode = flags.test
 
 	// Apply defaults
 	cfg.applyDefaults()
@@ -300,7 +307,11 @@ func (c *Config) LogWriter() (io.Writer, error) {
 	}
 
 	// Background mode: log to file in same directory as DB
-	logPath := filepath.Join(filepath.Dir(c.DBPath), ".syntrack.log")
+	logName := ".syntrack.log"
+	if c.TestMode {
+		logName = ".syntrack-test.log"
+	}
+	logPath := filepath.Join(filepath.Dir(c.DBPath), logName)
 
 	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {

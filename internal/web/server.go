@@ -78,12 +78,14 @@ func NewServer(port int, handler *Handler, logger *slog.Logger, username, passwo
 func contentTypeHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Set content type based on file extension before serving
-		if len(r.URL.Path) > 4 {
+		if len(r.URL.Path) > 3 {
 			switch {
-			case r.URL.Path[len(r.URL.Path)-4:] == ".css":
+			case len(r.URL.Path) > 4 && r.URL.Path[len(r.URL.Path)-4:] == ".css":
 				w.Header().Set("Content-Type", "text/css")
 			case r.URL.Path[len(r.URL.Path)-3:] == ".js":
 				w.Header().Set("Content-Type", "application/javascript")
+			case len(r.URL.Path) > 4 && r.URL.Path[len(r.URL.Path)-4:] == ".svg":
+				w.Header().Set("Content-Type", "image/svg+xml")
 			}
 		}
 		next.ServeHTTP(w, r)

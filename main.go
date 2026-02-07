@@ -37,15 +37,51 @@ var (
 	pidFile = filepath.Join(pidDir, "syntrack.pid")
 )
 
+// hasFlag checks if a flag exists anywhere in os.Args[1:].
+func hasFlag(flag string) bool {
+	for _, arg := range os.Args[1:] {
+		if arg == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// hasCommand checks if any of the given commands/flags exist in os.Args[1:].
+func hasCommand(cmds ...string) bool {
+	for _, arg := range os.Args[1:] {
+		for _, cmd := range cmds {
+			if arg == cmd {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // stopPreviousInstance stops any running syntrack instance using PID file + port check.
-func stopPreviousInstance(port int) {
+// In test mode, only PID file is used (no port scanning) to avoid killing production.
+func stopPreviousInstance(port int, testMode bool) {
 	myPID := os.Getpid()
 	stopped := false
 
-	// Method 1: PID file
+	// Method 1: PID file (handles both "PID" and "PID:PORT" formats)
 	if data, err := os.ReadFile(pidFile); err == nil {
-		pidStr := strings.TrimSpace(string(data))
-		if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 && pid != myPID {
+		content := strings.TrimSpace(string(data))
+		var pid, filePort int
+
+		// Parse PID:PORT format (new) or just PID (legacy)
+		if strings.Contains(content, ":") {
+			parts := strings.Split(content, ":")
+			if len(parts) >= 2 {
+				pid, _ = strconv.Atoi(parts[0])
+				filePort, _ = strconv.Atoi(parts[1])
+			}
+		} else {
+			pid, _ = strconv.Atoi(content)
+		}
+
+		if pid > 0 && pid != myPID {
 			if proc, err := os.FindProcess(pid); err == nil {
 				if err := proc.Signal(syscall.SIGTERM); err == nil {
 					fmt.Printf("Stopped previous instance (PID %d) via PID file\n", pid)
@@ -54,10 +90,32 @@ func stopPreviousInstance(port int) {
 			}
 		}
 		os.Remove(pidFile)
+
+		// If PID file had a port and we didn't stop it, try that specific port
+		if !stopped && filePort > 0 {
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", filePort), 500*time.Millisecond)
+			if err == nil {
+				conn.Close()
+				if pids := findSyntrackOnPort(filePort); len(pids) > 0 {
+					for _, foundPID := range pids {
+						if foundPID == myPID {
+							continue
+						}
+						if proc, err := os.FindProcess(foundPID); err == nil {
+							if err := proc.Signal(syscall.SIGTERM); err == nil {
+								fmt.Printf("Stopped previous instance (PID %d) on port %d\n", foundPID, filePort)
+								stopped = true
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	// Method 2: Check if the port is in use and kill the occupying syntrack process
-	if !stopped && port > 0 {
+	// Skip in test mode to avoid accidentally killing production instances
+	if !testMode && !stopped && port > 0 {
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 500*time.Millisecond)
 		if err == nil {
 			conn.Close()
@@ -122,11 +180,13 @@ func ensurePIDDir() error {
 	return os.MkdirAll(pidDir, 0755)
 }
 
-func writePIDFile() error {
+func writePIDFile(port int) error {
 	if err := ensurePIDDir(); err != nil {
 		return fmt.Errorf("failed to create PID directory: %w", err)
 	}
-	return os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0644)
+	// Store both PID and port for reliable stopping
+	content := fmt.Sprintf("%d:%d", os.Getpid(), port)
+	return os.WriteFile(pidFile, []byte(content), 0644)
 }
 
 func removePIDFile() {
@@ -148,7 +208,11 @@ func daemonize(cfg *config.Config) error {
 	}
 
 	// Open log file for child's stdout/stderr
-	logPath := filepath.Join(filepath.Dir(cfg.DBPath), ".syntrack.log")
+	logName := ".syntrack.log"
+	if cfg.TestMode {
+		logName = ".syntrack-test.log"
+	}
+	logPath := filepath.Join(filepath.Dir(cfg.DBPath), logName)
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open log file for daemon: %w", err)
@@ -166,12 +230,13 @@ func daemonize(cfg *config.Config) error {
 		return fmt.Errorf("failed to start daemon: %w", err)
 	}
 
-	// Write child PID
+	// Write child PID and port
 	childPID := cmd.Process.Pid
 	if err := ensurePIDDir(); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not create PID directory: %v\n", err)
 	}
-	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(childPID)), 0644); err != nil {
+	pidContent := fmt.Sprintf("%d:%d", childPID, cfg.Port)
+	if err := os.WriteFile(pidFile, []byte(pidContent), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not write PID file: %v\n", err)
 	}
 
@@ -182,35 +247,29 @@ func daemonize(cfg *config.Config) error {
 }
 
 func run() error {
-	// Handle subcommands that don't need full config first
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "stop":
-			return runStop()
-		case "status":
-			return runStatus()
-		case "--version", "-v":
-			fmt.Printf("SynTrack v%s\n", version)
-			return nil
-		case "--help", "-h":
-			printHelp()
-			return nil
-		}
+	// Phase 1: Detect test mode early and configure PID file for isolation
+	testMode := hasFlag("--test")
+	if testMode {
+		pidFile = filepath.Join(pidDir, "syntrack-test.pid")
 	}
 
-	// Also check for flags anywhere in args (backward compat)
-	for _, arg := range os.Args[1:] {
-		if arg == "--version" || arg == "-v" {
-			fmt.Printf("SynTrack v%s\n", version)
-			return nil
-		}
-		if arg == "--help" || arg == "-h" {
-			printHelp()
-			return nil
-		}
+	// Phase 2: Handle subcommands (both with and without -- prefix)
+	if hasCommand("stop", "--stop") {
+		return runStop(testMode)
+	}
+	if hasCommand("status", "--status") {
+		return runStatus(testMode)
+	}
+	if hasCommand("--version", "-v") {
+		fmt.Printf("SynTrack v%s\n", version)
+		return nil
+	}
+	if hasCommand("--help", "-h") {
+		printHelp()
+		return nil
 	}
 
-	// Parse flags and load config
+	// Phase 3: Parse flags and load config
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -220,7 +279,7 @@ func run() error {
 
 	// Stop any previous instance (parent does this, daemon child skips it)
 	if !isDaemonChild {
-		stopPreviousInstance(cfg.Port)
+		stopPreviousInstance(cfg.Port, testMode)
 	}
 
 	// Daemonize: if not in debug mode and not already the daemon child, fork
@@ -234,7 +293,7 @@ func run() error {
 	// In daemon mode, the parent already wrote the PID file with our PID.
 	// In debug mode, we write our own PID file.
 	if cfg.DebugMode {
-		if err := writePIDFile(); err != nil {
+		if err := writePIDFile(cfg.Port); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not write PID file: %v\n", err)
 		}
 	}
@@ -408,17 +467,39 @@ func run() error {
 }
 
 // runStop stops any running syntrack instance.
-func runStop() error {
+// In test mode, only the test PID file is used (no port scanning) to avoid killing production.
+func runStop(testMode bool) error {
 	myPID := os.Getpid()
 	stopped := false
+	label := "syntrack"
+	if testMode {
+		label = "syntrack (test)"
+	}
 
-	// Method 1: PID file
+	// Method 1: PID file (handles both "PID" and "PID:PORT" formats)
 	if data, err := os.ReadFile(pidFile); err == nil {
-		pidStr := strings.TrimSpace(string(data))
-		if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 && pid != myPID {
+		content := strings.TrimSpace(string(data))
+		var pid, port int
+
+		// Parse PID:PORT format (new) or just PID (legacy)
+		if strings.Contains(content, ":") {
+			parts := strings.Split(content, ":")
+			if len(parts) >= 2 {
+				pid, _ = strconv.Atoi(parts[0])
+				port, _ = strconv.Atoi(parts[1])
+			}
+		} else {
+			pid, _ = strconv.Atoi(content)
+		}
+
+		if pid > 0 && pid != myPID {
 			if proc, err := os.FindProcess(pid); err == nil {
 				if err := proc.Signal(syscall.SIGTERM); err == nil {
-					fmt.Printf("Stopped syntrack (PID %d)\n", pid)
+					if port > 0 {
+						fmt.Printf("Stopped %s (PID %d) on port %d\n", label, pid, port)
+					} else {
+						fmt.Printf("Stopped %s (PID %d)\n", label, pid)
+					}
 					stopped = true
 				} else {
 					fmt.Printf("Process %d not running (stale PID file)\n", pid)
@@ -426,10 +507,33 @@ func runStop() error {
 			}
 		}
 		os.Remove(pidFile)
+
+		// If we have a port from PID file, try port-based detection on that specific port first
+		// Skip in test mode to avoid killing production instances
+		if !testMode && !stopped && port > 0 {
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 500*time.Millisecond)
+			if err == nil {
+				conn.Close()
+				if pids := findSyntrackOnPort(port); len(pids) > 0 {
+					for _, foundPID := range pids {
+						if foundPID == myPID {
+							continue
+						}
+						if proc, err := os.FindProcess(foundPID); err == nil {
+							if err := proc.Signal(syscall.SIGTERM); err == nil {
+								fmt.Printf("Stopped %s (PID %d) on port %d\n", label, foundPID, port)
+								stopped = true
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
-	// Method 2: Port-based fallback — check default and common ports
-	if !stopped {
+	// Method 2: Port-based fallback — check default ports
+	// Skip in test mode to avoid killing production instances
+	if !testMode && !stopped {
 		// Check both old (8932) and new (9211) default ports for backwards compatibility
 		for _, port := range []int{9211, 8932} {
 			conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 500*time.Millisecond)
@@ -444,7 +548,7 @@ func runStop() error {
 					}
 					if proc, err := os.FindProcess(pid); err == nil {
 						if err := proc.Signal(syscall.SIGTERM); err == nil {
-							fmt.Printf("Stopped syntrack (PID %d) on port %d\n", pid, port)
+							fmt.Printf("Stopped %s (PID %d) on port %d\n", label, pid, port)
 							stopped = true
 						}
 					}
@@ -454,32 +558,54 @@ func runStop() error {
 	}
 
 	if !stopped {
-		fmt.Println("No running syntrack instance found")
+		fmt.Printf("No running %s instance found\n", label)
 	}
 	return nil
 }
 
 // runStatus reports the status of any running syntrack instance.
-func runStatus() error {
+// In test mode, only the test PID file is checked (no port scanning).
+func runStatus(testMode bool) error {
 	myPID := os.Getpid()
+	label := "syntrack"
+	if testMode {
+		label = "syntrack (test)"
+	}
 
-	// Check PID file
+	// Check PID file (handles both "PID" and "PID:PORT" formats)
 	if data, err := os.ReadFile(pidFile); err == nil {
-		pidStr := strings.TrimSpace(string(data))
-		if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 && pid != myPID {
+		content := strings.TrimSpace(string(data))
+		var pid, port int
+
+		// Parse PID:PORT format (new) or just PID (legacy)
+		if strings.Contains(content, ":") {
+			parts := strings.Split(content, ":")
+			if len(parts) >= 2 {
+				pid, _ = strconv.Atoi(parts[0])
+				port, _ = strconv.Atoi(parts[1])
+			}
+		} else {
+			pid, _ = strconv.Atoi(content)
+		}
+
+		if pid > 0 && pid != myPID {
 			if proc, err := os.FindProcess(pid); err == nil {
 				// On Unix, signal 0 checks if process exists without killing it
 				if err := proc.Signal(syscall.Signal(0)); err == nil {
-					fmt.Printf("syntrack is running (PID %d)\n", pid)
+					fmt.Printf("%s is running (PID %d)\n", label, pid)
 
-					// Check which port it's listening on
-					// Check both old (8932) and new (9211) default ports for backwards compatibility
-					for _, port := range []int{9211, 8932, 8080, 9000} {
-						if pids := findSyntrackOnPort(port); len(pids) > 0 {
-							for _, p := range pids {
-								if p == pid {
-									fmt.Printf("  Dashboard: http://localhost:%d\n", port)
-									break
+					// If we have port from PID file, show it directly
+					if port > 0 {
+						fmt.Printf("  Dashboard: http://localhost:%d\n", port)
+					} else if !testMode {
+						// Check which port it's listening on (skip in test mode)
+						for _, checkPort := range []int{9211, 8932, 8080, 9000} {
+							if pids := findSyntrackOnPort(checkPort); len(pids) > 0 {
+								for _, p := range pids {
+									if p == pid {
+										fmt.Printf("  Dashboard: http://localhost:%d\n", checkPort)
+										break
+									}
 								}
 							}
 						}
@@ -490,6 +616,9 @@ func runStatus() error {
 
 					// Show log file if it exists
 					logPath := ".syntrack.log"
+					if testMode {
+						logPath = ".syntrack-test.log"
+					}
 					if info, err := os.Stat(logPath); err == nil {
 						fmt.Printf("  Log file:  %s (%s)\n", logPath, humanSize(info.Size()))
 					}
@@ -504,32 +633,33 @@ func runStatus() error {
 				}
 			}
 			// Stale PID file
-			fmt.Printf("syntrack is not running (stale PID file for PID %d)\n", pid)
+			fmt.Printf("%s is not running (stale PID file for PID %d)\n", label, pid)
 			return nil
 		}
 	}
 
-	// No PID file — try port check
-	// Check both old (8932) and new (9211) default ports for backwards compatibility
-	for _, port := range []int{9211, 8932} {
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 500*time.Millisecond)
-		if err != nil {
-			continue
-		}
-		conn.Close()
-		if pids := findSyntrackOnPort(port); len(pids) > 0 {
-			for _, pid := range pids {
-				if pid == myPID {
-					continue
+	// No PID file — try port check (skip in test mode to avoid confusion with production)
+	if !testMode {
+		for _, port := range []int{9211, 8932} {
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 500*time.Millisecond)
+			if err != nil {
+				continue
+			}
+			conn.Close()
+			if pids := findSyntrackOnPort(port); len(pids) > 0 {
+				for _, pid := range pids {
+					if pid == myPID {
+						continue
+					}
+					fmt.Printf("%s is running (PID %d) on port %d\n", label, pid, port)
+					fmt.Printf("  Dashboard: http://localhost:%d\n", port)
+					return nil
 				}
-				fmt.Printf("syntrack is running (PID %d) on port %d\n", pid, port)
-				fmt.Printf("  Dashboard: http://localhost:%d\n", port)
-				return nil
 			}
 		}
 	}
 
-	fmt.Println("syntrack is not running")
+	fmt.Printf("%s is not running\n", label)
 	return nil
 }
 
@@ -567,6 +697,9 @@ func printBanner(cfg *config.Config, version string) {
 	fmt.Printf("║  Dashboard: http://localhost:%d    ║\n", cfg.Port)
 	fmt.Printf("║  Database:  %-24s ║\n", cfg.DBPath)
 	fmt.Printf("║  Auth:      %s / ****             ║\n", cfg.AdminUser)
+	if cfg.TestMode {
+		fmt.Println("║  Mode:      TEST (isolated)          ║")
+	}
 	fmt.Println("╚══════════════════════════════════════╝")
 	fmt.Println()
 
@@ -586,8 +719,8 @@ func printHelp() {
 	fmt.Println("Usage: syntrack [COMMAND] [OPTIONS]")
 	fmt.Println()
 	fmt.Println("Commands:")
-	fmt.Println("  stop               Stop the running syntrack instance")
-	fmt.Println("  status             Show status of the running instance")
+	fmt.Println("  stop, --stop       Stop the running syntrack instance")
+	fmt.Println("  status, --status   Show status of the running instance")
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --version          Print version and exit")
@@ -596,6 +729,7 @@ func printHelp() {
 	fmt.Println("  --port PORT        Dashboard HTTP port (default: 9211)")
 	fmt.Println("  --db PATH          SQLite database file path (default: ./syntrack.db)")
 	fmt.Println("  --debug            Run in foreground mode, log to stdout")
+	fmt.Println("  --test             Test mode: isolated PID/log files, won't affect production")
 	fmt.Println()
 	fmt.Println("Environment Variables:")
 	fmt.Println("  SYNTHETIC_API_KEY       Synthetic API key (configure at least one provider)")
@@ -613,7 +747,17 @@ func printHelp() {
 	fmt.Println("  syntrack --debug                   # Run in foreground mode")
 	fmt.Println("  syntrack --interval 30 --port 8080 # Custom interval and port")
 	fmt.Println("  syntrack stop                      # Stop running instance")
+	fmt.Println("  syntrack --stop                    # Same as 'stop'")
 	fmt.Println("  syntrack status                    # Check if running")
+	fmt.Println("  syntrack --status                  # Same as 'status'")
+	fmt.Println("  syntrack --test --debug            # Run test instance (isolated)")
+	fmt.Println("  syntrack --test stop               # Stop only test instance")
+	fmt.Println("  syntrack --test status             # Check test instance status")
+	fmt.Println()
+	fmt.Println("Test Mode (--test):")
+	fmt.Println("  Uses separate PID file (syntrack-test.pid) and log file (.syntrack-test.log).")
+	fmt.Println("  Test instances never kill production instances and vice versa.")
+	fmt.Println("  Use --db and --port to further isolate test from production.")
 	fmt.Println()
 	fmt.Println("Configure providers in .env file or environment variables.")
 	fmt.Println("At least one provider (Synthetic or Z.ai) must be configured.")

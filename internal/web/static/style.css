@@ -302,6 +302,8 @@ button, input, select { font-family: inherit; }
   border-color: var(--accent-teal);
 }
 .header-btn svg { width: 18px; height: 18px; }
+#logout-btn { text-decoration: none; }
+#logout-btn:hover { color: #EF4444; border-color: #EF4444; }
 .header-btn.spinning svg { animation: spin 800ms linear; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
