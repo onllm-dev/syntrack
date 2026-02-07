@@ -519,15 +519,22 @@ func TestAgent_CreatesSessionOnStart(t *testing.T) {
 		t.Error("Expected no active session before Run()")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
 	go agent.Run(ctx)
-	time.Sleep(10 * time.Millisecond) // Give time for session creation
 
-	// Should have an active session
-	session, _ = str.QueryActiveSession()
-	if session == nil {
+	// Poll for session creation (CI runners can be slow)
+	var found bool
+	for i := 0; i < 30; i++ {
+		time.Sleep(15 * time.Millisecond)
+		session, _ = str.QueryActiveSession()
+		if session != nil {
+			found = true
+			break
+		}
+	}
+	if !found {
 		t.Fatal("Expected active session after Run() started")
 	}
 

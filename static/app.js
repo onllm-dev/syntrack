@@ -77,6 +77,24 @@ function saveHiddenQuotas() {
   }
 }
 
+// ── Provider Persistence ──
+
+function loadDefaultProvider() {
+  try {
+    return localStorage.getItem('syntrack-default-provider') || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function saveDefaultProvider(provider) {
+  try {
+    localStorage.setItem('syntrack-default-provider', provider);
+  } catch (e) {
+    console.warn('Failed to save default provider:', e);
+  }
+}
+
 function toggleQuotaVisibility(quotaType) {
   if (State.hiddenQuotas.has(quotaType)) {
     State.hiddenQuotas.delete(quotaType);
@@ -1046,8 +1064,18 @@ async function fetchCycles(quotaType) {
     const select = document.getElementById('cycle-quota-select');
     quotaType = select ? select.value : (provider === 'zai' ? 'tokens' : 'subscription');
   }
+
+  // In "both" mode, route the type to the correct provider param
+  let cycleUrl = `${API_BASE}/api/cycles?type=${quotaType}&${providerParam()}`;
+  if (provider === 'both') {
+    const zaiTypes = ['tokens', 'time'];
+    if (zaiTypes.includes(quotaType)) {
+      cycleUrl = `${API_BASE}/api/cycles?type=subscription&zaiType=${quotaType}&${providerParam()}`;
+    }
+  }
+
   try {
-    const res = await authFetch(`${API_BASE}/api/cycles?type=${quotaType}&${providerParam()}`);
+    const res = await authFetch(cycleUrl);
     if (!res.ok) throw new Error('Failed to fetch cycles');
     const data = await res.json();
 
@@ -1167,6 +1195,7 @@ function renderCyclesTable() {
         case 'peak': va = a.peakRequests; vb = b.peakRequests; break;
         case 'total': va = a.totalDelta; vb = b.totalDelta; break;
         case 'rate': va = a._display.rate; vb = b._display.rate; break;
+        case 'provider': va = a._provider || ''; vb = b._provider || ''; break;
         default: va = 0; vb = 0;
       }
       return va > vb ? dir : va < vb ? -dir : 0;
@@ -1297,6 +1326,7 @@ function renderSessionsTable() {
         case 'sub': va = a.maxSubRequests; vb = b.maxSubRequests; break;
         case 'search': va = a.maxSearchRequests; vb = b.maxSearchRequests; break;
         case 'tool': va = a.maxToolRequests; vb = b.maxToolRequests; break;
+        case 'provider': va = a._provider || ''; vb = b._provider || ''; break;
         default: va = 0; vb = 0;
       }
       return va > vb ? dir : va < vb ? -dir : 0;
@@ -1491,18 +1521,28 @@ function handleTableSort(tableId, th) {
 
 // ── KPI Card Modal ──
 
-function openModal(quotaType) {
+function openModal(quotaType, providerOverride) {
   const modal = document.getElementById('detail-modal');
   const titleEl = document.getElementById('modal-title');
   const bodyEl = document.getElementById('modal-body');
   if (!modal || !bodyEl) return;
 
-  const data = State.currentQuotas[quotaType];
+  // In "both" mode with a specific provider override, resolve the correct state key
+  const currentProv = getCurrentProvider();
+  const effectiveProvider = (currentProv === 'both' && providerOverride) ? providerOverride : currentProv;
+
+  let quotaKey = quotaType;
+  if (currentProv === 'both' && providerOverride === 'synthetic' && quotaType === 'toolCalls') {
+    quotaKey = 'toolCalls_syn';
+  } else if (currentProv === 'both' && providerOverride === 'zai' && quotaType === 'toolCalls') {
+    quotaKey = 'toolCalls_zai';
+  }
+
+  const data = State.currentQuotas[quotaKey];
   if (!data) return;
 
-  const provider = getCurrentProvider();
   const zaiQuotaNames = { tokensLimit: 'Tokens Limit', timeLimit: 'Time Limit', toolCalls: 'Tool Calls' };
-  const names = provider === 'zai' ? zaiQuotaNames : quotaNames;
+  const names = effectiveProvider === 'zai' ? zaiQuotaNames : quotaNames;
   titleEl.textContent = names[quotaType] || quotaType;
 
   const statusCfg = statusConfig[data.status] || statusConfig.healthy;
@@ -1547,12 +1587,12 @@ function openModal(quotaType) {
   // Trap focus: focus the close button
   document.getElementById('modal-close').focus();
 
-  // Fetch modal-specific data
-  loadModalChart(quotaType);
-  loadModalCycles(quotaType);
+  // Fetch modal-specific data (use effectiveProvider to avoid "both" API responses)
+  loadModalChart(quotaType, effectiveProvider);
+  loadModalCycles(quotaType, effectiveProvider);
 }
 
-async function loadModalChart(quotaType) {
+async function loadModalChart(quotaType, effectiveProvider) {
   const ctx = document.getElementById('modal-chart');
   if (!ctx || typeof Chart === 'undefined') return;
 
@@ -1565,12 +1605,11 @@ async function loadModalChart(quotaType) {
   const activeRange = document.querySelector('.range-btn.active');
   const range = activeRange ? activeRange.dataset.range : '6h';
 
+  const provider = effectiveProvider || getCurrentProvider();
   try {
-    const res = await authFetch(`${API_BASE}/api/history?range=${range}&${providerParam()}`);
+    const res = await authFetch(`${API_BASE}/api/history?range=${range}&provider=${provider}`);
     if (!res.ok) return;
     const data = await res.json();
-
-    const provider = getCurrentProvider();
     let datasetKey;
     if (provider === 'zai') {
       datasetKey = quotaType === 'tokensLimit' ? 'tokensPercent' : 'timePercent';
@@ -1637,8 +1676,8 @@ async function loadModalChart(quotaType) {
   }
 }
 
-async function loadModalCycles(quotaType) {
-  const provider = getCurrentProvider();
+async function loadModalCycles(quotaType, effectiveProvider) {
+  const provider = effectiveProvider || getCurrentProvider();
   let apiType;
   if (provider === 'zai') {
     apiType = quotaType === 'tokensLimit' ? 'tokens' : 'time';
@@ -1646,7 +1685,7 @@ async function loadModalCycles(quotaType) {
     apiType = quotaType === 'toolCalls' ? 'toolcall' : quotaType;
   }
   try {
-    const res = await authFetch(`${API_BASE}/api/cycles?type=${apiType}&${providerParam()}`);
+    const res = await authFetch(`${API_BASE}/api/cycles?type=${apiType}&provider=${provider}`);
     if (!res.ok) return;
     const cycles = await res.json();
 
@@ -1814,6 +1853,7 @@ function setupProviderSelector() {
   tabs.querySelectorAll('.provider-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       const provider = tab.dataset.provider;
+      saveDefaultProvider(provider);
       window.location.href = `/?provider=${provider}`;
     });
   });
@@ -1892,7 +1932,12 @@ function setupQuotaToggles() {
 
 function setupCardModals() {
   document.querySelectorAll('.quota-card[role="button"]').forEach(card => {
-    const handler = () => openModal(card.dataset.quota);
+    const handler = () => {
+      // In "both" mode, detect which provider column the card belongs to
+      const providerCol = card.closest('.provider-column');
+      const providerOverride = providerCol ? providerCol.dataset.provider : null;
+      openModal(card.dataset.quota, providerOverride);
+    };
     card.addEventListener('click', handler);
     card.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
@@ -1929,6 +1974,22 @@ function startAutoRefresh() {
 // ── Init ──
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Redirect to saved default provider if no explicit provider in URL
+  // Only when multiple providers are available (tabs exist)
+  const urlParams = new URLSearchParams(window.location.search);
+  const providerTabs = document.getElementById('provider-tabs');
+  if (!urlParams.has('provider') && providerTabs) {
+    const savedProvider = loadDefaultProvider();
+    if (savedProvider) {
+      const availableProviders = [...providerTabs.querySelectorAll('.provider-tab')].map(t => t.dataset.provider);
+      // Only redirect if saved provider is available and different from server default
+      if (availableProviders.includes(savedProvider) && savedProvider !== availableProviders[0]) {
+        window.location.href = `/?provider=${savedProvider}`;
+        return;
+      }
+    }
+  }
+
   // Load persisted state
   loadHiddenQuotas();
   
@@ -1960,7 +2021,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const sessionsHead = document.querySelector('#sessions-table thead tr');
       if (sessionsHead) {
         sessionsHead.innerHTML = `
-          <th>Provider</th>
+          <th data-sort-key="provider" role="button" tabindex="0">Provider <span class="sort-arrow"></span></th>
           <th data-sort-key="id" role="button" tabindex="0">Session <span class="sort-arrow"></span></th>
           <th data-sort-key="start" role="button" tabindex="0">Started <span class="sort-arrow"></span></th>
           <th data-sort-key="end" role="button" tabindex="0">Ended <span class="sort-arrow"></span></th>
@@ -1972,7 +2033,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const cyclesHead = document.querySelector('#cycles-table thead tr');
       if (cyclesHead) {
         cyclesHead.innerHTML = `
-          <th>Provider</th>
+          <th data-sort-key="provider" role="button" tabindex="0">Provider <span class="sort-arrow"></span></th>
           <th data-sort-key="id" role="button" tabindex="0">Cycle <span class="sort-arrow"></span></th>
           <th data-sort-key="start" role="button" tabindex="0">Start <span class="sort-arrow"></span></th>
           <th data-sort-key="end" role="button" tabindex="0">End <span class="sort-arrow"></span></th>
@@ -1982,6 +2043,15 @@ document.addEventListener('DOMContentLoaded', () => {
           <th data-sort-key="rate" role="button" tabindex="0">Rate <span class="sort-arrow"></span></th>
         `;
       }
+      // Re-attach sort event listeners (headers were replaced, losing original listeners)
+      document.querySelectorAll('#cycles-table th[data-sort-key]').forEach(th => {
+        th.addEventListener('click', () => handleTableSort('cycles', th));
+        th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTableSort('cycles', th); } });
+      });
+      document.querySelectorAll('#sessions-table th[data-sort-key]').forEach(th => {
+        th.addEventListener('click', () => handleTableSort('sessions', th));
+        th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTableSort('sessions', th); } });
+      });
     }
   }
 });

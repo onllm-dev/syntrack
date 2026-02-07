@@ -340,7 +340,16 @@
                 </h3>
                 <div class="cycles-filters-inline">
                     <select class="quota-select" id="cycle-quota-select" aria-label="Select quota type">
-                        {{if eq .CurrentProvider "zai"}}
+                        {{if eq .CurrentProvider "both"}}
+                        <optgroup label="Synthetic">
+                            <option value="subscription">Subscription</option>
+                            <option value="toolcall">Tool Calls</option>
+                        </optgroup>
+                        <optgroup label="Z.ai">
+                            <option value="tokens">Tokens</option>
+                            <option value="time">Time</option>
+                        </optgroup>
+                        {{else if eq .CurrentProvider "zai"}}
                         <option value="tokens">Tokens</option>
                         <option value="time">Time</option>
                         {{else}}

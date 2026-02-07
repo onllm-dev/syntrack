@@ -17,7 +17,7 @@ API providers show current quota usage but not historical trends or per-cycle co
 - View both providers side-by-side in a unified "Both" view
 - Monitor in real-time with live countdowns
 - Full cycle tracking for both providers with reset detection
-- Run silently in the background (~26 MB RAM idle, ~28 MB with dashboard)
+- Run silently in the background (~25 MB RAM idle, ~28 MB with dashboard)
 
 ---
 
