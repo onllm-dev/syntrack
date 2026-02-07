@@ -960,6 +960,57 @@ a:hover { text-decoration: underline; }
   border-top: 1px solid var(--border-light);
 }
 
+.gallery-filters {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 32px;
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-light);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+}
+
+.filter-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 0 8px;
+}
+
+.filter-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+.filter-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-card);
+}
+.filter-btn.active {
+  color: #fff;
+  background: var(--accent-teal);
+  font-weight: 600;
+  box-shadow: var(--shadow-xs);
+}
+
 .gallery-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -973,12 +1024,15 @@ a:hover { text-decoration: underline; }
   overflow: hidden;
   box-shadow: var(--shadow-card);
   cursor: pointer;
-  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base), opacity var(--transition-base);
 }
 .gallery-item:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-card-hover);
   border-color: var(--border-focus);
+}
+.gallery-item.hidden {
+  display: none;
 }
 
 .gallery-img {
@@ -1010,6 +1064,14 @@ a:hover { text-decoration: underline; }
   color: var(--text-muted);
 }
 
+.gallery-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
 /* Lightbox */
 .lightbox {
   display: none;
@@ -1025,23 +1087,34 @@ a:hover { text-decoration: underline; }
   align-items: center;
   justify-content: center;
   padding: 24px;
-  cursor: zoom-out;
 }
 .lightbox.active { display: flex; }
 
-.lightbox img {
+.lightbox-img-wrap {
+  position: relative;
   max-width: 95vw;
-  max-height: 90vh;
+  max-height: 85vh;
+  overflow: hidden;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  object-fit: contain;
-  cursor: default;
 }
+
+.lightbox-img-wrap img {
+  width: 100%;
+  height: auto;
+  max-height: 85vh;
+  object-fit: contain;
+  display: block;
+  transition: transform 0.3s ease;
+  transform-origin: center center;
+  cursor: grab;
+}
+.lightbox-img-wrap img.zoomed { cursor: move; }
 
 .lightbox-close {
   position: absolute;
-  top: 20px;
-  right: 24px;
+  top: 16px;
+  right: 16px;
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -1053,9 +1126,75 @@ a:hover { text-decoration: underline; }
   justify-content: center;
   cursor: pointer;
   font-size: 20px;
+  z-index: 10;
   transition: all var(--transition-fast);
 }
 .lightbox-close:hover { background: var(--surface-raised); }
+
+.lightbox-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 10;
+  transition: all var(--transition-fast);
+}
+.lightbox-nav:hover { background: var(--surface-raised); border-color: var(--accent-teal); color: var(--accent-teal); }
+.lightbox-nav:disabled { opacity: 0.3; cursor: default; }
+.lightbox-nav:disabled:hover { background: var(--surface-card); border-color: var(--border-default); color: var(--text-primary); }
+.lightbox-nav svg { width: 20px; height: 20px; }
+.lightbox-prev { left: 16px; }
+.lightbox-next { right: 16px; }
+
+.lightbox-controls {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  z-index: 10;
+}
+
+.lightbox-ctrl-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.lightbox-ctrl-btn:hover { background: var(--surface-inset); color: var(--text-primary); }
+.lightbox-ctrl-btn svg { width: 18px; height: 18px; }
+
+.lightbox-counter {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  padding: 0 8px;
+  min-width: 50px;
+  text-align: center;
+}
 
 .code-block {
   background: var(--surface-card);
@@ -1271,6 +1410,9 @@ a:hover { text-decoration: underline; }
   .arch-stats { grid-template-columns: repeat(2, 1fr); }
   .install-methods { grid-template-columns: 1fr; max-width: 560px; margin: 0 auto; }
   .gallery-grid { grid-template-columns: 1fr; }
+  .lightbox-nav { width: 36px; height: 36px; }
+  .lightbox-prev { left: 8px; }
+  .lightbox-next { right: 8px; }
 }
 
 @media (max-width: 768px) {
@@ -1287,6 +1429,8 @@ a:hover { text-decoration: underline; }
   .cta-card { padding: 32px 24px; }
   .footer-inner { flex-direction: column; text-align: center; }
   .arch-stats { grid-template-columns: repeat(2, 1fr); }
+  .gallery-filters { gap: 8px; }
+  .filter-btn { padding: 5px 10px; font-size: 12px; }
 }
 
 @media (max-width: 480px) {
@@ -1786,40 +1930,62 @@ a:hover { text-decoration: underline; }
 <!-- Screenshots Gallery -->
 <section class="gallery" id="screenshots">
     <div class="container">
-        <div class="fade-in" style="text-align:center;margin-bottom:40px;">
+        <div class="fade-in" style="text-align:center;margin-bottom:24px;">
             <div class="section-label">Screenshots</div>
             <h2 class="section-title">See it in action</h2>
-            <p class="section-desc" style="margin-left:auto;margin-right:auto;">Material Design 3 dashboard with dark and light mode, multi-provider support, and real-time quota tracking.</p>
         </div>
-        <div class="gallery-grid">
-            <div class="gallery-item fade-in" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/syntrack/main/screenshots/dashboard-dark.png" alt="SynTrack dashboard in dark mode showing Synthetic quota cards, chart, and insights" loading="lazy">
-                <div class="gallery-caption">
-                    <span class="gallery-caption-text">Dashboard — Dark Mode</span>
-                    <span class="gallery-caption-badge">Synthetic</span>
-                </div>
+        <div class="gallery-filters fade-in">
+            <div class="filter-group">
+                <span class="filter-label">Theme</span>
+                <button class="filter-btn active" data-filter="theme" data-value="light">Light</button>
+                <button class="filter-btn" data-filter="theme" data-value="dark">Dark</button>
+                <button class="filter-btn" data-filter="theme" data-value="all">All</button>
             </div>
-            <div class="gallery-item fade-in" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/syntrack/main/screenshots/dashboard-light.png" alt="SynTrack dashboard in light mode" loading="lazy">
+            <div class="filter-group">
+                <span class="filter-label">Provider</span>
+                <button class="filter-btn active" data-filter="provider" data-value="synthetic">Synthetic</button>
+                <button class="filter-btn" data-filter="provider" data-value="zai">Z.ai</button>
+                <button class="filter-btn" data-filter="provider" data-value="both">Both</button>
+                <button class="filter-btn" data-filter="provider" data-value="all">All</button>
+            </div>
+        </div>
+        <div class="gallery-grid" id="gallery-grid">
+            <div class="gallery-item fade-in visible" data-theme="light" data-provider="synthetic" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/syntrack/main/screenshots/dashboard-light.png" alt="SynTrack dashboard in light mode — Synthetic provider" loading="lazy">
                 <div class="gallery-caption">
                     <span class="gallery-caption-text">Dashboard — Light Mode</span>
                     <span class="gallery-caption-badge">Synthetic</span>
                 </div>
             </div>
-            <div class="gallery-item fade-in" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+            <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="synthetic" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/syntrack/main/screenshots/dashboard-dark.png" alt="SynTrack dashboard in dark mode — Synthetic provider" loading="lazy">
+                <div class="gallery-caption">
+                    <span class="gallery-caption-text">Dashboard — Dark Mode</span>
+                    <span class="gallery-caption-badge">Synthetic</span>
+                </div>
+            </div>
+            <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="zai" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
                 <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/syntrack/main/screenshots/dashboard-zai.png" alt="SynTrack Z.ai provider dashboard with tokens, time, and tool call quotas" loading="lazy">
                 <div class="gallery-caption">
                     <span class="gallery-caption-text">Z.ai Provider View</span>
                     <span class="gallery-caption-badge">Z.ai</span>
                 </div>
             </div>
-            <div class="gallery-item fade-in" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/syntrack/main/screenshots/dashboard-both.png" alt="SynTrack Both view with Synthetic and Z.ai quotas side-by-side" loading="lazy">
+            <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="both" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/syntrack/main/screenshots/dashboard-both.png" alt="SynTrack Both view — Synthetic and Z.ai quotas side-by-side" loading="lazy">
                 <div class="gallery-caption">
                     <span class="gallery-caption-text">Both Providers — Side by Side</span>
                     <span class="gallery-caption-badge">Both</span>
                 </div>
             </div>
+            <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="general" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/syntrack/main/screenshots/login.png" alt="SynTrack login page with dark mode" loading="lazy">
+                <div class="gallery-caption">
+                    <span class="gallery-caption-text">Login Page</span>
+                    <span class="gallery-caption-badge">Auth</span>
+                </div>
+            </div>
+            <p class="gallery-empty" id="gallery-empty" style="display:none;">No screenshots match the selected filters.</p>
         </div>
     </div>
 </section>
@@ -1846,8 +2012,25 @@ a:hover { text-decoration: underline; }
 
 <!-- Lightbox -->
 <div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
-    <button class="lightbox-close" aria-label="Close">&times;</button>
-    <img id="lightbox-img" src="" alt="">
+    <button class="lightbox-close" onclick="closeLightbox(event)" aria-label="Close">&times;</button>
+    <button class="lightbox-nav lightbox-prev" id="lb-prev" onclick="lbNav(event,-1)" aria-label="Previous">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
+    <div class="lightbox-img-wrap" id="lb-wrap" onclick="event.stopPropagation()">
+        <img id="lightbox-img" src="" alt="">
+    </div>
+    <button class="lightbox-nav lightbox-next" id="lb-next" onclick="lbNav(event,1)" aria-label="Next">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+    </button>
+    <div class="lightbox-controls" onclick="event.stopPropagation()">
+        <button class="lightbox-ctrl-btn" onclick="lbZoom(-1)" aria-label="Zoom out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+        </button>
+        <span class="lightbox-counter" id="lb-counter">1 / 1</span>
+        <button class="lightbox-ctrl-btn" onclick="lbZoom(1)" aria-label="Zoom in">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+        </button>
+    </div>
 </div>
 
 <!-- Footer -->
@@ -1998,27 +2181,115 @@ function copyInstallCmd(el) {
     });
 }
 
-/* Lightbox */
+/* Gallery Filters */
+(function() {
+    var activeTheme = 'light';
+    var activeProvider = 'synthetic';
+
+    document.querySelectorAll('.filter-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var group = this.getAttribute('data-filter');
+            var value = this.getAttribute('data-value');
+
+            // Update active button in this group
+            this.parentElement.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+
+            if (group === 'theme') activeTheme = value;
+            if (group === 'provider') activeProvider = value;
+
+            applyFilters();
+        });
+    });
+
+    function applyFilters() {
+        var items = document.querySelectorAll('.gallery-item');
+        var visibleCount = 0;
+        items.forEach(function(item) {
+            var t = item.getAttribute('data-theme');
+            var p = item.getAttribute('data-provider');
+            var themeMatch = activeTheme === 'all' || t === activeTheme;
+            var providerMatch = activeProvider === 'all' || p === activeProvider;
+            if (themeMatch && providerMatch) {
+                item.classList.remove('hidden');
+                visibleCount++;
+            } else {
+                item.classList.add('hidden');
+            }
+        });
+        var empty = document.getElementById('gallery-empty');
+        if (empty) empty.style.display = visibleCount === 0 ? '' : 'none';
+    }
+
+    // Initial filter applied via HTML classes (light + synthetic visible by default)
+})();
+
+/* Lightbox with navigation + zoom */
+var lbState = { index: 0, zoom: 1, items: [] };
+
+function getVisibleItems() {
+    return Array.from(document.querySelectorAll('.gallery-item:not(.hidden)'));
+}
+
 function openLightbox(item) {
     var img = item.querySelector('.gallery-img');
     if (!img) return;
-    var lb = document.getElementById('lightbox');
-    var lbImg = document.getElementById('lightbox-img');
-    lbImg.src = img.src;
-    lbImg.alt = img.alt;
-    lb.classList.add('active');
+    lbState.items = getVisibleItems();
+    lbState.index = lbState.items.indexOf(item);
+    if (lbState.index === -1) lbState.index = 0;
+    lbState.zoom = 1;
+    showLbImage();
+    document.getElementById('lightbox').classList.add('active');
     document.body.style.overflow = 'hidden';
 }
 
+function showLbImage() {
+    var items = lbState.items;
+    if (!items.length) return;
+    var item = items[lbState.index];
+    var img = item.querySelector('.gallery-img');
+    var lbImg = document.getElementById('lightbox-img');
+    lbImg.src = img.src;
+    lbImg.alt = img.alt;
+    lbImg.style.transform = 'scale(1)';
+    lbImg.classList.remove('zoomed');
+    lbState.zoom = 1;
+
+    document.getElementById('lb-counter').textContent = (lbState.index + 1) + ' / ' + items.length;
+    document.getElementById('lb-prev').disabled = lbState.index === 0;
+    document.getElementById('lb-next').disabled = lbState.index === items.length - 1;
+}
+
 function closeLightbox(e) {
-    if (e && e.target && e.target.id === 'lightbox-img') return;
-    var lb = document.getElementById('lightbox');
-    lb.classList.remove('active');
+    if (e && e.target && (e.target.id === 'lightbox-img' || e.target.closest('.lightbox-img-wrap'))) return;
+    document.getElementById('lightbox').classList.remove('active');
     document.body.style.overflow = '';
 }
 
+function lbNav(e, dir) {
+    e.stopPropagation();
+    var newIdx = lbState.index + dir;
+    if (newIdx < 0 || newIdx >= lbState.items.length) return;
+    lbState.index = newIdx;
+    showLbImage();
+}
+
+function lbZoom(dir) {
+    var img = document.getElementById('lightbox-img');
+    lbState.zoom = Math.max(0.5, Math.min(3, lbState.zoom + dir * 0.5));
+    img.style.transform = 'scale(' + lbState.zoom + ')';
+    if (lbState.zoom > 1) { img.classList.add('zoomed'); }
+    else { img.classList.remove('zoomed'); }
+}
+
 document.addEventListener('keydown', function(e) {
+    var lb = document.getElementById('lightbox');
+    if (!lb.classList.contains('active')) return;
     if (e.key === 'Escape') closeLightbox(e);
+    if (e.key === 'ArrowLeft') lbNav(e, -1);
+    if (e.key === 'ArrowRight') lbNav(e, 1);
+    if (e.key === '+' || e.key === '=') lbZoom(1);
+    if (e.key === '-') lbZoom(-1);
 });
 
 /* Smooth scroll for anchor links */
