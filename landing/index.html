@@ -1551,8 +1551,10 @@ a:hover { text-decoration: underline; }
 
 .gallery-img {
   width: 100%;
-  height: auto;
+  height: 280px;
   display: block;
+  object-fit: cover;
+  object-position: top;
   border-bottom: 1px solid var(--border-light);
 }
 
@@ -1620,7 +1622,6 @@ a:hover { text-decoration: underline; }
 
 .lightbox-img-wrap img {
   display: block;
-  cursor: grab;
   transition: width 0.3s ease;
 }
 .lightbox-img-wrap img.zoomed { cursor: grab; }
@@ -1628,8 +1629,6 @@ a:hover { text-decoration: underline; }
 .lightbox-img-wrap.fit-view img {
   width: 100%;
   height: auto;
-  max-height: 85vh;
-  object-fit: contain;
 }
 
 .lightbox-close {
@@ -2014,6 +2013,7 @@ a:hover { text-decoration: underline; }
   .arch-stats { grid-template-columns: repeat(2, 1fr); }
   .install-methods { grid-template-columns: 1fr 1fr; }
   .gallery-grid { grid-template-columns: 1fr; }
+  .gallery-img { height: 320px; }
   .lightbox-nav { width: 36px; height: 36px; }
   .lightbox-prev { left: 8px; }
   .lightbox-next { right: 8px; }
@@ -3387,10 +3387,10 @@ function lbZoom(dir) {
 
     // Switch from fit mode to pixel-based sizing
     if (lbState.mode === 'fit') {
+        // Read width BEFORE removing fit-view (otherwise image expands to natural size)
+        var currentW = img.offsetWidth;
         wrap.classList.remove('fit-view');
         lbState.mode = 'zoom';
-        // Start from current rendered width
-        var currentW = img.offsetWidth;
         img.style.width = currentW + 'px';
     }
 
