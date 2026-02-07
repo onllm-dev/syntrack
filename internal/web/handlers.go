@@ -25,6 +25,7 @@ type Handler struct {
 	loginTmpl     *template.Template
 	sessions      *SessionStore
 	config        *config.Config
+	version       string
 }
 
 // NewHandler creates a new Handler instance
@@ -60,6 +61,11 @@ func NewHandler(store *store.Store, tracker *tracker.Tracker, logger *slog.Logge
 		h.zaiTracker = zaiTracker[0]
 	}
 	return h
+}
+
+// SetVersion sets the version string for display in the dashboard.
+func (h *Handler) SetVersion(v string) {
+	h.version = v
 }
 
 // respondJSON sends a JSON response
@@ -214,6 +220,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		"Title":           "Dashboard",
 		"Providers":       providers,
 		"CurrentProvider": currentProvider,
+		"Version":         h.version,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -1287,12 +1294,58 @@ type insightStat struct {
 }
 
 type insightItem struct {
+	Key      string `json:"key"`
 	Type     string `json:"type"`
 	Severity string `json:"severity"`
 	Title    string `json:"title"`
 	Metric   string `json:"metric,omitempty"`
 	Sublabel string `json:"sublabel,omitempty"`
 	Desc     string `json:"description"`
+}
+
+// insightCorrelations maps analogous insight keys across providers.
+// Hiding one key in a group hides all keys in that group.
+var insightCorrelations = [][]string{
+	{"cycle_utilization", "token_budget"},
+	{"tool_share", "tool_breakdown"},
+	{"trend", "trend_24h"},
+	{"weekly_pace", "usage_7d"},
+	// "coverage" uses the same key for both providers — auto-correlated
+}
+
+// getHiddenInsightKeys loads hidden insight keys from DB and expands correlations.
+func (h *Handler) getHiddenInsightKeys() map[string]bool {
+	hidden := map[string]bool{}
+	if h.store == nil {
+		return hidden
+	}
+	val, err := h.store.GetSetting("hidden_insights")
+	if err != nil || val == "" {
+		return hidden
+	}
+	var keys []string
+	if err := json.Unmarshal([]byte(val), &keys); err != nil {
+		return hidden
+	}
+	for _, k := range keys {
+		hidden[k] = true
+	}
+	// Expand correlated keys
+	for _, group := range insightCorrelations {
+		groupHidden := false
+		for _, k := range group {
+			if hidden[k] {
+				groupHidden = true
+				break
+			}
+		}
+		if groupHidden {
+			for _, k := range group {
+				hidden[k] = true
+			}
+		}
+	}
+	return hidden
 }
 
 type insightsResponse struct {
@@ -1322,15 +1375,14 @@ func (h *Handler) Insights(w http.ResponseWriter, r *http.Request) {
 
 // insightsBoth returns combined insights from both providers.
 func (h *Handler) insightsBoth(w http.ResponseWriter, r *http.Request) {
+	hidden := h.getHiddenInsightKeys()
 	response := map[string]interface{}{}
 
 	if h.config.HasProvider("synthetic") {
-		synResp := h.buildSyntheticInsights()
-		response["synthetic"] = synResp
+		response["synthetic"] = h.buildSyntheticInsights(hidden)
 	}
 	if h.config.HasProvider("zai") {
-		zaiResp := h.buildZaiInsights()
-		response["zai"] = zaiResp
+		response["zai"] = h.buildZaiInsights(hidden)
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -1338,11 +1390,12 @@ func (h *Handler) insightsBoth(w http.ResponseWriter, r *http.Request) {
 
 // insightsSynthetic returns Synthetic deep analytics
 func (h *Handler) insightsSynthetic(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, http.StatusOK, h.buildSyntheticInsights())
+	hidden := h.getHiddenInsightKeys()
+	respondJSON(w, http.StatusOK, h.buildSyntheticInsights(hidden))
 }
 
 // buildSyntheticInsights builds the Synthetic insights response.
-func (h *Handler) buildSyntheticInsights() insightsResponse {
+func (h *Handler) buildSyntheticInsights(hidden map[string]bool) insightsResponse {
 	resp := insightsResponse{Stats: []insightStat{}, Insights: []insightItem{}}
 
 	if h.store == nil {
@@ -1424,7 +1477,7 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 	// ═══ Deep Insights (interactive card format with metric + sublabel) ═══
 
 	// 1. Avg Cycle Utilization %
-	if subAvg > 0 && subLimit > 0 {
+	if !hidden["cycle_utilization"] && subAvg > 0 && subLimit > 0 {
 		util := (subAvg / subLimit) * 100
 		var desc, sev string
 		switch {
@@ -1445,6 +1498,7 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 			sev = "negative"
 		}
 		resp.Insights = append(resp.Insights, insightItem{
+			Key:  "cycle_utilization",
 			Type: "recommendation", Severity: sev,
 			Title:    "Avg Cycle Utilization",
 			Metric:   fmt.Sprintf("%.0f%%", util),
@@ -1455,8 +1509,9 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 
 	// 2. 30-Day Usage
 	subBillingCount := billingPeriodCount(subCycles)
-	if subBillingCount > 0 {
+	if !hidden["usage_30d"] && subBillingCount > 0 {
 		resp.Insights = append(resp.Insights, insightItem{
+			Key:  "usage_30d",
 			Type: "factual", Severity: "info",
 			Title:    "30-Day Usage",
 			Metric:   compactNum(sub30),
@@ -1466,7 +1521,7 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 	}
 
 	// 3. Weekly Pace
-	if sub7 > 0 {
+	if !hidden["weekly_pace"] && sub7 > 0 {
 		proj := sub7 * (30.0 / 7.0)
 		weeklyPct := float64(0)
 		if sub30 > 0 {
@@ -1484,6 +1539,7 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 			desc += fmt.Sprintf(" (%.0f%% of 30-day total). Monthly projection: ~%s.", weeklyPct, compactNum(proj))
 		}
 		resp.Insights = append(resp.Insights, insightItem{
+			Key:  "weekly_pace",
 			Type: "trend", Severity: sev,
 			Title:    "Weekly Pace",
 			Metric:   compactNum(sub7),
@@ -1493,7 +1549,7 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 	}
 
 	// 4. Peak vs Average Variance
-	if subPeak > 0 && subAvg > 0 && subBillingCount > 1 {
+	if !hidden["variance"] && subPeak > 0 && subAvg > 0 && subBillingCount > 1 {
 		diff := ((subPeak - subAvg) / subAvg) * 100
 		var item insightItem
 		peakPct := float64(0)
@@ -1502,21 +1558,21 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 		}
 		switch {
 		case diff > 50:
-			item = insightItem{Type: "factual", Severity: "warning",
+			item = insightItem{Key: "variance", Type: "factual", Severity: "warning",
 				Title:    "High Variance",
 				Metric:   fmt.Sprintf("+%.0f%%", diff),
 				Sublabel: "peak above avg",
 				Desc:     fmt.Sprintf("Peak cycle hit %.0f%% of limit (%.0f requests) — %.0f%% above your average of %.0f. Usage varies significantly.", peakPct, subPeak, diff, subAvg),
 			}
 		case diff > 10:
-			item = insightItem{Type: "factual", Severity: "info",
+			item = insightItem{Key: "variance", Type: "factual", Severity: "info",
 				Title:    "Usage Spread",
 				Metric:   fmt.Sprintf("+%.0f%%", diff),
 				Sublabel: "peak above avg",
 				Desc:     fmt.Sprintf("Peak: %.0f%% of limit (%.0f req), average: %.0f. Moderately consistent.", peakPct, subPeak, subAvg),
 			}
 		default:
-			item = insightItem{Type: "factual", Severity: "positive",
+			item = insightItem{Key: "variance", Type: "factual", Severity: "positive",
 				Title:    "Consistent",
 				Metric:   fmt.Sprintf("~%.0f%%", (subAvg/subLimit)*100),
 				Sublabel: "steady usage",
@@ -1527,7 +1583,7 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 	}
 
 	// 5. Tool Call Share (as %)
-	if total30 > 0 && tool30 > 0 {
+	if !hidden["tool_share"] && total30 > 0 && tool30 > 0 {
 		toolPct := (tool30 / total30) * 100
 		toolAvg := billingPeriodAvg(toolCycles)
 		toolUtil := float64(0)
@@ -1535,6 +1591,7 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 			toolUtil = (toolAvg / toolLimit) * 100
 		}
 		resp.Insights = append(resp.Insights, insightItem{
+			Key:  "tool_share",
 			Type: "factual", Severity: "info",
 			Title:    "Tool Call Share",
 			Metric:   fmt.Sprintf("%.0f%%", toolPct),
@@ -1544,9 +1601,10 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 	}
 
 	// 6. Session Avg
-	if recentN > 0 {
+	if !hidden["session_avg"] && recentN > 0 {
 		avgH := avgSessionDurMin / 60
 		resp.Insights = append(resp.Insights, insightItem{
+			Key:  "session_avg",
 			Type: "session", Severity: "info",
 			Title:    "Session Avg",
 			Metric:   fmt.Sprintf("%.0f", avgSessionConsumption),
@@ -1561,7 +1619,7 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 	}
 
 	// 7. Consumption Trend (needs at least 4 billing periods to be meaningful)
-	if subBillingCount >= 4 {
+	if !hidden["trend"] && subBillingCount >= 4 {
 		mid := len(subCycles) / 2
 		recentAvg := billingPeriodAvg(subCycles[:mid])
 		olderAvg := billingPeriodAvg(subCycles[mid:])
@@ -1583,6 +1641,7 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 				sev = "positive"
 			}
 			resp.Insights = append(resp.Insights, insightItem{
+				Key:  "trend",
 				Type: "trend", Severity: sev,
 				Title:    "Trend",
 				Metric:   metric,
@@ -1593,13 +1652,14 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 	}
 
 	// 8. Tracking Coverage
-	if trackingDays > 0 {
+	if !hidden["coverage"] && trackingDays > 0 {
 		var totalSnaps int
 		for _, s := range sessions {
 			totalSnaps += s.SnapshotCount
 		}
 		resp.Insights = append(resp.Insights, insightItem{
-			Type: "factual", Severity: "positive",
+			Key:      "coverage",
+			Type:     "factual", Severity: "positive",
 			Title:    "Coverage",
 			Metric:   fmt.Sprintf("%dd", trackingDays),
 			Sublabel: fmt.Sprintf("%d sessions", len(sessions)),
@@ -1621,11 +1681,12 @@ func (h *Handler) buildSyntheticInsights() insightsResponse {
 
 // insightsZai returns Z.ai deep analytics with historical data
 func (h *Handler) insightsZai(w http.ResponseWriter, r *http.Request) {
-	respondJSON(w, http.StatusOK, h.buildZaiInsights())
+	hidden := h.getHiddenInsightKeys()
+	respondJSON(w, http.StatusOK, h.buildZaiInsights(hidden))
 }
 
 // buildZaiInsights builds the Z.ai insights response.
-func (h *Handler) buildZaiInsights() insightsResponse {
+func (h *Handler) buildZaiInsights(hidden map[string]bool) insightsResponse {
 	resp := insightsResponse{Stats: []insightStat{}, Insights: []insightItem{}}
 
 	if h.store == nil {
@@ -1730,29 +1791,32 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 	// ═══ Deep Insights ═══
 
 	// 1. Token Budget Status
-	tokensSev := severityFromPercent(tokensPercent)
-	tokenDesc := fmt.Sprintf("%s tokens consumed of %s budget (%d%%).", compactNum(tokensUsed), compactNum(tokensBudget), latest.TokensPercentage)
-	if latest.TokensNextResetTime != nil {
-		untilReset := time.Until(*latest.TokensNextResetTime)
-		if untilReset > 0 {
-			tokenDesc += fmt.Sprintf(" Resets in %s.", formatDuration(untilReset))
+	if !hidden["token_budget"] {
+		tokensSev := severityFromPercent(tokensPercent)
+		tokenDesc := fmt.Sprintf("%s tokens consumed of %s budget (%d%%).", compactNum(tokensUsed), compactNum(tokensBudget), latest.TokensPercentage)
+		if latest.TokensNextResetTime != nil {
+			untilReset := time.Until(*latest.TokensNextResetTime)
+			if untilReset > 0 {
+				tokenDesc += fmt.Sprintf(" Resets in %s.", formatDuration(untilReset))
+			}
 		}
+		if tokensPercent >= 100 {
+			tokenDesc += " Budget exhausted — requests may be throttled."
+		} else if tokensRemaining > 0 {
+			tokenDesc += fmt.Sprintf(" %s tokens remaining.", compactNum(tokensRemaining))
+		}
+		resp.Insights = append(resp.Insights, insightItem{
+			Key:  "token_budget",
+			Type: "factual", Severity: tokensSev,
+			Title:    "Token Budget",
+			Metric:   fmt.Sprintf("%d%%", latest.TokensPercentage),
+			Sublabel: fmt.Sprintf("%s of %s", compactNum(tokensUsed), compactNum(tokensBudget)),
+			Desc:     tokenDesc,
+		})
 	}
-	if tokensPercent >= 100 {
-		tokenDesc += " Budget exhausted — requests may be throttled."
-	} else if tokensRemaining > 0 {
-		tokenDesc += fmt.Sprintf(" %s tokens remaining.", compactNum(tokensRemaining))
-	}
-	resp.Insights = append(resp.Insights, insightItem{
-		Type: "factual", Severity: tokensSev,
-		Title:    "Token Budget",
-		Metric:   fmt.Sprintf("%d%%", latest.TokensPercentage),
-		Sublabel: fmt.Sprintf("%s of %s", compactNum(tokensUsed), compactNum(tokensBudget)),
-		Desc:     tokenDesc,
-	})
 
 	// 2. Token Consumption Rate (computed from historical snapshots)
-	if len(snapshots24h) >= 2 {
+	if !hidden["token_rate"] && len(snapshots24h) >= 2 {
 		oldest := snapshots24h[0]
 		newest := snapshots24h[len(snapshots24h)-1]
 		elapsed := newest.CapturedAt.Sub(oldest.CapturedAt)
@@ -1761,6 +1825,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 		if elapsed.Hours() > 0 && tokenDelta > 0 {
 			ratePerHour := tokenDelta / elapsed.Hours()
 			resp.Insights = append(resp.Insights, insightItem{
+				Key:  "token_rate",
 				Type: "trend", Severity: "info",
 				Title:    "Token Rate",
 				Metric:   fmt.Sprintf("%s/hr", compactNum(ratePerHour)),
@@ -1770,7 +1835,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 			})
 
 			// 3. Projected Token Usage (only if we have a reset time)
-			if latest.TokensNextResetTime != nil {
+			if !hidden["projected_usage"] && latest.TokensNextResetTime != nil {
 				hoursLeft := time.Until(*latest.TokensNextResetTime).Hours()
 				if hoursLeft > 0 {
 					projected := tokensUsed + (ratePerHour * hoursLeft)
@@ -1787,6 +1852,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 						projDesc += " Comfortable headroom."
 					}
 					resp.Insights = append(resp.Insights, insightItem{
+						Key:  "projected_usage",
 						Type: "recommendation", Severity: projSev,
 						Title:    "Projected Usage",
 						Metric:   fmt.Sprintf("%.0f%%", projectedPct),
@@ -1799,7 +1865,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 	}
 
 	// 4. Tool Call Breakdown (per-model details)
-	if latest.TimeUsageDetails != "" {
+	if !hidden["tool_breakdown"] && latest.TimeUsageDetails != "" {
 		var details []api.ZaiUsageDetail
 		if err := json.Unmarshal([]byte(latest.TimeUsageDetails), &details); err == nil && len(details) > 0 {
 			// Build breakdown description
@@ -1829,6 +1895,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 			}
 
 			resp.Insights = append(resp.Insights, insightItem{
+				Key:  "tool_breakdown",
 				Type: "factual", Severity: severityFromPercent(toolCallPct),
 				Title:    "Tool Breakdown",
 				Metric:   fmt.Sprintf("%.0f", totalDetailUsage),
@@ -1836,10 +1903,11 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 				Desc:     desc,
 			})
 		}
-	} else {
+	} else if !hidden["time_budget"] {
 		// No per-tool details — show basic time budget insight
 		timeSev := severityFromPercent(timePercent)
 		resp.Insights = append(resp.Insights, insightItem{
+			Key:  "time_budget",
 			Type: "factual", Severity: timeSev,
 			Title:    "Time Budget",
 			Metric:   fmt.Sprintf("%d%%", latest.TimePercentage),
@@ -1849,7 +1917,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 	}
 
 	// 5. 24h Token Trend (compare first half vs second half of snapshots)
-	if len(snapshots24h) >= 4 {
+	if !hidden["trend_24h"] && len(snapshots24h) >= 4 {
 		mid := len(snapshots24h) / 2
 		firstHalf := snapshots24h[:mid]
 		secondHalf := snapshots24h[mid:]
@@ -1882,6 +1950,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 					trendDesc = fmt.Sprintf("Steady consumption: ~%s/hr over the observation period.", compactNum((firstRate+secondRate)/2))
 				}
 				resp.Insights = append(resp.Insights, insightItem{
+					Key:  "trend_24h",
 					Type: "trend", Severity: trendSev,
 					Title:    "24h Trend",
 					Metric:   trendMetric,
@@ -1893,7 +1962,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 	}
 
 	// 6. 7-Day Token Summary
-	if len(snapshots7d) >= 2 {
+	if !hidden["usage_7d"] && len(snapshots7d) >= 2 {
 		oldest7d := snapshots7d[0]
 		newest7d := snapshots7d[len(snapshots7d)-1]
 		totalDelta7d := newest7d.TokensCurrentValue - oldest7d.TokensCurrentValue
@@ -1902,6 +1971,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 		if totalDelta7d > 0 && elapsed7d.Hours() > 0 {
 			dailyRate := totalDelta7d / (elapsed7d.Hours() / 24)
 			resp.Insights = append(resp.Insights, insightItem{
+				Key:  "usage_7d",
 				Type: "factual", Severity: "info",
 				Title:    "7-Day Usage",
 				Metric:   compactNum(totalDelta7d),
@@ -1913,7 +1983,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 	}
 
 	// 7. Plan Capacity (daily vs monthly context)
-	if dailyTokenBudget > 0 {
+	if !hidden["plan_capacity"] && dailyTokenBudget > 0 {
 		dailyUsedPct := (tokensUsed / dailyTokenBudget) * 100
 		desc := fmt.Sprintf("Daily token limit: %s. Monthly capacity: %s (30 × daily).", compactNum(dailyTokenBudget), compactNum(monthlyTokenCapacity))
 		if dailyUsedPct >= 80 {
@@ -1923,6 +1993,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 			desc += fmt.Sprintf(" Daily time limit: %.0f units (monthly: %s).", dailyTimeBudget, compactNum(monthlyTimeCapacity))
 		}
 		resp.Insights = append(resp.Insights, insightItem{
+			Key:  "plan_capacity",
 			Type: "factual", Severity: "info",
 			Title:    "Plan Capacity",
 			Metric:   compactNum(monthlyTokenCapacity),
@@ -1932,7 +2003,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 	}
 
 	// 8. Tokens Per Call (efficiency metric)
-	if totalToolCalls > 0 && avgTokensPerCall > 0 {
+	if !hidden["tokens_per_call"] && totalToolCalls > 0 && avgTokensPerCall > 0 {
 		sev := "info"
 		desc := fmt.Sprintf("Each tool call consumes ~%s tokens on average (%s tokens across %.0f calls).", compactNum(avgTokensPerCall), compactNum(tokensUsed), totalToolCalls)
 		if dailyTokenBudget > 0 {
@@ -1943,6 +2014,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 			}
 		}
 		resp.Insights = append(resp.Insights, insightItem{
+			Key:  "tokens_per_call",
 			Type: "factual", Severity: sev,
 			Title:    "Tokens Per Call",
 			Metric:   compactNum(avgTokensPerCall),
@@ -1952,7 +2024,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 	}
 
 	// 9. Top Tool (dominant tool analysis)
-	if latest.TimeUsageDetails != "" {
+	if !hidden["top_tool"] && latest.TimeUsageDetails != "" {
 		var details []api.ZaiUsageDetail
 		if err := json.Unmarshal([]byte(latest.TimeUsageDetails), &details); err == nil && len(details) > 1 {
 			var topTool string
@@ -1985,6 +2057,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 					desc += fmt.Sprintf(" %.1fx more than %s (%.0f calls).", ratio, secondTool, secondUsage)
 				}
 				resp.Insights = append(resp.Insights, insightItem{
+					Key:  "top_tool",
 					Type: "factual", Severity: sev,
 					Title:    "Top Tool",
 					Metric:   topTool,
@@ -1996,7 +2069,7 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 	}
 
 	// 10. Tracking Coverage
-	if len(snapshots7d) > 0 {
+	if !hidden["coverage"] && len(snapshots7d) > 0 {
 		oldest := snapshots7d[0]
 		trackingHours := now.Sub(oldest.CapturedAt).Hours()
 		trackingDays := trackingHours / 24
@@ -2005,7 +2078,8 @@ func (h *Handler) buildZaiInsights() insightsResponse {
 			label = fmt.Sprintf("%.1fd", trackingDays)
 		}
 		resp.Insights = append(resp.Insights, insightItem{
-			Type: "factual", Severity: "positive",
+			Key:      "coverage",
+			Type:     "factual", Severity: "positive",
 			Title:    "Coverage",
 			Metric:   label,
 			Sublabel: fmt.Sprintf("%d snapshots", len(snapshots7d)),
@@ -2138,6 +2212,7 @@ func compactNum(v float64) string {
 // GetSettings returns current settings as JSON.
 func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	tz := ""
+	var hiddenInsights []string
 	if h.store != nil {
 		val, err := h.store.GetSetting("timezone")
 		if err != nil {
@@ -2145,33 +2220,33 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 		} else {
 			tz = val
 		}
+		hiVal, err := h.store.GetSetting("hidden_insights")
+		if err != nil {
+			h.logger.Error("failed to get hidden_insights setting", "error", err)
+		} else if hiVal != "" {
+			_ = json.Unmarshal([]byte(hiVal), &hiddenInsights)
+		}
 	}
-	respondJSON(w, http.StatusOK, map[string]string{"timezone": tz})
+	if hiddenInsights == nil {
+		hiddenInsights = []string{}
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"timezone":        tz,
+		"hidden_insights": hiddenInsights,
+	})
 }
 
-// UpdateSettings updates settings from JSON body.
+// UpdateSettings updates settings from JSON body (partial updates supported).
 func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPut {
 		respondError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 
-	var body struct {
-		Timezone string `json:"timezone"`
-	}
+	var body map[string]json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid JSON")
 		return
-	}
-
-	// Empty string means "use browser default" — allow it
-	if body.Timezone != "" {
-		// Validate against Go's known timezones
-		_, err := time.LoadLocation(body.Timezone)
-		if err != nil {
-			respondError(w, http.StatusBadRequest, fmt.Sprintf("invalid timezone: %s", body.Timezone))
-			return
-		}
 	}
 
 	if h.store == nil {
@@ -2179,13 +2254,49 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.store.SetSetting("timezone", body.Timezone); err != nil {
-		h.logger.Error("failed to save timezone setting", "error", err)
-		respondError(w, http.StatusInternalServerError, "failed to save setting")
-		return
+	result := map[string]interface{}{}
+
+	// Handle timezone
+	if raw, ok := body["timezone"]; ok {
+		var tz string
+		if err := json.Unmarshal(raw, &tz); err != nil {
+			respondError(w, http.StatusBadRequest, "invalid timezone value")
+			return
+		}
+		if tz != "" {
+			if _, err := time.LoadLocation(tz); err != nil {
+				respondError(w, http.StatusBadRequest, fmt.Sprintf("invalid timezone: %s", tz))
+				return
+			}
+		}
+		if err := h.store.SetSetting("timezone", tz); err != nil {
+			h.logger.Error("failed to save timezone setting", "error", err)
+			respondError(w, http.StatusInternalServerError, "failed to save setting")
+			return
+		}
+		result["timezone"] = tz
 	}
 
-	respondJSON(w, http.StatusOK, map[string]string{"timezone": body.Timezone})
+	// Handle hidden_insights
+	if raw, ok := body["hidden_insights"]; ok {
+		var keys []string
+		if err := json.Unmarshal(raw, &keys); err != nil {
+			respondError(w, http.StatusBadRequest, "invalid hidden_insights value")
+			return
+		}
+		if keys == nil {
+			keys = []string{}
+		}
+		hiddenJSON, _ := json.Marshal(keys)
+		if err := h.store.SetSetting("hidden_insights", string(hiddenJSON)); err != nil {
+			h.logger.Error("failed to save hidden_insights setting", "error", err)
+			respondError(w, http.StatusInternalServerError, "failed to save setting")
+			return
+		}
+		result["hidden_insights"] = keys
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 
 // Login handles GET (show form) and POST (authenticate).
@@ -2259,4 +2370,59 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		MaxAge: -1,
 	})
 	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+// ChangePassword handles password change requests.
+func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	if h.sessions == nil || h.store == nil {
+		respondError(w, http.StatusInternalServerError, "auth not configured")
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.CurrentPassword == "" || req.NewPassword == "" {
+		respondError(w, http.StatusBadRequest, "current and new passwords are required")
+		return
+	}
+
+	if len(req.NewPassword) < 6 {
+		respondError(w, http.StatusBadRequest, "new password must be at least 6 characters")
+		return
+	}
+
+	// Verify current password
+	_, ok := h.sessions.Authenticate(h.sessions.username, req.CurrentPassword)
+	if !ok {
+		respondError(w, http.StatusUnauthorized, "current password is incorrect")
+		return
+	}
+
+	// Hash and store new password
+	newHash := HashPassword(req.NewPassword)
+	if err := h.store.UpsertUser(h.sessions.username, newHash); err != nil {
+		h.logger.Error("failed to update password in database", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to save new password")
+		return
+	}
+
+	// Update in-memory hash
+	h.sessions.UpdatePassword(newHash)
+
+	// Invalidate all sessions (force re-login)
+	h.sessions.InvalidateAll()
+
+	respondJSON(w, http.StatusOK, map[string]string{"message": "password updated successfully"})
 }

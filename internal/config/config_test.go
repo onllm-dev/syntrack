@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -98,8 +99,17 @@ func TestConfig_DefaultValues(t *testing.T) {
 	if cfg.AdminPass != "changeme" {
 		t.Errorf("AdminPass = %q, want %q", cfg.AdminPass, "changeme")
 	}
-	if cfg.DBPath != "./syntrack.db" {
-		t.Errorf("DBPath = %q, want %q", cfg.DBPath, "./syntrack.db")
+	// Default DB path depends on HOME availability
+	home, homeErr := os.UserHomeDir()
+	if homeErr == nil && home != "" {
+		expectedDBPath := filepath.Join(home, ".syntrack", "data", "syntrack.db")
+		if cfg.DBPath != expectedDBPath {
+			t.Errorf("DBPath = %q, want %q", cfg.DBPath, expectedDBPath)
+		}
+	} else {
+		if cfg.DBPath != "./syntrack.db" {
+			t.Errorf("DBPath = %q, want %q (HOME unavailable fallback)", cfg.DBPath, "./syntrack.db")
+		}
 	}
 	if cfg.LogLevel != "info" {
 		t.Errorf("LogLevel = %q, want %q", cfg.LogLevel, "info")

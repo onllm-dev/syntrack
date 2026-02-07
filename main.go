@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"log/slog"
 	"net"
@@ -180,6 +181,53 @@ func ensurePIDDir() error {
 	return os.MkdirAll(pidDir, 0755)
 }
 
+// sha256hex returns the SHA-256 hex hash of a string.
+func sha256hex(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return fmt.Sprintf("%x", h)
+}
+
+// migrateDBLocation moves the database from old default locations to the new one.
+// Only runs when no explicit --db or SYNTRACK_DB_PATH was set.
+func migrateDBLocation(newPath string, logger *slog.Logger) {
+	oldPaths := []string{
+		"./syntrack.db",
+	}
+	oldHome := os.Getenv("HOME")
+	if oldHome != "" {
+		intermediatePath := filepath.Join(oldHome, ".syntrack", "syntrack.db")
+		oldPaths = append(oldPaths, intermediatePath)
+	}
+
+	for _, oldPath := range oldPaths {
+		if oldPath == newPath {
+			continue
+		}
+		if _, err := os.Stat(oldPath); err != nil {
+			continue
+		}
+		if _, err := os.Stat(newPath); err == nil {
+			break // new already exists, skip
+		}
+
+		// Ensure target directory exists
+		if err := os.MkdirAll(filepath.Dir(newPath), 0700); err != nil {
+			logger.Warn("Failed to create data directory", "path", filepath.Dir(newPath), "error", err)
+			continue
+		}
+
+		// Move DB + WAL/SHM files
+		if err := os.Rename(oldPath, newPath); err != nil {
+			logger.Warn("Failed to migrate database", "from", oldPath, "to", newPath, "error", err)
+			continue
+		}
+		os.Rename(oldPath+"-wal", newPath+"-wal")
+		os.Rename(oldPath+"-shm", newPath+"-shm")
+		logger.Info("Migrated database", "from", oldPath, "to", newPath)
+		break
+	}
+}
+
 func writePIDFile(port int) error {
 	if err := ensurePIDDir(); err != nil {
 		return fmt.Errorf("failed to create PID directory: %w", err)
@@ -333,6 +381,14 @@ func run() error {
 		printBanner(cfg, version)
 	}
 
+	// Ensure data directory exists and migrate DB if needed
+	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0700); err != nil {
+		logger.Warn("Failed to create database directory", "error", err)
+	}
+	if !cfg.DBPathExplicit {
+		migrateDBLocation(cfg.DBPath, logger)
+	}
+
 	// Open database
 	db, err := store.New(cfg.DBPath)
 	if err != nil {
@@ -341,6 +397,21 @@ func run() error {
 	defer db.Close()
 
 	logger.Info("Database opened", "path", cfg.DBPath)
+
+	// Password precedence: DB-stored hash takes priority over .env
+	dbHash, hashErr := db.GetUser(cfg.AdminUser)
+	if hashErr == nil && dbHash != "" {
+		// DB has stored password — use it
+		cfg.AdminPassHash = dbHash
+		logger.Info("Using database-stored password for auth")
+	} else {
+		// No DB password — hash the .env password and store it
+		cfg.AdminPassHash = sha256hex(cfg.AdminPass)
+		if storeErr := db.UpsertUser(cfg.AdminUser, cfg.AdminPassHash); storeErr != nil {
+			logger.Warn("Failed to store initial password hash", "error", storeErr)
+		}
+		logger.Info("Stored initial password hash in database")
+	}
 
 	// Close any orphaned sessions from previous runs (e.g., process was killed)
 	if closed, err := db.CloseOrphanedSessions(); err != nil {
@@ -384,7 +455,8 @@ func run() error {
 	}
 
 	handler := web.NewHandler(db, tr, logger, nil, cfg, zaiTr)
-	server := web.NewServer(cfg.Port, handler, logger, cfg.AdminUser, cfg.AdminPass)
+	handler.SetVersion(version)
+	server := web.NewServer(cfg.Port, handler, logger, cfg.AdminUser, cfg.AdminPassHash)
 
 	// Setup signal handling
 	ctx, cancel := context.WithCancel(context.Background())
@@ -623,10 +695,17 @@ func runStatus(testMode bool) error {
 						fmt.Printf("  Log file:  %s (%s)\n", logPath, humanSize(info.Size()))
 					}
 
-					// Show DB file if it exists
-					dbPath := "./syntrack.db"
-					if info, err := os.Stat(dbPath); err == nil {
-						fmt.Printf("  Database:  %s (%s)\n", dbPath, humanSize(info.Size()))
+					// Show DB file if it exists (check new default path first, then old)
+					home, _ := os.UserHomeDir()
+					dbPaths := []string{
+						filepath.Join(home, ".syntrack", "data", "syntrack.db"),
+						"./syntrack.db",
+					}
+					for _, dbPath := range dbPaths {
+						if info, err := os.Stat(dbPath); err == nil {
+							fmt.Printf("  Database:  %s (%s)\n", dbPath, humanSize(info.Size()))
+							break
+						}
 					}
 
 					return nil
@@ -727,7 +806,7 @@ func printHelp() {
 	fmt.Println("  --help             Print this help message")
 	fmt.Println("  --interval SEC     Polling interval in seconds (default: 60)")
 	fmt.Println("  --port PORT        Dashboard HTTP port (default: 9211)")
-	fmt.Println("  --db PATH          SQLite database file path (default: ./syntrack.db)")
+	fmt.Println("  --db PATH          SQLite database file path (default: ~/.syntrack/data/syntrack.db)")
 	fmt.Println("  --debug            Run in foreground mode, log to stdout")
 	fmt.Println("  --test             Test mode: isolated PID/log files, won't affect production")
 	fmt.Println()

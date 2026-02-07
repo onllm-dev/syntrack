@@ -27,9 +27,11 @@ type Config struct {
 	PollInterval time.Duration // SYNTRACK_POLL_INTERVAL (seconds → Duration)
 	Port         int           // SYNTRACK_PORT
 	Host         string        // SYNTRACK_HOST (bind address, default: 0.0.0.0)
-	AdminUser    string        // SYNTRACK_ADMIN_USER
-	AdminPass    string        // SYNTRACK_ADMIN_PASS
-	DBPath       string        // SYNTRACK_DB_PATH
+	AdminUser     string // SYNTRACK_ADMIN_USER
+	AdminPass     string // SYNTRACK_ADMIN_PASS
+	AdminPassHash string // SHA-256 hash of password (set after DB check)
+	DBPath        string // SYNTRACK_DB_PATH
+	DBPathExplicit bool  // true if user explicitly set --db or SYNTRACK_DB_PATH
 	LogLevel     string        // SYNTRACK_LOG_LEVEL
 	DebugMode    bool          // --debug flag (foreground mode)
 	TestMode     bool          // --test flag (test mode isolation)
@@ -138,8 +140,10 @@ func loadFromEnvAndFlags(flags *flagValues) (*Config, error) {
 	// DB Path
 	if flags.db != "" {
 		cfg.DBPath = flags.db
-	} else {
-		cfg.DBPath = os.Getenv("SYNTRACK_DB_PATH")
+		cfg.DBPathExplicit = true
+	} else if envDB := os.Getenv("SYNTRACK_DB_PATH"); envDB != "" {
+		cfg.DBPath = envDB
+		cfg.DBPathExplicit = true
 	}
 
 	// Log Level
@@ -177,7 +181,12 @@ func (c *Config) applyDefaults() {
 		c.AdminPass = "changeme"
 	}
 	if c.DBPath == "" {
-		c.DBPath = "./syntrack.db"
+		home, err := os.UserHomeDir()
+		if err != nil || home == "" {
+			c.DBPath = "./syntrack.db"
+		} else {
+			c.DBPath = filepath.Join(home, ".syntrack", "data", "syntrack.db")
+		}
 	}
 	if c.LogLevel == "" {
 		c.LogLevel = "info"

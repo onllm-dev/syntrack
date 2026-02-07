@@ -4,8 +4,8 @@ const API_BASE = '';
 const REFRESH_INTERVAL = 60000;
 
 // ── Auth helper: redirect to login on 401 ──
-async function authFetch(url) {
-  const res = await fetch(url);
+async function authFetch(url, options) {
+  const res = await fetch(url, options);
   if (res.status === 401) {
     window.location.href = '/login';
     throw new Error('Session expired');
@@ -53,6 +53,8 @@ const State = {
   chartYMax: 100,
   // Hidden quota datasets (persisted in localStorage)
   hiddenQuotas: new Set(),
+  // Hidden insight keys (persisted in DB via settings API)
+  hiddenInsights: new Set(),
 };
 
 // ── Persistence ──
@@ -75,6 +77,82 @@ function saveHiddenQuotas() {
   } catch (e) {
     console.warn('Failed to save hidden quotas:', e);
   }
+}
+
+// ── Insight Visibility (DB-persisted) ──
+
+// Cross-provider insight correlation map (mirrors backend)
+const insightCorrelations = [
+  ['cycle_utilization', 'token_budget'],
+  ['tool_share', 'tool_breakdown'],
+  ['trend', 'trend_24h'],
+  ['weekly_pace', 'usage_7d'],
+];
+
+// Expand a set of hidden keys with all correlated keys
+function expandCorrelatedKeys(keys) {
+  const expanded = new Set(keys);
+  for (const group of insightCorrelations) {
+    if (group.some(k => expanded.has(k))) {
+      group.forEach(k => expanded.add(k));
+    }
+  }
+  return expanded;
+}
+
+// Get all correlated keys for a given key (returns array including the key itself)
+function getCorrelatedKeys(key) {
+  const related = [key];
+  for (const group of insightCorrelations) {
+    if (group.includes(key)) {
+      group.forEach(k => { if (!related.includes(k)) related.push(k); });
+    }
+  }
+  return related;
+}
+
+async function loadHiddenInsights() {
+  try {
+    const res = await authFetch(`${API_BASE}/api/settings`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.hidden_insights && Array.isArray(data.hidden_insights)) {
+        State.hiddenInsights = new Set(data.hidden_insights);
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load hidden insights:', e);
+  }
+}
+
+async function saveHiddenInsights() {
+  try {
+    await authFetch(`${API_BASE}/api/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hidden_insights: [...State.hiddenInsights] })
+    });
+  } catch (e) {
+    console.warn('Failed to save hidden insights:', e);
+  }
+}
+
+async function toggleInsightVisibility(key) {
+  const related = getCorrelatedKeys(key);
+  const isHidden = State.hiddenInsights.has(key);
+  related.forEach(k => {
+    if (isHidden) State.hiddenInsights.delete(k);
+    else State.hiddenInsights.add(k);
+  });
+  await saveHiddenInsights();
+  fetchDeepInsights(); // Re-fetch (backend will filter)
+}
+
+async function unhideInsight(key) {
+  const related = getCorrelatedKeys(key);
+  related.forEach(k => State.hiddenInsights.delete(k));
+  await saveHiddenInsights();
+  fetchDeepInsights();
 }
 
 // ── Provider Persistence ──
@@ -658,13 +736,22 @@ async function fetchDeepInsights() {
       ).join('');
     }
 
+    // Filter out client-side hidden insights (live/client-computed ones)
+    const expandedHidden = expandCorrelatedKeys(State.hiddenInsights);
+    allInsights = allInsights.filter(i => !i.key || !expandedHidden.has(i.key));
+
     if (allInsights.length > 0) {
       cardsEl.innerHTML = allInsights.map((i, idx) => {
-        const icon = insightTitleIcons[i.title] || (i.quotaType && quotaIcons[i.quotaType]) || insightIcons[i.severity] || insightIcons.info;
-        return `<div class="insight-card severity-${i.severity}" data-insight-idx="${idx}" role="button" tabindex="0">
+        const titleForIcon = i.title.replace(/ \(Syn\)$| \(Z\.ai\)$/, '');
+        const icon = insightTitleIcons[titleForIcon] || (i.quotaType && quotaIcons[i.quotaType]) || insightIcons[i.severity] || insightIcons.info;
+        const hideBtn = i.key ? `<button class="insight-eye-btn" data-key="${i.key}" aria-label="Hide this insight" title="Hide this insight">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>` : '';
+        return `<div class="insight-card severity-${i.severity}" data-insight-idx="${idx}" data-key="${i.key || ''}" role="button" tabindex="0">
           <div class="insight-card-header">
             <svg class="insight-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${icon}</svg>
             <span class="insight-card-title">${i.title}</span>
+            ${hideBtn}
             <svg class="insight-card-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
           </div>
           ${i.metric ? `<div class="insight-card-metric">${i.metric}</div>` : ''}
@@ -675,21 +762,33 @@ async function fetchDeepInsights() {
         </div>`;
       }).join('');
 
-      // Attach toggle events
+      // Attach expand/collapse events
       cardsEl.querySelectorAll('.insight-card').forEach(card => {
-        const toggle = () => {
+        const toggle = (e) => {
+          if (e.target.closest('.insight-eye-btn')) return; // Don't toggle on eye click
           const wasExpanded = card.classList.contains('expanded');
           cardsEl.querySelectorAll('.insight-card.expanded').forEach(c => c.classList.remove('expanded'));
           if (!wasExpanded) card.classList.add('expanded');
         };
         card.addEventListener('click', toggle);
         card.addEventListener('keydown', e => {
-          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(e); }
+        });
+      });
+
+      // Attach hide buttons
+      cardsEl.querySelectorAll('.insight-eye-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleInsightVisibility(btn.dataset.key);
         });
       });
     } else {
       cardsEl.innerHTML = '<p class="insight-text">Keep tracking to see deep analytics.</p>';
     }
+
+    // Render hidden insights badge
+    renderHiddenInsightsBadge();
   } catch (err) {
     console.error('Insights fetch error:', err);
     cardsEl.innerHTML = '<p class="insight-text">Unable to load insights.</p>';
@@ -720,6 +819,7 @@ function computeClientInsights() {
       const hasReset = q.timeUntilResetSeconds && q.timeUntilResetSeconds > 0;
       insights.push({
         type: 'live',
+        key: `live_${type}`,
         quotaType: type,
         severity: pctUsed > 80 ? 'warning' : pctUsed > 50 ? 'info' : 'positive',
         title: `${names[type] || type}`,
@@ -743,7 +843,7 @@ function computeClientInsights() {
     const avg = totalCons / recent.length;
     if (avg > 0) {
       insights.push({
-        type: 'session', quotaType: 'session', severity: 'info',
+        type: 'session', key: 'session_avg', quotaType: 'session', severity: 'info',
         title: 'Session Avg',
         metric: formatNumber(avg),
         sublabel: `per session (last ${recent.length})`,
@@ -753,6 +853,46 @@ function computeClientInsights() {
   }
 
   return insights;
+}
+
+// ── Hidden Insights Badge ──
+
+function renderHiddenInsightsBadge() {
+  const panel = document.querySelector('.insights-panel');
+  if (!panel) return;
+
+  // Remove existing badge
+  const existing = panel.querySelector('.hidden-insights-badge');
+  if (existing) existing.remove();
+
+  const hiddenCount = State.hiddenInsights.size;
+  if (hiddenCount === 0) return;
+
+  const badge = document.createElement('div');
+  badge.className = 'hidden-insights-badge';
+  badge.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hidden-badge-icon">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+      <line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+    <span>${hiddenCount} hidden</span>
+    <button class="hidden-badge-show" title="Show all hidden insights">Show all</button>
+  `;
+
+  badge.querySelector('.hidden-badge-show').addEventListener('click', async () => {
+    State.hiddenInsights.clear();
+    await saveHiddenInsights();
+    fetchDeepInsights();
+  });
+
+  // Insert after section header
+  const header = panel.querySelector('.section-header');
+  if (header) {
+    header.after(badge);
+  } else {
+    panel.prepend(badge);
+  }
 }
 
 // ── Chart: Crosshair Plugin ──
@@ -1886,50 +2026,6 @@ function setupHeaderActions() {
   }
 }
 
-function setupQuotaToggles() {
-  // Add eye icons to quota cards for toggling visibility
-  document.querySelectorAll('.quota-card').forEach(card => {
-    const quotaType = card.dataset.quota;
-    if (!quotaType) return;
-    
-    // Create eye toggle button
-    const toggleBtn = document.createElement('button');
-    toggleBtn.className = 'quota-toggle-btn';
-    toggleBtn.setAttribute('aria-label', `Toggle ${quotaType} visibility`);
-    toggleBtn.setAttribute('title', 'Click to hide/show on graph');
-    toggleBtn.innerHTML = `
-      <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-        <circle cx="12" cy="12" r="3"/>
-      </svg>
-      <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-        <line x1="1" y1="1" x2="23" y2="23"/>
-      </svg>
-    `;
-    
-    // Check if initially hidden
-    if (State.hiddenQuotas.has(quotaType)) {
-      card.classList.add('quota-hidden');
-      toggleBtn.classList.add('hidden');
-    }
-    
-    // Add click handler (prevent modal from opening)
-    toggleBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleQuotaVisibility(quotaType);
-      card.classList.toggle('quota-hidden', State.hiddenQuotas.has(quotaType));
-      toggleBtn.classList.toggle('hidden', State.hiddenQuotas.has(quotaType));
-    });
-    
-    // Add to card header
-    const header = card.querySelector('.card-header');
-    if (header) {
-      header.appendChild(toggleBtn);
-    }
-  });
-}
-
 function setupCardModals() {
   document.querySelectorAll('.quota-card[role="button"]').forEach(card => {
     const handler = () => {
@@ -1992,7 +2088,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Load persisted state
   loadHiddenQuotas();
-  
+  loadHiddenInsights();
+
   initTheme();
   initTimezoneBadge();
   setupProviderSelector();
@@ -2003,7 +2100,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTableControls();
   setupHeaderActions();
   setupCardModals();
-  setupQuotaToggles();
 
   if (document.getElementById('usage-chart') || document.getElementById('both-view')) {
     const provider = getCurrentProvider();
@@ -2053,5 +2149,83 @@ document.addEventListener('DOMContentLoaded', () => {
         th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTableSort('sessions', th); } });
       });
     }
+  }
+
+  // ═══════════════════════════════════════════
+  // PASSWORD CHANGE MODAL
+  // ═══════════════════════════════════════════
+
+  const passwordModal = document.getElementById('password-modal');
+  const passwordForm = document.getElementById('password-form');
+  const changePasswordBtn = document.getElementById('change-password-btn');
+  const passwordModalClose = document.getElementById('password-modal-close');
+  const passwordError = document.getElementById('password-error');
+  const passwordSuccess = document.getElementById('password-success');
+
+  if (changePasswordBtn && passwordModal) {
+    changePasswordBtn.addEventListener('click', () => {
+      passwordModal.hidden = false;
+      if (passwordError) { passwordError.hidden = true; passwordError.textContent = ''; }
+      if (passwordSuccess) { passwordSuccess.hidden = true; passwordSuccess.textContent = ''; }
+      if (passwordForm) passwordForm.reset();
+      const firstInput = document.getElementById('current-password');
+      if (firstInput) firstInput.focus();
+    });
+
+    if (passwordModalClose) {
+      passwordModalClose.addEventListener('click', () => { passwordModal.hidden = true; });
+    }
+
+    passwordModal.addEventListener('click', e => {
+      if (e.target === passwordModal) passwordModal.hidden = true;
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !passwordModal.hidden) passwordModal.hidden = true;
+    });
+  }
+
+  if (passwordForm) {
+    passwordForm.addEventListener('submit', async e => {
+      e.preventDefault();
+      if (passwordError) { passwordError.hidden = true; passwordError.textContent = ''; }
+      if (passwordSuccess) { passwordSuccess.hidden = true; passwordSuccess.textContent = ''; }
+
+      const currentPass = document.getElementById('current-password').value;
+      const newPass = document.getElementById('new-password').value;
+      const confirmPass = document.getElementById('confirm-password').value;
+
+      if (newPass !== confirmPass) {
+        if (passwordError) { passwordError.textContent = 'New passwords do not match.'; passwordError.hidden = false; }
+        return;
+      }
+      if (newPass.length < 6) {
+        if (passwordError) { passwordError.textContent = 'New password must be at least 6 characters.'; passwordError.hidden = false; }
+        return;
+      }
+
+      const submitBtn = document.getElementById('password-submit-btn');
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Updating...'; }
+
+      try {
+        const resp = await authFetch('/api/password', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ current_password: currentPass, new_password: newPass })
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+          if (passwordError) { passwordError.textContent = data.error || 'Failed to update password.'; passwordError.hidden = false; }
+        } else {
+          if (passwordSuccess) { passwordSuccess.textContent = 'Password updated! Redirecting to login...'; passwordSuccess.hidden = true; passwordSuccess.hidden = false; }
+          passwordForm.reset();
+          setTimeout(() => { window.location.href = '/login'; }, 1500);
+        }
+      } catch (err) {
+        if (passwordError) { passwordError.textContent = 'Network error. Please try again.'; passwordError.hidden = false; }
+      } finally {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Update Password'; }
+      }
+    });
   }
 });

@@ -27,9 +27,6 @@
                 <span class="status-indicator" id="status-dot" aria-label="Connection status"></span>
             </div>
         </div>
-        <a href="/logout" class="header-btn" id="logout-btn" aria-label="Logout" title="Logout">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        </a>
         <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
             <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="5"/>
@@ -39,6 +36,9 @@
                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
             </svg>
         </button>
+        <a href="/logout" class="header-btn" id="logout-btn" aria-label="Logout" title="Logout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </a>
     </header>
 
     <main id="main-content" class="main-content">
@@ -466,6 +466,49 @@
             </div>
         </section>
     </main>
+
+    <footer class="app-footer">
+        <div class="footer-content">
+            <span class="footer-brand">SynTrack v{{.Version}}</span>
+            <div class="footer-actions">
+                <button class="footer-btn" id="change-password-btn">Change Password</button>
+            </div>
+            <span class="footer-copy">Open Source</span>
+        </div>
+    </footer>
+</div>
+
+<!-- Password Change Modal -->
+<div class="modal-overlay" id="password-modal" role="dialog" aria-modal="true" aria-labelledby="password-modal-title" hidden>
+    <div class="modal-content" style="max-width:420px">
+        <header class="modal-header">
+            <h2 class="modal-title" id="password-modal-title">Change Password</h2>
+            <button class="modal-close" id="password-modal-close" aria-label="Close modal">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+            </button>
+        </header>
+        <div class="modal-body">
+            <form id="password-form">
+                <div class="form-group">
+                    <label for="current-password">Current Password</label>
+                    <input type="password" id="current-password" class="form-input" required autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label for="new-password">New Password</label>
+                    <input type="password" id="new-password" class="form-input" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label for="confirm-password">Confirm New Password</label>
+                    <input type="password" id="confirm-password" class="form-input" required minlength="6" autocomplete="new-password">
+                </div>
+                <div id="password-error" class="password-error" hidden></div>
+                <div id="password-success" class="password-success" hidden></div>
+                <button type="submit" class="password-submit-btn" id="password-submit-btn">Update Password</button>
+            </form>
+        </div>
+    </div>
 </div>
 
 <!-- Detail Modal -->

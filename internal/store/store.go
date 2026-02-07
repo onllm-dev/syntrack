@@ -130,6 +130,12 @@ func (s *Store) createTables() error {
 			expires_at TEXT NOT NULL
 		);
 
+		CREATE TABLE IF NOT EXISTS users (
+			username TEXT PRIMARY KEY,
+			password_hash TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+
 		-- Z.ai-specific tables
 		CREATE TABLE IF NOT EXISTS zai_snapshots (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -702,6 +708,40 @@ func (s *Store) CleanExpiredAuthTokens() error {
 	_, err := s.db.Exec("DELETE FROM auth_tokens WHERE expires_at < ?", time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return fmt.Errorf("store.CleanExpiredAuthTokens: %w", err)
+	}
+	return nil
+}
+
+// GetUser returns the password hash for a username. Returns "" if not found.
+func (s *Store) GetUser(username string) (string, error) {
+	var hash string
+	err := s.db.QueryRow("SELECT password_hash FROM users WHERE username = ?", username).Scan(&hash)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("store.GetUser: %w", err)
+	}
+	return hash, nil
+}
+
+// UpsertUser inserts or updates a user's password hash.
+func (s *Store) UpsertUser(username, passwordHash string) error {
+	_, err := s.db.Exec(
+		"INSERT OR REPLACE INTO users (username, password_hash, updated_at) VALUES (?, ?, ?)",
+		username, passwordHash, time.Now().UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		return fmt.Errorf("store.UpsertUser: %w", err)
+	}
+	return nil
+}
+
+// DeleteAllAuthTokens removes all session tokens (used after password change).
+func (s *Store) DeleteAllAuthTokens() error {
+	_, err := s.db.Exec("DELETE FROM auth_tokens")
+	if err != nil {
+		return fmt.Errorf("store.DeleteAllAuthTokens: %w", err)
 	}
 	return nil
 }

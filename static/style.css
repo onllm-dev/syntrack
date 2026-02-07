@@ -701,31 +701,6 @@ button, input, select { font-family: inherit; }
   color: var(--text-muted);
 }
 
-/* Quota visibility toggle */
-.quota-toggle-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: 4px;
-  padding: 2px;
-  transition: color var(--transition-fast), background var(--transition-fast);
-}
-.quota-toggle-btn:hover {
-  color: var(--accent-teal);
-  background: var(--accent-teal-muted);
-}
-.quota-toggle-btn svg { width: 16px; height: 16px; }
-.quota-toggle-btn .icon-eye-off { display: none; }
-.quota-toggle-btn.hidden .icon-eye { display: none; }
-.quota-toggle-btn.hidden .icon-eye-off { display: block; }
-.quota-card.quota-hidden { opacity: 0.5; }
-.quota-card.quota-hidden:hover { opacity: 0.7; }
 
 /* ═══════════════════════════════════════════
    8. SECTION PANELS
@@ -933,6 +908,65 @@ button, input, select { font-family: inherit; }
   line-height: 1.6;
   padding-top: 12px;
   border-top: 1px solid var(--border-light);
+}
+
+/* Insight Eye Toggle Button */
+.insight-eye-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.insight-eye-btn svg { width: 14px; height: 14px; }
+.insight-card:hover .insight-eye-btn { opacity: 0.6; }
+.insight-eye-btn:hover {
+  opacity: 1 !important;
+  color: var(--status-danger);
+  background: var(--status-danger-bg);
+}
+
+/* Hidden Insights Badge */
+.hidden-insights-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: var(--surface-inset);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+.hidden-badge-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.hidden-badge-show {
+  border: none;
+  background: none;
+  color: var(--accent-teal);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background var(--transition-fast);
+}
+.hidden-badge-show:hover {
+  background: var(--accent-teal-muted);
 }
 
 .insight-text {
@@ -1498,6 +1532,108 @@ button, input, select { font-family: inherit; }
   position: absolute;
   top: 16px;
   right: 16px;
+}
+
+/* ═══════════════════════════════════════════
+   16a. FOOTER
+   ═══════════════════════════════════════════ */
+
+.app-footer {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-card);
+}
+
+.footer-content {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.footer-brand {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.footer-copy {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.footer-btn {
+  background: none;
+  border: none;
+  color: var(--accent-teal);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+.footer-btn:hover {
+  background: var(--accent-teal-muted);
+}
+
+/* ═══════════════════════════════════════════
+   16b. PASSWORD CHANGE MODAL
+   ═══════════════════════════════════════════ */
+
+.form-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-card);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  box-sizing: border-box;
+}
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent-teal);
+  box-shadow: 0 0 0 3px var(--accent-teal-muted);
+}
+
+.password-submit-btn {
+  width: 100%;
+  padding: 12px;
+  background: var(--accent-teal);
+  color: #FFFFFF;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+  margin-top: 8px;
+}
+.password-submit-btn:hover { opacity: 0.92; }
+.password-submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.password-error {
+  padding: 10px 14px;
+  background: var(--status-danger-bg);
+  color: var(--status-danger-text);
+  border: 1px solid var(--status-danger);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.password-success {
+  padding: 10px 14px;
+  background: var(--status-healthy-bg);
+  color: var(--status-healthy-text);
+  border: 1px solid var(--status-healthy);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  margin-bottom: 12px;
 }
 
 /* ═══════════════════════════════════════════

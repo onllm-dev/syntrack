@@ -3,9 +3,11 @@ package web
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -14,26 +16,33 @@ import (
 	"github.com/onllm-dev/syntrack/internal/store"
 )
 
+// HashPassword returns the SHA-256 hex hash of a password.
+func HashPassword(password string) string {
+	h := sha256.Sum256([]byte(password))
+	return fmt.Sprintf("%x", h)
+}
+
 const sessionCookieName = "syntrack_session"
 const sessionMaxAge = 7 * 24 * 3600 // 7 days
 
 // SessionStore manages session tokens with SQLite persistence and in-memory cache.
 type SessionStore struct {
-	mu       sync.RWMutex
-	tokens   map[string]time.Time // in-memory cache: token -> expiry
-	username string
-	password string
-	store    *store.Store // optional: if set, tokens are persisted across restarts
+	mu           sync.RWMutex
+	tokens       map[string]time.Time // in-memory cache: token -> expiry
+	username     string
+	passwordHash string // SHA-256 hex hash of password
+	store        *store.Store // optional: if set, tokens are persisted across restarts
 }
 
 // NewSessionStore creates a session store with the given credentials.
+// passwordHash should be a SHA-256 hex hash of the password.
 // If a store is provided, tokens are persisted in SQLite.
-func NewSessionStore(username, password string, db *store.Store) *SessionStore {
+func NewSessionStore(username, passwordHash string, db *store.Store) *SessionStore {
 	ss := &SessionStore{
-		tokens:   make(map[string]time.Time),
-		username: username,
-		password: password,
-		store:    db,
+		tokens:       make(map[string]time.Time),
+		username:     username,
+		passwordHash: passwordHash,
+		store:        db,
 	}
 	// Clean expired tokens and preload valid ones from DB
 	if db != nil {
@@ -45,7 +54,11 @@ func NewSessionStore(username, password string, db *store.Store) *SessionStore {
 // Authenticate validates credentials and returns a session token if valid.
 func (s *SessionStore) Authenticate(username, password string) (string, bool) {
 	userMatch := subtle.ConstantTimeCompare([]byte(username), []byte(s.username)) == 1
-	passMatch := subtle.ConstantTimeCompare([]byte(password), []byte(s.password)) == 1
+	incomingHash := HashPassword(password)
+	s.mu.RLock()
+	storedHash := s.passwordHash
+	s.mu.RUnlock()
+	passMatch := subtle.ConstantTimeCompare([]byte(incomingHash), []byte(storedHash)) == 1
 	if !userMatch || !passMatch {
 		return "", false
 	}
@@ -112,6 +125,23 @@ func (s *SessionStore) Invalidate(token string) {
 	}
 }
 
+// UpdatePassword updates the stored password hash.
+func (s *SessionStore) UpdatePassword(newHash string) {
+	s.mu.Lock()
+	s.passwordHash = newHash
+	s.mu.Unlock()
+}
+
+// InvalidateAll removes all session tokens (used after password change).
+func (s *SessionStore) InvalidateAll() {
+	s.mu.Lock()
+	s.tokens = make(map[string]time.Time)
+	s.mu.Unlock()
+	if s.store != nil {
+		s.store.DeleteAllAuthTokens()
+	}
+}
+
 func generateToken() string {
 	b := make([]byte, 32)
 	rand.Read(b)
@@ -149,7 +179,11 @@ func SessionAuthMiddleware(sessions *SessionStore) func(http.Handler) http.Handl
 				u, p, ok := extractCredentials(r)
 				if ok {
 					userMatch := subtle.ConstantTimeCompare([]byte(u), []byte(sessions.username)) == 1
-					passMatch := subtle.ConstantTimeCompare([]byte(p), []byte(sessions.password)) == 1
+					incomingHash := HashPassword(p)
+					sessions.mu.RLock()
+					storedHash := sessions.passwordHash
+					sessions.mu.RUnlock()
+					passMatch := subtle.ConstantTimeCompare([]byte(incomingHash), []byte(storedHash)) == 1
 					if userMatch && passMatch {
 						next.ServeHTTP(w, r)
 						return

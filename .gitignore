@@ -34,7 +34,7 @@ Thumbs.db
 *.jpeg
 *.gif
 *.bmp
-screenshots/
+!screenshots/*.png
 tmp/
 temp/
 
@@ -56,3 +56,9 @@ node_modules/
 package.json
 package-lock.json
 tests/
+
+# Internal research & analysis docs (not for public repo)
+market-research.md
+icp-analysis.md
+promotional-articles.md
+naming-research.md

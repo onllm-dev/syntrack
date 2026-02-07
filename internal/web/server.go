@@ -23,8 +23,9 @@ type Server struct {
 	port       int
 }
 
-// NewServer creates a new Server instance
-func NewServer(port int, handler *Handler, logger *slog.Logger, username, password string) *Server {
+// NewServer creates a new Server instance.
+// passwordHash should be a SHA-256 hex hash of the admin password.
+func NewServer(port int, handler *Handler, logger *slog.Logger, username, passwordHash string) *Server {
 	if port == 0 {
 		port = 9211 // default port
 	}
@@ -49,6 +50,7 @@ func NewServer(port int, handler *Handler, logger *slog.Logger, username, passwo
 			handler.GetSettings(w, r)
 		}
 	})
+	mux.HandleFunc("/api/password", handler.ChangePassword)
 
 	// Static files from embedded filesystem
 	staticDir, _ := fs.Sub(staticFS, "static")
@@ -57,8 +59,8 @@ func NewServer(port int, handler *Handler, logger *slog.Logger, username, passwo
 
 	// Apply session-based authentication middleware
 	var finalHandler http.Handler = mux
-	if username != "" && password != "" {
-		sessions := NewSessionStore(username, password, handler.store)
+	if username != "" && passwordHash != "" {
+		sessions := NewSessionStore(username, passwordHash, handler.store)
 		handler.sessions = sessions
 		finalHandler = SessionAuthMiddleware(sessions)(mux)
 	}
