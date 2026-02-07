@@ -2145,14 +2145,14 @@ a:hover { text-decoration: underline; }
                         <div class="mockup-title">Dashboard</div>
                         <div class="mock-time" id="mock-time"></div>
                         <div class="mockup-tabs" id="mockup-tabs">
-                            <span class="mockup-tab active" data-tab="synthetic" onclick="switchMockTab('synthetic')">Synthetic</span>
+                            <span class="mockup-tab active" data-tab="anthropic" onclick="switchMockTab('anthropic')">Anthropic</span>
+                            <span class="mockup-tab" data-tab="synthetic" onclick="switchMockTab('synthetic')">Synthetic</span>
                             <span class="mockup-tab" data-tab="zai" onclick="switchMockTab('zai')">Z.ai</span>
-                            <span class="mockup-tab" data-tab="anthropic" onclick="switchMockTab('anthropic')">Anthropic</span>
                             <span class="mockup-tab" data-tab="all" onclick="switchMockTab('all')">All</span>
                         </div>
                     </div>
                     <!-- Synthetic view -->
-                    <div class="mockup-view" id="mock-synthetic">
+                    <div class="mockup-view" id="mock-synthetic" style="display:none;">
                         <div class="mockup-cards">
                             <div class="mock-card">
                                 <div class="mock-card-header">
@@ -2240,7 +2240,7 @@ a:hover { text-decoration: underline; }
                         </div>
                     </div>
                     <!-- Anthropic view -->
-                    <div class="mockup-view" id="mock-anthropic" style="display:none;">
+                    <div class="mockup-view" id="mock-anthropic">
                         <div class="mockup-cards">
                             <div class="mock-card">
                                 <div class="mock-card-header">
@@ -2285,7 +2285,28 @@ a:hover { text-decoration: underline; }
                     </div>
                     <!-- All providers view -->
                     <div class="mockup-view" id="mock-all" style="display:none;">
-                        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent-teal);margin:0 0 6px;opacity:0.7;">Synthetic</div>
+                        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#D97757;margin:0 0 6px;opacity:0.7;">Anthropic</div>
+                        <div class="mockup-cards" style="grid-template-columns: repeat(3, 1fr); gap:8px; margin-bottom:6px;">
+                            <div class="mock-card" style="padding:10px 12px;">
+                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Five-Hour</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">2h 18m</div></div>
+                                <div class="mock-card-value" id="anim-all-ant5h" style="font-size:16px;">0%</div>
+                                <div class="mock-card-sub" style="font-size:9px;">50% utilization</div>
+                                <div class="mock-progress"><div class="mock-progress-fill" id="prog-all-ant5h" style="width:0%;background:var(--status-warning)"></div></div>
+                            </div>
+                            <div class="mock-card" style="padding:10px 12px;">
+                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Seven-Day</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">4d 12h</div></div>
+                                <div class="mock-card-value" id="anim-all-ant7d" style="font-size:16px;">0%</div>
+                                <div class="mock-card-sub" style="font-size:9px;">31% utilization</div>
+                                <div class="mock-progress"><div class="mock-progress-fill" id="prog-all-ant7d" style="width:0%;background:var(--status-healthy)"></div></div>
+                            </div>
+                            <div class="mock-card" style="padding:10px 12px;">
+                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Sonnet (7d)</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">4d 12h</div></div>
+                                <div class="mock-card-value" id="anim-all-antson" style="font-size:16px;">0%</div>
+                                <div class="mock-card-sub" style="font-size:9px;">1% utilization</div>
+                                <div class="mock-progress"><div class="mock-progress-fill" id="prog-all-antson" style="width:0%;background:var(--status-healthy)"></div></div>
+                            </div>
+                        </div>
+                        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--accent-teal);margin:8px 0 6px;opacity:0.7;">Synthetic</div>
                         <div class="mockup-cards" style="grid-template-columns: repeat(3, 1fr); gap:8px; margin-bottom:6px;">
                             <div class="mock-card" style="padding:10px 12px;">
                                 <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Subscription</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">3h 47m</div></div>
@@ -2327,27 +2348,6 @@ a:hover { text-decoration: underline; }
                                 <div class="mock-progress"><div class="mock-progress-fill" id="prog-both-ztool" style="width:0%;background:var(--status-healthy)"></div></div>
                             </div>
                         </div>
-                        <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#D97757;margin:8px 0 6px;opacity:0.7;">Anthropic</div>
-                        <div class="mockup-cards" style="grid-template-columns: repeat(3, 1fr); gap:8px; margin-bottom:0;">
-                            <div class="mock-card" style="padding:10px 12px;">
-                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Five-Hour</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">2h 18m</div></div>
-                                <div class="mock-card-value" id="anim-all-ant5h" style="font-size:16px;">0%</div>
-                                <div class="mock-card-sub" style="font-size:9px;">50% utilization</div>
-                                <div class="mock-progress"><div class="mock-progress-fill" id="prog-all-ant5h" style="width:0%;background:var(--status-warning)"></div></div>
-                            </div>
-                            <div class="mock-card" style="padding:10px 12px;">
-                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Seven-Day</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">4d 12h</div></div>
-                                <div class="mock-card-value" id="anim-all-ant7d" style="font-size:16px;">0%</div>
-                                <div class="mock-card-sub" style="font-size:9px;">31% utilization</div>
-                                <div class="mock-progress"><div class="mock-progress-fill" id="prog-all-ant7d" style="width:0%;background:var(--status-healthy)"></div></div>
-                            </div>
-                            <div class="mock-card" style="padding:10px 12px;">
-                                <div class="mock-card-header"><div class="mock-card-label" style="font-size:9px;">Sonnet (7d)</div><div class="mock-card-countdown" style="font-size:8px;padding:1px 4px;">4d 12h</div></div>
-                                <div class="mock-card-value" id="anim-all-antson" style="font-size:16px;">0%</div>
-                                <div class="mock-card-sub" style="font-size:9px;">1% utilization</div>
-                                <div class="mock-progress"><div class="mock-progress-fill" id="prog-all-antson" style="width:0%;background:var(--status-healthy)"></div></div>
-                            </div>
-                        </div>
                     </div>
                     <div class="mock-chart">
                         <div class="mock-chart-title">Usage over time — Last 6 hours</div>
@@ -2355,23 +2355,23 @@ a:hover { text-decoration: underline; }
                         <div id="chart-multi" style="display:none;">
                             <div style="display:flex;gap:6px;">
                                 <div style="flex:1;min-width:0;">
+                                    <div class="mock-dual-label" style="color:#D97757;">Anthropic</div>
+                                    <div style="position:relative;height:160px;"><canvas id="mock-chart-ant"></canvas></div>
+                                </div>
+                                <div style="flex:1;min-width:0;">
                                     <div class="mock-dual-label" style="color:var(--accent-teal);">Synthetic</div>
-                                    <div style="position:relative;height:80px;"><canvas id="mock-chart-syn"></canvas></div>
+                                    <div style="position:relative;height:160px;"><canvas id="mock-chart-syn"></canvas></div>
                                 </div>
                                 <div style="flex:1;min-width:0;">
                                     <div class="mock-dual-label" style="color:var(--accent-peach);">Z.ai</div>
-                                    <div style="position:relative;height:80px;"><canvas id="mock-chart-zai"></canvas></div>
-                                </div>
-                                <div style="flex:1;min-width:0;">
-                                    <div class="mock-dual-label" style="color:#D97757;">Anthropic</div>
-                                    <div style="position:relative;height:80px;"><canvas id="mock-chart-ant"></canvas></div>
+                                    <div style="position:relative;height:160px;"><canvas id="mock-chart-zai"></canvas></div>
                                 </div>
                             </div>
                         </div>
                         <div class="mock-legend" id="mock-legend">
-                            <span class="mock-legend-item"><span class="mock-legend-dot" style="background:#0D9488"></span>Subscription</span>
-                            <span class="mock-legend-item"><span class="mock-legend-dot" style="background:#8B5CF6"></span>Search</span>
-                            <span class="mock-legend-item"><span class="mock-legend-dot" style="background:#F59E0B"></span>Tool Calls</span>
+                            <span class="mock-legend-item"><span class="mock-legend-dot" style="background:#D97757"></span>Five-Hour</span>
+                            <span class="mock-legend-item"><span class="mock-legend-dot" style="background:#EC4899"></span>Seven-Day</span>
+                            <span class="mock-legend-item"><span class="mock-legend-dot" style="background:#06B6D4"></span>Sonnet</span>
                         </div>
                     </div>
                 </div>
@@ -3081,13 +3081,14 @@ a:hover { text-decoration: underline; }
             var el = document.getElementById(t.id);
             var prog = document.getElementById(t.prog);
             if (!el || !prog) return;
+            var isAnt = t.id.indexOf('ant') !== -1;
             var duration = 1200, startTime = null;
             function step(ts) {
                 if (!startTime) startTime = ts;
                 var p = Math.min((ts - startTime) / duration, 1);
                 var ease = 1 - Math.pow(1 - p, 3);
                 var val = t.end * ease;
-                el.textContent = val.toFixed(1) + '%';
+                el.textContent = (isAnt ? Math.round(val) : val.toFixed(1)) + '%';
                 prog.style.width = val + '%';
                 prog.style.background = getBarColor(val);
                 if (p < 1) requestAnimationFrame(step);
@@ -3117,8 +3118,8 @@ a:hover { text-decoration: underline; }
     if (mockup) {
         var obs = new IntersectionObserver(function(entries) {
             if (entries[0].isIntersecting) {
-                animatedViews['synthetic'] = true;
-                setTimeout(function() { animateTargets(allTargets.synthetic); }, 300);
+                animatedViews['anthropic'] = true;
+                setTimeout(function() { animateTargets(allTargets.anthropic); }, 300);
                 obs.disconnect();
             }
         }, { threshold: 0.3 });
@@ -3773,6 +3774,12 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     var antSonData = buildCurveWithBase(actAntSon, 0.2, 1.0);
     monotonic(antSonData);
 
+    /* Anthropic API returns integer utilization — round all data points */
+    function roundArray(arr) { for (var k = 0; k < arr.length; k++) arr[k] = Math.round(arr[k]); return arr; }
+    roundArray(ant5hData);
+    roundArray(ant7dData);
+    roundArray(antSonData);
+
     /* ── Chart colors ── */
     var TEAL = '#0D9488';
     var PURPLE = '#8B5CF6';
@@ -3780,9 +3787,9 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     var BLUE = '#3B82F6';
     var ROSE = '#F43F5E';
     var EMERALD = '#10B981';
-    var TERRACOTTA = '#D97757';
-    var COPPER = '#B45309';
-    var SAND = '#D4A574';
+    var CORAL = '#D97757';
+    var PINK = '#EC4899';
+    var CYAN = '#06B6D4';
 
     function makeGradient(ctx, color, h) {
         var g = ctx.createLinearGradient(0, 0, 0, h);
@@ -3814,7 +3821,7 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
                 padding: 8,
                 cornerRadius: 6,
                 callbacks: {
-                    label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(1) + '%'; }
+                    label: function(ctx) { var v = ctx.parsed.y; var isAnt = ['Five-Hour','Seven-Day','Sonnet'].indexOf(ctx.dataset.label) !== -1; return ctx.dataset.label + ': ' + (isAnt ? Math.round(v) : v.toFixed(1)) + '%'; }
                 }
             }
         },
@@ -3866,15 +3873,15 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
 
     if (mainCanvas) {
         var mainOpts = JSON.parse(JSON.stringify(commonOpts));
-        mainOpts.scales.y.max = synYMax;
+        mainOpts.scales.y.max = antYMax;
         mainChart = new Chart(mainCanvas, {
             type: 'line',
             data: {
                 labels: labels,
                 datasets: [
-                    makeDataset('Subscription', synSubData, TEAL),
-                    makeDataset('Search', synSearchData, PURPLE),
-                    makeDataset('Tool Calls', synToolData, AMBER)
+                    makeDataset('Five-Hour', ant5hData, CORAL),
+                    makeDataset('Seven-Day', ant7dData, PINK),
+                    makeDataset('Sonnet', antSonData, CYAN)
                 ]
             },
             options: mainOpts
@@ -3929,9 +3936,9 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
             data: {
                 labels: labels,
                 datasets: [
-                    makeDataset('Five-Hour', ant5hData, TERRACOTTA),
-                    makeDataset('Seven-Day', ant7dData, COPPER),
-                    makeDataset('Sonnet', antSonData, SAND)
+                    makeDataset('Five-Hour', ant5hData, CORAL),
+                    makeDataset('Seven-Day', ant7dData, PINK),
+                    makeDataset('Sonnet', antSonData, CYAN)
                 ]
             },
             options: antOpts
@@ -3941,7 +3948,7 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     /* ── Tab switching for charts ── */
     var synLegend = '<span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + TEAL + '"></span>Subscription</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + PURPLE + '"></span>Search</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + AMBER + '"></span>Tool Calls</span>';
     var zaiLegend = '<span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + BLUE + '"></span>Tokens</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + ROSE + '"></span>Time</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + EMERALD + '"></span>Tool Calls</span>';
-    var antLegend = '<span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + TERRACOTTA + '"></span>Five-Hour</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + COPPER + '"></span>Seven-Day</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + SAND + '"></span>Sonnet</span>';
+    var antLegend = '<span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + CORAL + '"></span>Five-Hour</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + PINK + '"></span>Seven-Day</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + CYAN + '"></span>Sonnet</span>';
 
     window._switchChart = function(tab) {
         var single = document.getElementById('chart-single');
@@ -3961,9 +3968,9 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
             if (legend) legend.innerHTML = antLegend;
             if (mainChart) {
                 mainChart.data.datasets = [
-                    makeDataset('Five-Hour', ant5hData, TERRACOTTA),
-                    makeDataset('Seven-Day', ant7dData, COPPER),
-                    makeDataset('Sonnet', antSonData, SAND)
+                    makeDataset('Five-Hour', ant5hData, CORAL),
+                    makeDataset('Seven-Day', ant7dData, PINK),
+                    makeDataset('Sonnet', antSonData, CYAN)
                 ];
                 mainChart.options.scales.y.max = antYMax;
                 mainChart.update();
