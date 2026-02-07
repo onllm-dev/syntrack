@@ -531,6 +531,56 @@ button, input, select { font-family: inherit; }
   background: var(--status-info-bg);
 }
 
+/* Quota visibility toggle */
+.quota-toggle-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  margin-left: 8px;
+  color: var(--text-muted);
+  opacity: 0.6;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quota-toggle-btn:hover {
+  opacity: 1;
+  color: var(--text-secondary);
+}
+
+.quota-toggle-btn .icon-eye,
+.quota-toggle-btn .icon-eye-off {
+  width: 18px;
+  height: 18px;
+}
+
+.quota-toggle-btn .icon-eye-off {
+  display: none;
+}
+
+.quota-toggle-btn.hidden .icon-eye {
+  display: none;
+}
+
+.quota-toggle-btn.hidden .icon-eye-off {
+  display: block;
+}
+
+.quota-toggle-btn.hidden {
+  opacity: 0.3;
+}
+
+.quota-card.quota-hidden {
+  opacity: 0.5;
+}
+
+.quota-card.quota-hidden .progress-fill {
+  opacity: 0.3;
+}
+
 .quota-desc {
   font-size: 13px;
   color: var(--text-muted);
