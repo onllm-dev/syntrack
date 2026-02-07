@@ -2,7 +2,7 @@
 
 ## Overview
 
-**SynTrack** is a minimal, ultra-lightweight Go CLI tool that tracks [Synthetic API](https://synthetic.new) usage by polling the `/v2/quotas` endpoint at configurable intervals, storing historical data in SQLite, and serving a Material Design 3 web dashboard with dark/light mode for usage visualization.
+**SynTrack** is a minimal, ultra-lightweight Go CLI tool that tracks [Synthetic API](https://synthetic.new) and [Z.ai](https://z.ai) usage by polling quota endpoints at configurable intervals, storing historical data in SQLite, and serving a Material Design 3 web dashboard with dark/light mode for usage visualization. Supports multiple providers running in parallel.
 
 **This is an open-source project.** No secrets, no waste, clean repo.
 
@@ -47,7 +47,7 @@ Since SynTrack runs as a background daemon, RAM is our primary constraint:
 
 | Component | Technology | Rationale |
 |-----------|-----------|-----------|
-| Language | Go 1.22+ | Low memory, single binary, fast startup |
+| Language | Go 1.25+ | Low memory, single binary, fast startup |
 | Database | SQLite via `modernc.org/sqlite` | Pure Go (no CGO), zero config, ~2 MB memory |
 | HTTP | `net/http` (stdlib) | No framework overhead |
 | Templates | `html/template` + `embed.FS` | Embedded in binary, zero disk I/O |
@@ -74,24 +74,28 @@ syntrack/
 │
 ├── internal/
 │   ├── config/
-│   │   ├── config.go                   # Load .env + CLI flags, validate
+│   │   ├── config.go                   # Load .env + CLI flags, multi-provider config
 │   │   └── config_test.go
 │   ├── api/
-│   │   ├── types.go                    # QuotaResponse, QuotaInfo, SearchInfo structs
-│   │   ├── types_test.go              # JSON unmarshal tests with real API data
+│   │   ├── types.go                    # Synthetic: QuotaResponse, QuotaInfo structs
+│   │   ├── types_test.go
 │   │   ├── client.go                   # HTTP client for Synthetic API
-│   │   └── client_test.go             # httptest-based tests
+│   │   ├── client_test.go
+│   │   ├── zai_types.go               # Z.ai response types + snapshot conversion
+│   │   └── zai_client.go              # HTTP client for Z.ai API
 │   ├── store/
-│   │   ├── store.go                    # SQLite CRUD operations
+│   │   ├── store.go                    # SQLite CRUD + schema migrations
 │   │   ├── store_test.go
+│   │   ├── zai_store.go               # Z.ai-specific queries
 │   │   ├── migrations.go              # Schema creation + versioning
 │   │   └── queries.go                 # Named SQL query constants
 │   ├── tracker/
 │   │   ├── tracker.go                  # Reset detection + usage delta calculation
 │   │   └── tracker_test.go
 │   ├── agent/
-│   │   ├── agent.go                    # Background polling loop
-│   │   └── agent_test.go
+│   │   ├── agent.go                    # Synthetic background polling loop
+│   │   ├── agent_test.go
+│   │   └── zai_agent.go               # Z.ai background polling loop
 │   └── web/
 │       ├── server.go                   # HTTP server setup + graceful shutdown
 │       ├── server_test.go
@@ -163,43 +167,56 @@ syntrack/
 ```bash
 # Development
 go test ./...                      # Run all tests
-go test -race ./...                # Race condition detection (ALWAYS run before commit)
+go test -race ./...                # Race detection (ALWAYS run before commit)
 go test -cover ./...               # Tests with coverage report
 go test ./internal/store/ -v       # Run specific package tests
-go build -o syntrack .             # Build binary
-go build -ldflags="-s -w" -o syntrack .  # Production build (~8MB stripped)
 
-# Make targets (once Makefile exists)
+# Make targets
+make build                         # Production binary (version from VERSION file)
 make test                          # go test -race -cover ./...
-make build                         # Production binary
-make run                           # Build + run
-make clean                         # Remove binary + test artifacts
+make run                           # Build + run in debug mode
+make dev                           # go run . --debug --interval 10
+make clean                         # Remove binary + test artifacts + dist/ + db files
+make lint                          # go fmt + go vet
+make coverage                      # Generate HTML coverage report
+make release-local                 # Cross-compile for all 5 platforms → dist/
 
-# Running (background mode is DEFAULT — logs to .syntrack.log)
-./syntrack                         # Background: 60s poll, port 8932, logs to .syntrack.log
-./syntrack --interval 30           # Background: poll every 30 seconds
+# Running
+./syntrack                         # Background: daemonize, log to .syntrack.log
+./syntrack --debug                 # Foreground: log to stdout
+./syntrack --interval 30           # Poll every 30 seconds
 ./syntrack --port 9000             # Dashboard on port 9000
-./syntrack --db ./data/track.db    # Custom DB path
-./syntrack --debug                 # FOREGROUND mode: logs to stdout (for development)
+./syntrack stop                    # Stop running instance
+./syntrack status                  # Check if running
 
 # Environment setup
 cp .env.example .env               # Create local config
 ```
 
-## CLI Flags
+## CLI Reference
+
+### Subcommands
+
+| Command | Description |
+|---------|-------------|
+| `syntrack` | Start agent (background mode) |
+| `syntrack stop` | Stop running instance (PID file + port fallback) |
+| `syntrack status` | Show status of running instance |
+
+### Flags
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--interval` | Polling interval in seconds | `60` (from env or default) |
-| `--port` | Dashboard HTTP port | `8932` (from env or default) |
-| `--db` | SQLite database file path | `./syntrack.db` (from env or default) |
-| `--debug` | Run in foreground, log to stdout | `false` (background mode) |
-| `--version` | Print version and exit | — |
-| `--help` | Print help and exit | — |
+| `--interval` | Polling interval in seconds | `60` |
+| `--port` | Dashboard HTTP port | `8932` |
+| `--db` | SQLite database file path | `./syntrack.db` |
+| `--debug` | Run in foreground, log to stdout | `false` |
+| `--version` | Print version and exit | - |
+| `--help` | Print help and exit | - |
 
-**Background mode (default):** The process daemonizes, logs everything to `.syntrack.log` in the working directory. Users check logs with `tail -f .syntrack.log`.
+**Background mode (default):** Daemonizes, logs to `.syntrack.log`, writes PID file. Use `syntrack stop` to stop.
 
-**Debug/foreground mode (`--debug`):** The process stays in the foreground, logs to stdout. Useful for development and troubleshooting.
+**Debug/foreground mode (`--debug`):** Stays in foreground, logs to stdout.
 
 ## Session Tracking
 
