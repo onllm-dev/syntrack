@@ -261,8 +261,13 @@
                 </h3>
                 <div class="cycles-filters-inline">
                     <select class="quota-select" id="cycle-quota-select" aria-label="Select quota type">
+                        {{if eq .CurrentProvider "zai"}}
+                        <option value="tokens">Tokens</option>
+                        <option value="time">Time</option>
+                        {{else}}
                         <option value="subscription">Subscription</option>
                         <option value="toolcall">Tool Calls</option>
+                        {{end}}
                     </select>
                     <div class="filter-group">
                         <span class="filter-label">Range</span>
@@ -337,21 +342,29 @@
                 </div>
             </header>
             <div class="table-wrapper">
-                <table class="data-table" id="sessions-table">
+                <table class="data-table" id="sessions-table" data-provider="{{.CurrentProvider}}">
                     <thead>
                         <tr>
                             <th data-sort-key="id" role="button" tabindex="0">Session <span class="sort-arrow"></span></th>
                             <th data-sort-key="start" role="button" tabindex="0">Started <span class="sort-arrow"></span></th>
                             <th data-sort-key="end" role="button" tabindex="0">Ended <span class="sort-arrow"></span></th>
                             <th data-sort-key="duration" role="button" tabindex="0">Duration <span class="sort-arrow"></span></th>
+                            {{if eq .CurrentProvider "zai"}}
+                            <th data-sort-key="snapshots" role="button" tabindex="0">Snapshots <span class="sort-arrow"></span></th>
+                            {{else}}
                             <th data-sort-key="sub" role="button" tabindex="0">Sub Usage <span class="sort-arrow"></span></th>
                             <th data-sort-key="search" role="button" tabindex="0">Search Usage <span class="sort-arrow"></span></th>
                             <th data-sort-key="tool" role="button" tabindex="0">Tool Usage <span class="sort-arrow"></span></th>
+                            {{end}}
                         </tr>
                     </thead>
                     <tbody id="sessions-tbody">
                         <tr>
+                            {{if eq .CurrentProvider "zai"}}
+                            <td colspan="5" class="empty-state">No sessions recorded yet.</td>
+                            {{else}}
                             <td colspan="7" class="empty-state">No sessions recorded yet.</td>
+                            {{end}}
                         </tr>
                     </tbody>
                 </table>

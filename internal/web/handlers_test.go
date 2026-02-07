@@ -1028,16 +1028,17 @@ func TestHandler_Current_ZaiReturnsTokensAndTimeLimits(t *testing.T) {
 	defer s.Close()
 
 	resetTime := time.Now().Add(24 * time.Hour)
+	// Z.ai API: "usage" = budget/capacity, "currentValue" = actual consumption
 	zaiSnapshot := &api.ZaiSnapshot{
 		CapturedAt:          time.Now().UTC(),
-		TokensLimit:         200000000,
-		TokensUsage:         200112618,
+		TokensUsage:         200000000,  // budget
+		TokensCurrentValue:  200000000,  // 100% consumed
 		TokensRemaining:     0,
 		TokensPercentage:    100,
-		TimeLimit:           1000,
-		TimeUsage:           19,
+		TimeUsage:           1000,       // budget
+		TimeCurrentValue:    19,         // actual consumption
 		TimeRemaining:       981,
-		TimePercentage:      1,
+		TimePercentage:      2,
 		TokensNextResetTime: &resetTime,
 	}
 	s.InsertZaiSnapshot(zaiSnapshot)
@@ -1063,10 +1064,12 @@ func TestHandler_Current_ZaiReturnsTokensAndTimeLimits(t *testing.T) {
 		t.Fatal("expected tokensLimit in response")
 	}
 
-	if usage, ok := tokensLimit["usage"].(float64); !ok || usage != 200112618 {
-		t.Errorf("expected tokens usage 200112618, got %v", usage)
+	// usage = TokensCurrentValue (actual consumption)
+	if usage, ok := tokensLimit["usage"].(float64); !ok || usage != 200000000 {
+		t.Errorf("expected tokens usage 200000000, got %v", usage)
 	}
 
+	// limit = TokensUsage (budget/capacity)
 	if limit, ok := tokensLimit["limit"].(float64); !ok || limit != 200000000 {
 		t.Errorf("expected tokens limit 200000000, got %v", limit)
 	}
@@ -1076,6 +1079,7 @@ func TestHandler_Current_ZaiReturnsTokensAndTimeLimits(t *testing.T) {
 		t.Fatal("expected timeLimit in response")
 	}
 
+	// usage = TimeCurrentValue (actual consumption)
 	if usage, ok := timeLimit["usage"].(float64); !ok || usage != 19 {
 		t.Errorf("expected time usage 19, got %v", usage)
 	}
@@ -1546,14 +1550,15 @@ func TestHandler_Current_ZaiWithMockData(t *testing.T) {
 	defer s.Close()
 
 	resetTime := time.Now().Add(24 * time.Hour)
+	// Z.ai API: "usage" = budget/capacity, "currentValue" = actual consumption
 	zaiSnapshot := &api.ZaiSnapshot{
 		CapturedAt:          time.Now().UTC(),
-		TokensLimit:         200000000,
-		TokensUsage:         100000000,
+		TokensUsage:         200000000,  // budget
+		TokensCurrentValue:  100000000,  // 50% consumed
 		TokensRemaining:     100000000,
 		TokensPercentage:    50,
-		TimeLimit:           1000,
-		TimeUsage:           500,
+		TimeUsage:           1000,       // budget
+		TimeCurrentValue:    500,        // 50% consumed
 		TimeRemaining:       500,
 		TimePercentage:      50,
 		TokensNextResetTime: &resetTime,
@@ -1581,6 +1586,7 @@ func TestHandler_Current_ZaiWithMockData(t *testing.T) {
 		t.Fatal("expected tokensLimit in response")
 	}
 
+	// usage = TokensCurrentValue (actual consumption)
 	if usage, ok := tokensLimit["usage"].(float64); !ok || usage != 100000000 {
 		t.Errorf("expected usage 100000000, got %v", usage)
 	}

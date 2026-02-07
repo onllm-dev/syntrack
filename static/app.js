@@ -775,7 +775,7 @@ async function fetchCycles(quotaType) {
   try {
     const res = await authFetch(`${API_BASE}/api/cycles?type=${quotaType}&${providerParam()}`);
     if (!res.ok) throw new Error('Failed to fetch cycles');
-    State.allCyclesData = await res.json();
+    State.allCyclesData = (await res.json()) || [];
     State.cyclesPage = 1;
     renderCyclesTable();
   } catch (err) {
@@ -973,6 +973,10 @@ function renderSessionsTable() {
   const paginationEl = document.getElementById('sessions-pagination');
   if (!tbody) return;
 
+  const provider = getCurrentProvider();
+  const isZai = provider === 'zai';
+  const colSpan = isZai ? 5 : 7;
+
   let data = State.allSessionsData.map((s, i) => ({ ...s, _computed: getSessionComputedFields(s), _index: i }));
 
   // Sort
@@ -985,6 +989,7 @@ function renderSessionsTable() {
         case 'start': va = a._computed.start.getTime(); vb = b._computed.start.getTime(); break;
         case 'end': va = a._computed.end.getTime(); vb = b._computed.end.getTime(); break;
         case 'duration': va = a._computed.durationMins; vb = b._computed.durationMins; break;
+        case 'snapshots': va = a.snapshotCount || 0; vb = b.snapshotCount || 0; break;
         case 'sub': va = a.maxSubRequests; vb = b.maxSubRequests; break;
         case 'search': va = a.maxSearchRequests; vb = b.maxSearchRequests; break;
         case 'tool': va = a.maxToolRequests; vb = b.maxToolRequests; break;
@@ -1011,8 +1016,47 @@ function renderSessionsTable() {
   }
 
   if (total === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No sessions recorded yet.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="${colSpan}" class="empty-state">No sessions recorded yet.</td></tr>`;
+  } else if (isZai) {
+    // Z.ai: show Session, Start, End, Duration, Snapshots
+    tbody.innerHTML = pageData.map(session => {
+      const c = session._computed;
+      const isExpanded = State.expandedSessionId === session.id;
+      const mainRow = `<tr class="session-row" role="button" tabindex="0" data-session-id="${session.id}">
+        <td>${session.id.slice(0, 8)}${c.isActive ? ' <span class="badge">Active</span>' : ''}</td>
+        <td>${c.start.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+        <td>${session.endedAt ? new Date(session.endedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Active'}</td>
+        <td>${c.durationStr}</td>
+        <td>${session.snapshotCount || 0}</td>
+      </tr>`;
+      const detailRow = `<tr class="session-detail-row ${isExpanded ? 'expanded' : ''}" data-detail-for="${session.id}">
+        <td colspan="${colSpan}">
+          <div class="session-detail-content">
+            <div class="session-detail-grid">
+              <div class="detail-item">
+                <span class="detail-label">Poll Interval</span>
+                <span class="detail-value">${session.pollInterval ? Math.round(session.pollInterval / 1000) : '-'}s</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Snapshots</span>
+                <span class="detail-value">${session.snapshotCount || 0}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Snapshots/min</span>
+                <span class="detail-value">${c.snapshotsPerMin.toFixed(2)}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Duration</span>
+                <span class="detail-value">${c.durationStr}</span>
+              </div>
+            </div>
+          </div>
+        </td>
+      </tr>`;
+      return mainRow + detailRow;
+    }).join('');
   } else {
+    // Synthetic: show Session, Start, End, Duration, Sub, Search, Tool
     tbody.innerHTML = pageData.map(session => {
       const c = session._computed;
       const isExpanded = State.expandedSessionId === session.id;
@@ -1026,7 +1070,7 @@ function renderSessionsTable() {
         <td>${formatNumber(session.maxToolRequests)}</td>
       </tr>`;
       const detailRow = `<tr class="session-detail-row ${isExpanded ? 'expanded' : ''}" data-detail-for="${session.id}">
-        <td colspan="7">
+        <td colspan="${colSpan}">
           <div class="session-detail-content">
             <div class="session-detail-grid">
               <div class="detail-item">
@@ -1055,7 +1099,7 @@ function renderSessionsTable() {
               </div>
               <div class="detail-item">
                 <span class="detail-label">Poll Interval</span>
-                <span class="detail-value">${session.pollInterval || '-'}s</span>
+                <span class="detail-value">${session.pollInterval ? Math.round(session.pollInterval / 1000) : '-'}s</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">Snapshots</span>
@@ -1139,7 +1183,10 @@ function openModal(quotaType) {
   const data = State.currentQuotas[quotaType];
   if (!data) return;
 
-  titleEl.textContent = quotaNames[quotaType] || quotaType;
+  const provider = getCurrentProvider();
+  const zaiQuotaNames = { tokensLimit: 'Tokens Limit', timeLimit: 'Time Limit' };
+  const names = provider === 'zai' ? zaiQuotaNames : quotaNames;
+  titleEl.textContent = names[quotaType] || quotaType;
 
   const statusCfg = statusConfig[data.status] || statusConfig.healthy;
   const timeLeft = formatDuration(data.timeUntilResetSeconds);
@@ -1264,7 +1311,13 @@ async function loadModalChart(quotaType) {
 }
 
 async function loadModalCycles(quotaType) {
-  const apiType = quotaType === 'toolCalls' ? 'toolcall' : quotaType;
+  const provider = getCurrentProvider();
+  let apiType;
+  if (provider === 'zai') {
+    apiType = quotaType === 'tokensLimit' ? 'tokens' : 'time';
+  } else {
+    apiType = quotaType === 'toolCalls' ? 'toolcall' : quotaType;
+  }
   try {
     const res = await authFetch(`${API_BASE}/api/cycles?type=${apiType}&${providerParam()}`);
     if (!res.ok) return;

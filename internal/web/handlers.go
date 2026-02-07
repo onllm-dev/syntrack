@@ -309,10 +309,10 @@ func buildEmptyZaiQuotaResponse(name, description string) map[string]interface{}
 }
 
 func buildZaiTokensQuotaResponse(snapshot *api.ZaiSnapshot) map[string]interface{} {
-	percent := 0.0
-	if snapshot.TokensLimit > 0 {
-		percent = (snapshot.TokensUsage / float64(snapshot.TokensLimit)) * 100
-	}
+	// Z.ai API: "usage" = total budget/capacity, "currentValue" = actual usage
+	budget := snapshot.TokensUsage       // API's "usage" = total budget
+	currentUsage := snapshot.TokensCurrentValue // API's "currentValue" = actual usage
+	percent := float64(snapshot.TokensPercentage)
 
 	status := "healthy"
 	if percent >= 95 {
@@ -326,8 +326,8 @@ func buildZaiTokensQuotaResponse(snapshot *api.ZaiSnapshot) map[string]interface
 	result := map[string]interface{}{
 		"name":        "Tokens Limit",
 		"description": "Token consumption budget",
-		"usage":       snapshot.TokensUsage,
-		"limit":       float64(snapshot.TokensLimit),
+		"usage":       currentUsage,
+		"limit":       budget,
 		"percent":     percent,
 		"status":      status,
 	}
@@ -347,10 +347,10 @@ func buildZaiTokensQuotaResponse(snapshot *api.ZaiSnapshot) map[string]interface
 }
 
 func buildZaiTimeQuotaResponse(snapshot *api.ZaiSnapshot) map[string]interface{} {
-	percent := 0.0
-	if snapshot.TimeLimit > 0 {
-		percent = (snapshot.TimeUsage / float64(snapshot.TimeLimit)) * 100
-	}
+	// Z.ai API: "usage" = total budget/capacity, "currentValue" = actual usage
+	budget := snapshot.TimeUsage              // API's "usage" = total budget
+	currentUsage := snapshot.TimeCurrentValue // API's "currentValue" = actual usage
+	percent := float64(snapshot.TimePercentage)
 
 	status := "healthy"
 	if percent >= 95 {
@@ -364,8 +364,8 @@ func buildZaiTimeQuotaResponse(snapshot *api.ZaiSnapshot) map[string]interface{}
 	return map[string]interface{}{
 		"name":                  "Time Limit",
 		"description":           "Tool call budget",
-		"usage":                 snapshot.TimeUsage,
-		"limit":                 float64(snapshot.TimeLimit),
+		"usage":                 currentUsage,
+		"limit":                 budget,
 		"percent":               percent,
 		"status":                status,
 		"renewsAt":              time.Now().UTC().Format(time.RFC3339),
@@ -544,24 +544,15 @@ func (h *Handler) historyZai(w http.ResponseWriter, r *http.Request) {
 
 	var response []map[string]interface{}
 	for _, snapshot := range snapshots {
-		tokensPercent := 0.0
-		if snapshot.TokensLimit > 0 {
-			tokensPercent = (snapshot.TokensUsage / float64(snapshot.TokensLimit)) * 100
-		}
-
-		timePercent := 0.0
-		if snapshot.TimeLimit > 0 {
-			timePercent = (snapshot.TimeUsage / float64(snapshot.TimeLimit)) * 100
-		}
-
+		// Z.ai API: "usage" = budget, "currentValue" = actual usage, "percentage" = server %
 		response = append(response, map[string]interface{}{
 			"capturedAt":    snapshot.CapturedAt.Format(time.RFC3339),
-			"tokensLimit":   snapshot.TokensLimit,
-			"tokensUsage":   snapshot.TokensUsage,
-			"tokensPercent": tokensPercent,
-			"timeLimit":     snapshot.TimeLimit,
-			"timeUsage":     snapshot.TimeUsage,
-			"timePercent":   timePercent,
+			"tokensLimit":   snapshot.TokensUsage,        // budget
+			"tokensUsage":   snapshot.TokensCurrentValue,  // actual usage
+			"tokensPercent": float64(snapshot.TokensPercentage),
+			"timeLimit":     snapshot.TimeUsage,           // budget
+			"timeUsage":     snapshot.TimeCurrentValue,    // actual usage
+			"timePercent":   float64(snapshot.TimePercentage),
 		})
 	}
 
@@ -610,7 +601,7 @@ func (h *Handler) cyclesSynthetic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get both active and completed cycles
-	var response []map[string]interface{}
+	response := []map[string]interface{}{}
 
 	active, err := h.store.QueryActiveCycle(quotaType)
 	if err != nil {
@@ -660,7 +651,7 @@ func (h *Handler) cyclesZai(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get both active and completed cycles
-	var response []map[string]interface{}
+	response := []map[string]interface{}{}
 
 	active, err := h.store.QueryActiveZaiCycle(quotaType)
 	if err != nil {
@@ -707,12 +698,12 @@ func cycleToMap(cycle *store.ResetCycle) map[string]interface{} {
 
 func zaiCycleToMap(cycle *store.ZaiResetCycle) map[string]interface{} {
 	result := map[string]interface{}{
-		"id":         cycle.ID,
-		"quotaType":  cycle.QuotaType,
-		"cycleStart": cycle.CycleStart.Format(time.RFC3339),
-		"cycleEnd":   nil,
-		"peakValue":  cycle.PeakValue,
-		"totalDelta": cycle.TotalDelta,
+		"id":           cycle.ID,
+		"quotaType":    cycle.QuotaType,
+		"cycleStart":   cycle.CycleStart.Format(time.RFC3339),
+		"cycleEnd":     nil,
+		"peakRequests": cycle.PeakValue,  // normalized to match Synthetic field name for frontend
+		"totalDelta":   cycle.TotalDelta,
 	}
 
 	if cycle.CycleEnd != nil {
@@ -720,7 +711,7 @@ func zaiCycleToMap(cycle *store.ZaiResetCycle) map[string]interface{} {
 	}
 
 	if cycle.NextReset != nil {
-		result["nextReset"] = cycle.NextReset.Format(time.RFC3339)
+		result["renewsAt"] = cycle.NextReset.Format(time.RFC3339)
 	}
 
 	return result
@@ -857,11 +848,15 @@ func buildEmptyZaiSummaryResponse(quotaType string) map[string]interface{} {
 }
 
 func buildZaiTokensSummary(snapshot *api.ZaiSnapshot) map[string]interface{} {
+	// Z.ai API: "usage" = total budget, "currentValue" = actual usage
+	budget := snapshot.TokensUsage
+	currentUsage := snapshot.TokensCurrentValue
+
 	result := map[string]interface{}{
 		"quotaType":       "tokens",
-		"currentUsage":    snapshot.TokensUsage,
-		"currentLimit":    float64(snapshot.TokensLimit),
-		"usagePercent":    0.0,
+		"currentUsage":    currentUsage,
+		"currentLimit":    budget,
+		"usagePercent":    float64(snapshot.TokensPercentage),
 		"currentRate":     0.0,
 		"projectedUsage":  0.0,
 		"completedCycles": 0,
@@ -869,10 +864,6 @@ func buildZaiTokensSummary(snapshot *api.ZaiSnapshot) map[string]interface{} {
 		"peakCycle":       0.0,
 		"totalTracked":    0.0,
 		"trackingSince":   nil,
-	}
-
-	if snapshot.TokensLimit > 0 {
-		result["usagePercent"] = (snapshot.TokensUsage / float64(snapshot.TokensLimit)) * 100
 	}
 
 	if snapshot.TokensNextResetTime != nil {
@@ -888,11 +879,15 @@ func buildZaiTokensSummary(snapshot *api.ZaiSnapshot) map[string]interface{} {
 }
 
 func buildZaiTimeSummary(snapshot *api.ZaiSnapshot) map[string]interface{} {
-	result := map[string]interface{}{
+	// Z.ai API: "usage" = total budget, "currentValue" = actual usage
+	budget := snapshot.TimeUsage
+	currentUsage := snapshot.TimeCurrentValue
+
+	return map[string]interface{}{
 		"quotaType":       "time",
-		"currentUsage":    snapshot.TimeUsage,
-		"currentLimit":    float64(snapshot.TimeLimit),
-		"usagePercent":    0.0,
+		"currentUsage":    currentUsage,
+		"currentLimit":    budget,
+		"usagePercent":    float64(snapshot.TimePercentage),
 		"renewsAt":        time.Now().UTC().Format(time.RFC3339),
 		"timeUntilReset":  "N/A",
 		"currentRate":     0.0,
@@ -903,12 +898,6 @@ func buildZaiTimeSummary(snapshot *api.ZaiSnapshot) map[string]interface{} {
 		"totalTracked":    0.0,
 		"trackingSince":   nil,
 	}
-
-	if snapshot.TimeLimit > 0 {
-		result["usagePercent"] = (snapshot.TimeUsage / float64(snapshot.TimeLimit)) * 100
-	}
-
-	return result
 }
 
 // Sessions returns session data (API endpoint)
@@ -1291,32 +1280,68 @@ func (h *Handler) insightsZai(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if latest != nil {
-		// Add basic stats
-		tokensPercent := 0.0
-		if latest.TokensLimit > 0 {
-			tokensPercent = (latest.TokensUsage / float64(latest.TokensLimit)) * 100
-		}
+		// Z.ai API: "usage" = budget, "currentValue" = actual usage, "percentage" = server-computed %
+		tokensBudget := latest.TokensUsage
+		tokensUsed := latest.TokensCurrentValue
+		tokensPercent := float64(latest.TokensPercentage)
+		tokensRemaining := latest.TokensRemaining
 
-		timePercent := 0.0
-		if latest.TimeLimit > 0 {
-			timePercent = (latest.TimeUsage / float64(latest.TimeLimit)) * 100
-		}
+		timeBudget := latest.TimeUsage
+		timeUsed := latest.TimeCurrentValue
+		timePercent := float64(latest.TimePercentage)
+		timeRemaining := latest.TimeRemaining
 
 		resp.Stats = append(resp.Stats, insightStat{
-			Value: fmt.Sprintf("%.1f%%", tokensPercent),
+			Value: fmt.Sprintf("%d%%", latest.TokensPercentage),
 			Label: "Tokens Usage",
 		})
 		resp.Stats = append(resp.Stats, insightStat{
-			Value: fmt.Sprintf("%.1f%%", timePercent),
+			Value: fmt.Sprintf("%d%%", latest.TimePercentage),
 			Label: "Time Usage",
 		})
+		resp.Stats = append(resp.Stats, insightStat{
+			Value: compactNum(tokensRemaining),
+			Label: "Tokens Remaining",
+		})
+		resp.Stats = append(resp.Stats, insightStat{
+			Value: compactNum(timeRemaining),
+			Label: "Time Remaining",
+		})
 
-		// Add insights
+		// Token usage insight
+		tokensSev := "positive"
+		if tokensPercent >= 95 {
+			tokensSev = "negative"
+		} else if tokensPercent >= 80 {
+			tokensSev = "warning"
+		} else if tokensPercent >= 50 {
+			tokensSev = "info"
+		}
 		resp.Insights = append(resp.Insights, insightItem{
 			Type:     "factual",
-			Severity: "info",
-			Title:    "Current Usage",
-			Desc:     fmt.Sprintf("Tokens: %.0f / %.0f (%.1f%%). Time: %.0f / %.0f (%.1f%%).", latest.TokensUsage, float64(latest.TokensLimit), tokensPercent, latest.TimeUsage, float64(latest.TimeLimit), timePercent),
+			Severity: tokensSev,
+			Title:    "Tokens Budget",
+			Metric:   fmt.Sprintf("%d%%", latest.TokensPercentage),
+			Sublabel: fmt.Sprintf("%s of %s used", compactNum(tokensUsed), compactNum(tokensBudget)),
+			Desc:     fmt.Sprintf("Token usage at %d%%. %s used of %s budget, %s remaining.", latest.TokensPercentage, compactNum(tokensUsed), compactNum(tokensBudget), compactNum(tokensRemaining)),
+		})
+
+		// Time usage insight
+		timeSev := "positive"
+		if timePercent >= 95 {
+			timeSev = "negative"
+		} else if timePercent >= 80 {
+			timeSev = "warning"
+		} else if timePercent >= 50 {
+			timeSev = "info"
+		}
+		resp.Insights = append(resp.Insights, insightItem{
+			Type:     "factual",
+			Severity: timeSev,
+			Title:    "Time Budget",
+			Metric:   fmt.Sprintf("%d%%", latest.TimePercentage),
+			Sublabel: fmt.Sprintf("%.0f of %.0f calls used", timeUsed, timeBudget),
+			Desc:     fmt.Sprintf("Time quota at %d%%. %.0f calls used of %.0f budget, %.0f remaining.", latest.TimePercentage, timeUsed, timeBudget, timeRemaining),
 		})
 	}
 
