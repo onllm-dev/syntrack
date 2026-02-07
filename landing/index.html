@@ -1769,24 +1769,29 @@ a:hover { text-decoration: underline; }
                     <div class="method-title">One-Line Install</div>
                 </div>
                 <p class="method-desc">Auto-detects your OS and architecture, downloads the binary to <code>~/.syntrack/</code>, creates <code>.env</code> config, sets up a systemd service (Linux) or self-daemonizes (macOS), adds to PATH, and starts tracking.</p>
-                <div class="method-code">
+                <div class="method-code" style="margin-bottom:12px;">
                     <div class="method-code-header">
-                        <span class="method-code-lang">bash</span>
+                        <span class="method-code-lang">install</span>
                         <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
                     </div>
-                    <div class="method-code-body"><span class="code-comment"># Install</span>
-<span class="code-cmd">curl</span> -fsSL https://raw.githubusercontent.com/onllm-dev/syntrack/main/install.sh | <span class="code-cmd">bash</span>
-
-<span class="code-comment"># Edit config</span>
+                    <div class="method-code-body"><span class="code-cmd">curl</span> -fsSL https://raw.githubusercontent.com/onllm-dev/syntrack/main/install.sh | <span class="code-cmd">bash</span></div>
+                </div>
+                <div class="method-code">
+                    <div class="method-code-header">
+                        <span class="method-code-lang">configure &amp; manage</span>
+                        <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
+                    </div>
+                    <div class="method-code-body"><span class="code-comment"># Edit config</span>
 <span class="code-cmd">nano</span> ~/.syntrack/.env
 
-<span class="code-comment"># Manage (Linux)</span>
-<span class="code-cmd">systemctl</span> start syntrack
-<span class="code-cmd">systemctl</span> stop syntrack
-<span class="code-cmd">systemctl</span> status syntrack
-<span class="code-cmd">journalctl</span> -u syntrack -f
+<span class="code-comment"># ── Linux (systemd) ──</span>
+<span class="code-cmd">systemctl</span> start syntrack      <span class="code-comment"># start</span>
+<span class="code-cmd">systemctl</span> stop syntrack       <span class="code-comment"># stop</span>
+<span class="code-cmd">systemctl</span> status syntrack     <span class="code-comment"># check status</span>
+<span class="code-cmd">systemctl</span> restart syntrack    <span class="code-comment"># restart</span>
+<span class="code-cmd">journalctl</span> -u syntrack -f     <span class="code-comment"># live logs</span>
 
-<span class="code-comment"># Manage (macOS)</span>
+<span class="code-comment"># ── macOS ──</span>
 <span class="code-cmd">syntrack</span>            <span class="code-comment"># start (background)</span>
 <span class="code-cmd">syntrack</span> stop        <span class="code-comment"># stop</span>
 <span class="code-cmd">syntrack</span> status      <span class="code-comment"># check status</span>
