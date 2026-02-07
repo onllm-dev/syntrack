@@ -23,9 +23,7 @@ const PROVIDERS = [
 
 const THEMES = ['light', 'dark'];
 
-// Capture top portion: header + quota cards + insights
 const VIEWPORT = { width: 1280, height: 900 };
-const CLIP_HEIGHT = 720;
 
 async function run() {
   const browser = await chromium.launch({ headless: true });
@@ -57,7 +55,7 @@ async function run() {
       }, theme);
       await page.waitForTimeout(500);
 
-      // Scroll to top
+      // Scroll to top before capturing
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.waitForTimeout(300);
 
@@ -66,7 +64,7 @@ async function run() {
 
       await page.screenshot({
         path: filepath,
-        clip: { x: 0, y: 0, width: VIEWPORT.width, height: CLIP_HEIGHT },
+        fullPage: true,
       });
 
       console.log(`  Captured: ${filename}`);
