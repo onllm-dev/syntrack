@@ -381,6 +381,48 @@ a:hover { text-decoration: underline; }
 }
 .btn-secondary svg { width: 18px; height: 18px; }
 
+.hero-install {
+  max-width: 600px;
+  margin: 20px auto 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+.hero-install:hover { border-color: var(--accent-teal); }
+.hero-install code {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.hero-install .install-prefix {
+  color: var(--accent-teal);
+  font-weight: 600;
+}
+.hero-install .copy-hint {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 3px 8px;
+  background: var(--surface-inset);
+  border-radius: 4px;
+  transition: all var(--transition-fast);
+}
+.hero-install:hover .copy-hint { color: var(--accent-teal); }
+.hero-install.copied { border-color: var(--status-healthy); }
+.hero-install.copied .copy-hint { background: var(--status-healthy-bg); color: var(--status-healthy); }
+
 .hero-meta {
   font-size: 13px;
   color: var(--text-muted);
@@ -1077,6 +1119,7 @@ a:hover { text-decoration: underline; }
 @media (max-width: 480px) {
   .hero-actions { flex-direction: column; }
   .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
+  .hero-install code { font-size: 11px; }
   .cta-actions { flex-direction: column; }
   .cta-actions .btn-primary, .cta-actions .btn-secondary { width: 100%; justify-content: center; }
   .arch-stats { grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -1179,6 +1222,10 @@ a:hover { text-decoration: underline; }
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
                     View on GitHub
                 </a>
+            </div>
+            <div class="hero-install" onclick="copyHeroCmd(this)" title="Click to copy" role="button" tabindex="0" aria-label="Copy install command">
+                <code><span class="install-prefix">$</span> curl -fsSL https://raw.githubusercontent.com/onllm-dev/syntrack/main/install.sh | bash</code>
+                <span class="copy-hint">Copy</span>
             </div>
             <p class="hero-meta">v1.5.0 &middot; Go &middot; GPL-3.0 License</p>
         </div>
@@ -1393,17 +1440,6 @@ a:hover { text-decoration: underline; }
             <p class="section-desc" style="margin-left:auto;margin-right:auto;">Detects your OS, downloads the right binary, sets up a systemd service, and starts tracking.</p>
         </div>
 
-        <!-- One-liner hero -->
-        <div class="install-oneliner fade-in">
-            <div class="code-block" style="max-width:720px;margin:0 auto;">
-                <div class="code-header">
-                    <span class="code-lang">bash</span>
-                    <button class="code-copy" onclick="copyCode(this)" aria-label="Copy to clipboard">Copy</button>
-                </div>
-                <div class="code-body"><span class="code-cmd">curl</span> -fsSL https://raw.githubusercontent.com/onllm-dev/syntrack/main/install.sh | <span class="code-cmd">bash</span></div>
-            </div>
-        </div>
-
         <!-- What the installer does -->
         <div class="install-grid fade-in" style="margin-top:48px;">
             <div class="install-steps">
@@ -1425,7 +1461,7 @@ a:hover { text-decoration: underline; }
                     <div class="step-num">3</div>
                     <div class="step-content">
                         <h4>Sets up service management</h4>
-                        <p>On Linux: creates a <code>systemd</code> user service with start, stop, status, and auto-restart. On macOS: self-daemonizes natively.</p>
+                        <p>On Linux: creates a <code>systemd</code> service with start, stop, status, and auto-restart. On macOS: self-daemonizes natively.</p>
                     </div>
                 </div>
                 <div class="install-step">
@@ -1445,10 +1481,10 @@ a:hover { text-decoration: underline; }
 <span class="code-cmd">nano</span> ~/.syntrack/.env
 
 <span class="code-comment"># Linux (systemd)</span>
-<span class="code-cmd">systemctl</span> --user start syntrack
-<span class="code-cmd">systemctl</span> --user stop syntrack
-<span class="code-cmd">systemctl</span> --user status syntrack
-<span class="code-cmd">journalctl</span> --user -u syntrack -f
+<span class="code-cmd">systemctl</span> start syntrack
+<span class="code-cmd">systemctl</span> stop syntrack
+<span class="code-cmd">systemctl</span> status syntrack
+<span class="code-cmd">journalctl</span> -u syntrack -f
 
 <span class="code-comment"># macOS</span>
 <span class="code-cmd">syntrack</span>            <span class="code-comment"># start (background)</span>
@@ -1660,6 +1696,19 @@ function copyCode(btn) {
     navigator.clipboard.writeText(text).then(function() {
         btn.textContent = 'Copied!';
         setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+    });
+}
+
+/* Copy hero install command */
+function copyHeroCmd(el) {
+    var cmd = 'curl -fsSL https://raw.githubusercontent.com/onllm-dev/syntrack/main/install.sh | bash';
+    navigator.clipboard.writeText(cmd).then(function() {
+        el.classList.add('copied');
+        el.querySelector('.copy-hint').textContent = 'Copied!';
+        setTimeout(function() {
+            el.classList.remove('copied');
+            el.querySelector('.copy-hint').textContent = 'Copy';
+        }, 2000);
     });
 }
 

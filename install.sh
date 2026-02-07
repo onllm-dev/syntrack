@@ -9,6 +9,7 @@ INSTALL_DIR="${SYNTRACK_INSTALL_DIR:-$HOME/.syntrack}"
 BIN_DIR="${INSTALL_DIR}/bin"
 REPO="onllm-dev/syntrack"
 SERVICE_NAME="syntrack"
+SYSTEMD_MODE="user"  # "user" or "system" — auto-detected at runtime
 
 # ─── Colors ───────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -19,6 +20,40 @@ info()    { printf "  ${BLUE}info${NC}  %s\n" "$*"; }
 ok()      { printf "  ${GREEN} ok ${NC}  %s\n" "$*"; }
 warn()    { printf "  ${YELLOW}warn${NC}  %s\n" "$*"; }
 fail()    { printf "  ${RED}fail${NC}  %s\n" "$*" >&2; exit 1; }
+
+# ─── systemd Helpers ────────────────────────────────────────────────
+# Wrappers that use --user or system-wide mode based on SYSTEMD_MODE
+_systemctl() {
+    if [[ "$SYSTEMD_MODE" == "system" ]]; then
+        systemctl "$@"
+    else
+        systemctl --user "$@"
+    fi
+}
+
+_journalctl() {
+    if [[ "$SYSTEMD_MODE" == "system" ]]; then
+        journalctl -u syntrack "$@"
+    else
+        journalctl --user -u syntrack "$@"
+    fi
+}
+
+_sctl_cmd() {
+    if [[ "$SYSTEMD_MODE" == "system" ]]; then
+        echo "systemctl"
+    else
+        echo "systemctl --user"
+    fi
+}
+
+_jctl_cmd() {
+    if [[ "$SYSTEMD_MODE" == "system" ]]; then
+        echo "journalctl -u syntrack"
+    else
+        echo "journalctl --user -u syntrack"
+    fi
+}
 
 # ─── Detect Platform ─────────────────────────────────────────────────
 detect_platform() {
@@ -48,7 +83,7 @@ detect_platform() {
 stop_existing() {
     if [[ -f "${BIN_DIR}/syntrack" ]]; then
         if [[ "$OS" == "linux" ]] && command -v systemctl &>/dev/null; then
-            systemctl --user stop syntrack 2>/dev/null || true
+            _systemctl stop syntrack 2>/dev/null || true
         else
             "${BIN_DIR}/syntrack" stop 2>/dev/null || true
         fi
@@ -130,7 +165,7 @@ EOF
     ok "Created ${env_file}"
 }
 
-# ─── systemd User Service (Linux) ────────────────────────────────────
+# ─── systemd Service (Linux) ─────────────────────────────────────────
 setup_systemd() {
     if [[ "$OS" != "linux" ]]; then return 1; fi
     if ! command -v systemctl &>/dev/null; then
@@ -138,17 +173,51 @@ setup_systemd() {
         return 1
     fi
 
-    # Check if user lingering is possible (needed for --user services)
-    if command -v loginctl &>/dev/null; then
-        loginctl enable-linger "$(whoami)" 2>/dev/null || true
-    fi
+    local svc_dir svc_file
 
-    local svc_dir="$HOME/.config/systemd/user"
-    local svc_file="${svc_dir}/${SERVICE_NAME}.service"
+    if [[ "$SYSTEMD_MODE" == "system" ]]; then
+        # ── System-wide service (running as root/sudo) ──
+        svc_dir="/etc/systemd/system"
+        svc_file="${svc_dir}/${SERVICE_NAME}.service"
 
-    mkdir -p "$svc_dir"
+        cat > "$svc_file" <<EOF
+[Unit]
+Description=SynTrack - AI API Quota Tracker
+Documentation=https://github.com/${REPO}
+After=network-online.target
+Wants=network-online.target
 
-    cat > "$svc_file" <<EOF
+[Service]
+Type=simple
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=${BIN_DIR}/syntrack --debug
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=syntrack
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+        systemctl daemon-reload 2>/dev/null || true
+        systemctl enable syntrack 2>/dev/null || true
+
+        ok "Created system-wide systemd service"
+    else
+        # ── User service (running without root) ──
+        svc_dir="$HOME/.config/systemd/user"
+        svc_file="${svc_dir}/${SERVICE_NAME}.service"
+
+        mkdir -p "$svc_dir"
+
+        # Enable lingering so user services persist after logout
+        if command -v loginctl &>/dev/null; then
+            loginctl enable-linger "$(whoami)" 2>/dev/null || true
+        fi
+
+        cat > "$svc_file" <<EOF
 [Unit]
 Description=SynTrack - AI API Quota Tracker
 Documentation=https://github.com/${REPO}
@@ -169,17 +238,23 @@ SyslogIdentifier=syntrack
 WantedBy=default.target
 EOF
 
-    systemctl --user daemon-reload 2>/dev/null || true
-    systemctl --user enable syntrack 2>/dev/null || true
+        systemctl --user daemon-reload 2>/dev/null || true
+        systemctl --user enable syntrack 2>/dev/null || true
 
-    ok "Created systemd user service"
+        ok "Created systemd user service"
+    fi
+
+    local sctl jctl
+    sctl="$(_sctl_cmd)"
+    jctl="$(_jctl_cmd)"
+
     echo ""
     printf "  ${DIM}Manage with:${NC}\n"
-    printf "    ${CYAN}systemctl --user start syntrack${NC}    # Start\n"
-    printf "    ${CYAN}systemctl --user stop syntrack${NC}     # Stop\n"
-    printf "    ${CYAN}systemctl --user status syntrack${NC}   # Status\n"
-    printf "    ${CYAN}systemctl --user restart syntrack${NC}  # Restart\n"
-    printf "    ${CYAN}journalctl --user -u syntrack -f${NC}   # Logs\n"
+    printf "    ${CYAN}${sctl} start syntrack${NC}    # Start\n"
+    printf "    ${CYAN}${sctl} stop syntrack${NC}     # Stop\n"
+    printf "    ${CYAN}${sctl} status syntrack${NC}   # Status\n"
+    printf "    ${CYAN}${sctl} restart syntrack${NC}  # Restart\n"
+    printf "    ${CYAN}${jctl} -f${NC}   # Logs\n"
     return 0
 }
 
@@ -264,14 +339,14 @@ start_service() {
 
     if [[ "$OS" == "linux" ]] && command -v systemctl &>/dev/null; then
         # ── systemd start ──
-        if ! systemctl --user start syntrack 2>/dev/null; then
+        if ! _systemctl start syntrack 2>/dev/null; then
             print_errors "$port"
             return 1
         fi
 
         sleep 2
 
-        if systemctl --user is-active --quiet syntrack 2>/dev/null; then
+        if _systemctl is-active --quiet syntrack 2>/dev/null; then
             ok "SynTrack is running"
         else
             print_errors "$port"
@@ -306,10 +381,10 @@ print_errors() {
     if [[ "$OS" == "linux" ]] && command -v systemctl &>/dev/null; then
         echo ""
         printf "  ${DIM}Service status:${NC}\n"
-        systemctl --user status syntrack --no-pager 2>&1 | head -12 | sed 's/^/    /' || true
+        _systemctl status syntrack --no-pager 2>&1 | head -12 | sed 's/^/    /' || true
         echo ""
         printf "  ${DIM}Recent logs:${NC}\n"
-        journalctl --user -u syntrack -n 10 --no-pager 2>&1 | sed 's/^/    /' || true
+        _journalctl -n 10 --no-pager 2>&1 | sed 's/^/    /' || true
     fi
 
     echo ""
@@ -331,7 +406,7 @@ print_errors() {
     printf "     Verify you can reach the API endpoints\n\n"
 
     if [[ "$OS" == "linux" ]] && command -v systemctl &>/dev/null; then
-        printf "  ${DIM}Full logs: journalctl --user -u syntrack -f${NC}\n"
+        printf "  ${DIM}Full logs: $(_jctl_cmd) -f${NC}\n"
     else
         printf "  ${DIM}Debug mode: syntrack --debug${NC}\n"
     fi
@@ -347,6 +422,12 @@ main() {
     # Detect platform
     detect_platform
     info "Platform: ${BOLD}${PLATFORM}${NC}"
+
+    # Detect root/sudo — determines system-wide vs user systemd service
+    if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+        SYSTEMD_MODE="system"
+        info "Running as root — will create system-wide service"
+    fi
 
     # Create directories
     mkdir -p "${INSTALL_DIR}" "${BIN_DIR}" "${INSTALL_DIR}/data"
@@ -386,7 +467,7 @@ main() {
         printf "     Add your Synthetic or Z.ai API key\n\n"
         printf "  2. Start SynTrack:\n"
         if [[ "$OS" == "linux" ]] && command -v systemctl &>/dev/null; then
-            printf "     ${CYAN}systemctl --user start syntrack${NC}\n"
+            printf "     ${CYAN}$(_sctl_cmd) start syntrack${NC}\n"
         else
             printf "     ${CYAN}syntrack${NC}\n"
         fi
