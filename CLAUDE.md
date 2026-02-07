@@ -345,6 +345,30 @@ cp .env.example .env               # Create local config
 - Always run `go test -race ./...` before committing
 - Never commit generated files, temp files, or IDE config
 
+### Release Process (MANDATORY for all releases)
+
+When creating a new release, always follow these steps in order:
+
+1. **Bump VERSION file** — Update `VERSION` to the new semver (e.g., `2.1.0`)
+2. **Build + test** — `go build -o onwatch .` and `go test -race ./...`
+3. **Cross-compile for all platforms** — `make release-local` builds 5 binaries in `dist/`:
+   - `onwatch-darwin-arm64` (macOS Apple Silicon)
+   - `onwatch-darwin-amd64` (macOS Intel)
+   - `onwatch-linux-amd64`
+   - `onwatch-linux-arm64`
+   - `onwatch-windows-amd64.exe`
+4. **Capture screenshots** — All 4 providers × light/dark (8 total), cropped to top half, saved in `screenshots/`
+5. **Sync static files** — `cp internal/web/static/{app.js,style.css} static/`
+6. **Commit and tag** — `git commit`, then `git tag -a vX.Y.Z -m "..."`
+7. **Push commit + tag** — `git push origin main && git push origin vX.Y.Z`
+8. **Create GitHub release with `gh`** — Upload all 5 binaries from `dist/` and write a thorough release description:
+   ```bash
+   gh release create vX.Y.Z dist/* --title "..." --notes "..."
+   ```
+   The release notes should include: download table, what's new (with details), performance data, backend changes table, upgrade guide, and full changelog summary.
+
+**Never skip the cross-compile step.** Every release must include binaries for all 5 platforms.
+
 ### Static File Sync
 
 Static files exist in TWO places. Always keep them in sync:
