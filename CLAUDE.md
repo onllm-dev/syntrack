@@ -2,7 +2,7 @@
 
 ## Overview
 
-**onWatch** is a minimal, ultra-lightweight Go CLI tool that tracks [Synthetic API](https://synthetic.new) and [Z.ai](https://z.ai) usage by polling quota endpoints at configurable intervals, storing historical data in SQLite, and serving a Material Design 3 web dashboard with dark/light mode for usage visualization. Supports multiple providers running in parallel.
+**onWatch** is a minimal, ultra-lightweight Go CLI tool that tracks [Anthropic](https://anthropic.com) (Claude Code), [Synthetic API](https://synthetic.new), and [Z.ai](https://z.ai) usage by polling quota endpoints at configurable intervals, storing historical data in SQLite, and serving a Material Design 3 web dashboard with dark/light mode for usage visualization. Supports multiple providers running in parallel.
 
 **This is an open-source project.** No secrets, no waste, clean repo.
 
@@ -83,20 +83,29 @@ onwatch/
 │   │   ├── client.go                   # HTTP client for Synthetic API
 │   │   ├── client_test.go
 │   │   ├── zai_types.go               # Z.ai response types + snapshot conversion
-│   │   └── zai_client.go              # HTTP client for Z.ai API
+│   │   ├── zai_client.go              # HTTP client for Z.ai API
+│   │   ├── anthropic_types.go         # Anthropic: dynamic quota response types
+│   │   ├── anthropic_client.go        # HTTP client for Anthropic OAuth usage API
+│   │   ├── anthropic_token.go         # Shared token detection entry point
+│   │   ├── anthropic_token_unix.go    # macOS Keychain + Linux keyring/file detection
+│   │   └── anthropic_token_windows.go # Windows file-based detection
 │   ├── store/
 │   │   ├── store.go                    # SQLite schema, CRUD, users table, auth tokens
 │   │   ├── store_test.go
-│   │   └── zai_store.go               # Z.ai-specific queries
+│   │   ├── zai_store.go               # Z.ai-specific queries
+│   │   ├── anthropic_store.go         # Anthropic snapshot/cycle queries
+│   │   └── anthropic_store_test.go
 │   ├── tracker/
 │   │   ├── tracker.go                  # Synthetic reset detection + usage delta
 │   │   ├── tracker_test.go
 │   │   ├── zai_tracker.go             # Z.ai reset detection + usage delta
-│   │   └── zai_tracker_test.go
+│   │   ├── zai_tracker_test.go
+│   │   └── anthropic_tracker.go       # Anthropic utilization tracking + cycle mgmt
 │   ├── agent/
 │   │   ├── agent.go                    # Synthetic background polling loop
 │   │   ├── agent_test.go
-│   │   └── zai_agent.go               # Z.ai background polling loop
+│   │   ├── zai_agent.go               # Z.ai background polling loop
+│   │   └── anthropic_agent.go         # Anthropic background polling loop
 │   └── web/
 │       ├── server.go                   # HTTP server setup + route registration
 │       ├── server_test.go
@@ -185,14 +194,39 @@ Key facts: `requests` is `float64`. Three independent quotas with independent `r
 - `GET /monitor/usage/model-usage?startTime={}&endTime={}` -- hourly API call counts + token usage
 - `GET /monitor/usage/tool-usage?startTime={}&endTime={}` -- hourly per-tool breakdown
 
+### Anthropic OAuth Usage API -- GET /api/oauth/usage
+
+**Endpoint:** `https://api.anthropic.com/api/oauth/usage`
+**Auth:** `Authorization: Bearer <ANTHROPIC_TOKEN>`, `anthropic-beta: oauth-2025-04-20`
+**Token source:** Auto-detected from Claude Code credentials (macOS Keychain, Linux keyring, `~/.claude/.credentials.json`)
+
+**Response shape:**
+```json
+{
+  "five_hour": { "utilization": 45.2, "resets_at": "2026-02-07T14:00:00Z", "is_enabled": true },
+  "seven_day": { "utilization": 12.8, "resets_at": "2026-02-10T00:00:00Z", "is_enabled": true },
+  "seven_day_sonnet": { "utilization": 5.1, "resets_at": "2026-02-10T00:00:00Z", "is_enabled": true },
+  "monthly_limit": { "utilization": 67.3, "resets_at": "2026-03-01T00:00:00Z", "is_enabled": true, "monthly_limit": 100.0, "used_credits": 67.3 },
+  "extra_usage": null
+}
+```
+
+**Key facts:**
+- Response is a `map[string]*QuotaEntry` — **dynamic keys** (not fixed). Null entries are skipped.
+- `utilization` is a percentage (0-100), not an absolute count
+- `extra_usage` with `is_enabled: false` is filtered out
+- `resets_at` is ISO 8601 (same as Synthetic, unlike Z.ai)
+- New quota types may appear in the future — the DB schema uses normalized key-value storage
+
 ### Provider Mapping
 
-| onWatch Concept | Synthetic API | Z.ai Equivalent |
-|-----------------|---------------|-----------------|
-| Real-time snapshot | `GET /v2/quotas` | `GET /monitor/usage/quota/limit` |
-| Primary quota | `subscription` (requests/limit) | `TOKENS_LIMIT` (currentValue/usage) |
-| Secondary quota | `search.hourly` | `TIME_LIMIT` (tool calls) |
-| Reset time | `renewsAt` (ISO 8601) | `nextResetTime` (epoch ms) |
+| onWatch Concept | Anthropic API | Synthetic API | Z.ai Equivalent |
+|-----------------|--------------|---------------|-----------------|
+| Real-time snapshot | `GET /api/oauth/usage` | `GET /v2/quotas` | `GET /monitor/usage/quota/limit` |
+| Primary quota | `five_hour` (utilization %) | `subscription` (requests/limit) | `TOKENS_LIMIT` (currentValue/usage) |
+| Secondary quotas | `seven_day`, `monthly_limit`, etc. | `search.hourly` | `TIME_LIMIT` (tool calls) |
+| Reset time | `resets_at` (ISO 8601) | `renewsAt` (ISO 8601) | `nextResetTime` (epoch ms) |
+| Quota structure | Dynamic key-value | Fixed 3 quotas | Fixed 2-3 limits |
 
 ## Commands
 
@@ -366,6 +400,23 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- Z.ai snapshots, hourly usage, reset cycles (see store.go for full schema)
+
+-- Anthropic snapshots (normalized key-value for dynamic quotas)
+CREATE TABLE IF NOT EXISTS anthropic_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    captured_at TEXT NOT NULL, raw_json TEXT, quota_count INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS anthropic_quota_values (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_id INTEGER NOT NULL REFERENCES anthropic_snapshots(id),
+    quota_name TEXT NOT NULL, utilization REAL NOT NULL, resets_at TEXT
+);
+CREATE TABLE IF NOT EXISTS anthropic_reset_cycles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    quota_name TEXT NOT NULL, cycle_start TEXT NOT NULL, cycle_end TEXT,
+    resets_at TEXT NOT NULL, peak_utilization REAL NOT NULL DEFAULT 0,
+    total_delta REAL NOT NULL DEFAULT 0
+);
 ```
 
 ## Dashboard Design
@@ -375,8 +426,10 @@ See `design-system/onwatch/pages/dashboard.md` for dashboard-specific layout.
 
 **Key design decisions:**
 - Material Design 3 with dark + light mode
-- Three quota cards per provider, each with progress bar, countdown, status badge
+- Three quota cards per provider (Synthetic/Z.ai), dynamic cards for Anthropic
+- Anthropic cards rendered dynamically from API response (variable quota count)
 - Color-coded thresholds: green (0-49%), yellow (50-79%), red (80-94%), critical (95%+)
+- Provider accent colors: Synthetic (primary), Z.ai (teal), Anthropic (amber/orange #D97706)
 - Accessibility: color + icon + text for all status indicators
 - Live countdown updating every second
 - Provider-specific usage insights

@@ -188,6 +188,39 @@ func (s *Store) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_zai_hourly_hour ON zai_hourly_usage(hour);
 		CREATE INDEX IF NOT EXISTS idx_zai_cycles_type_start ON zai_reset_cycles(quota_type, cycle_start);
 		CREATE INDEX IF NOT EXISTS idx_zai_cycles_type_active ON zai_reset_cycles(quota_type, cycle_end) WHERE cycle_end IS NULL;
+
+		-- Anthropic-specific tables
+		CREATE TABLE IF NOT EXISTS anthropic_snapshots (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			captured_at TEXT NOT NULL,
+			raw_json TEXT NOT NULL DEFAULT '',
+			quota_count INTEGER NOT NULL DEFAULT 0
+		);
+
+		CREATE TABLE IF NOT EXISTS anthropic_quota_values (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			snapshot_id INTEGER NOT NULL,
+			quota_name TEXT NOT NULL,
+			utilization REAL NOT NULL,
+			resets_at TEXT,
+			FOREIGN KEY (snapshot_id) REFERENCES anthropic_snapshots(id)
+		);
+
+		CREATE TABLE IF NOT EXISTS anthropic_reset_cycles (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			quota_name TEXT NOT NULL,
+			cycle_start TEXT NOT NULL,
+			cycle_end TEXT,
+			resets_at TEXT,
+			peak_utilization REAL NOT NULL DEFAULT 0,
+			total_delta REAL NOT NULL DEFAULT 0
+		);
+
+		-- Anthropic indexes
+		CREATE INDEX IF NOT EXISTS idx_anthropic_snapshots_captured ON anthropic_snapshots(captured_at);
+		CREATE INDEX IF NOT EXISTS idx_anthropic_quota_values_snapshot ON anthropic_quota_values(snapshot_id);
+		CREATE INDEX IF NOT EXISTS idx_anthropic_cycles_name_start ON anthropic_reset_cycles(quota_name, cycle_start);
+		CREATE INDEX IF NOT EXISTS idx_anthropic_cycles_name_active ON anthropic_reset_cycles(quota_name, cycle_end) WHERE cycle_end IS NULL;
 	`
 
 	if _, err := s.db.Exec(schema); err != nil {

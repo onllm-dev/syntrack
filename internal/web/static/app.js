@@ -20,6 +20,8 @@ async function authFetch(url, options) {
 function getCurrentProvider() {
   const bothView = document.getElementById('both-view');
   if (bothView) return 'both';
+  const anthropicGrid = document.getElementById('quota-grid-anthropic');
+  if (anthropicGrid) return 'anthropic';
   const grid = document.getElementById('quota-grid');
   return (grid && grid.dataset.provider) || 'synthetic';
 }
@@ -33,6 +35,7 @@ const State = {
   chart: null,
   chartSyn: null,
   chartZai: null,
+  chartAnth: null,
   modalChart: null,
   countdownInterval: null,
   refreshInterval: null,
@@ -226,6 +229,276 @@ const quotaNames = {
   search: 'Search (Hourly)',
   toolCalls: 'Tool Call Discounts'
 };
+
+// Anthropic display names (mirrors backend anthropicDisplayNames)
+const anthropicDisplayNames = {
+  five_hour: '5-Hour',
+  seven_day: '7-Day',
+  seven_day_sonnet: '7-Day Sonnet',
+  monthly_limit: 'Monthly',
+  extra_usage: 'Extra Usage'
+};
+
+// Anthropic quota icons (mapped by key)
+const anthropicQuotaIcons = {
+  five_hour: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',       // clock
+  seven_day: '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>', // calendar
+  seven_day_sonnet: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>', // layers
+  monthly_limit: '<rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>', // briefcase
+  extra_usage: '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>' // pie-chart
+};
+
+// Anthropic chart colors (amber/orange palette)
+const anthropicChartColors = [
+  { border: '#D97706', bg: 'rgba(217, 119, 6, 0.08)' },
+  { border: '#B45309', bg: 'rgba(180, 83, 9, 0.08)' },
+  { border: '#F59E0B', bg: 'rgba(245, 158, 11, 0.08)' },
+  { border: '#92400E', bg: 'rgba(146, 64, 14, 0.08)' },
+  { border: '#FBBF24', bg: 'rgba(251, 191, 36, 0.08)' }
+];
+
+// ── Anthropic Dynamic Card Rendering ──
+
+function renderAnthropicQuotaCards(quotas, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  // Build cards for each quota
+  container.innerHTML = quotas.map((q, i) => {
+    const icon = anthropicQuotaIcons[q.name] || '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>';
+    const displayName = q.displayName || anthropicDisplayNames[q.name] || q.name;
+    const utilPct = (q.utilization || 0).toFixed(1);
+    const status = q.status || 'healthy';
+    const statusCfg = statusConfig[status] || statusConfig.healthy;
+    const countdownId = `countdown-anth-${q.name}`;
+    const progressId = `progress-anth-${q.name}`;
+    const percentId = `percent-anth-${q.name}`;
+    const statusId = `status-anth-${q.name}`;
+    const resetId = `reset-anth-${q.name}`;
+
+    return `<article class="quota-card anthropic-card" data-quota="${q.name}" data-provider="anthropic" role="button" tabindex="0" aria-label="View ${displayName} details" style="animation-delay: ${i * 60}ms">
+      <header class="card-header">
+        <h2 class="quota-title">
+          <svg class="quota-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${icon}</svg>
+          ${displayName}
+        </h2>
+        <span class="countdown" id="${countdownId}">${q.timeUntilResetSeconds > 0 ? formatDuration(q.timeUntilResetSeconds) : '--:--'}</span>
+      </header>
+      <div class="progress-stats">
+        <span class="usage-percent" id="${percentId}">${utilPct}%</span>
+        <span class="usage-fraction">Utilization</span>
+      </div>
+      <div class="progress-wrapper">
+        <div class="progress-bar" role="progressbar" aria-valuenow="${Math.round(q.utilization || 0)}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-fill" id="${progressId}" style="width: ${utilPct}%" data-status="${status}"></div>
+        </div>
+      </div>
+      <footer class="card-footer">
+        <span class="status-badge" id="${statusId}" data-status="${status}">
+          <svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${statusCfg.icon}"/></svg>
+          ${statusCfg.label}
+        </span>
+        <span class="reset-time" id="${resetId}">${q.resetsAt ? 'Resets: ' + formatDateTime(q.resetsAt) : ''}</span>
+      </footer>
+    </article>`;
+  }).join('');
+
+  // Re-attach modal click handlers for new cards
+  container.querySelectorAll('.quota-card[role="button"]').forEach(card => {
+    const handler = () => {
+      const providerCol = card.closest('.provider-column');
+      const providerOverride = providerCol ? providerCol.dataset.provider : 'anthropic';
+      openAnthropicModal(card.dataset.quota, providerOverride);
+    };
+    card.addEventListener('click', handler);
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
+    });
+  });
+}
+
+function updateAnthropicCard(quota) {
+  const key = `anth-${quota.name}`;
+  const prev = State.currentQuotas[key];
+  State.currentQuotas[key] = {
+    percent: quota.utilization || 0,
+    usage: quota.utilization || 0,
+    limit: 100,
+    status: quota.status || 'healthy',
+    renewsAt: quota.resetsAt,
+    timeUntilReset: quota.timeUntilReset,
+    timeUntilResetSeconds: quota.timeUntilResetSeconds || 0,
+    name: quota.name,
+    displayName: quota.displayName
+  };
+
+  const progressEl = document.getElementById(`progress-anth-${quota.name}`);
+  const percentEl = document.getElementById(`percent-anth-${quota.name}`);
+  const statusEl = document.getElementById(`status-anth-${quota.name}`);
+  const resetEl = document.getElementById(`reset-anth-${quota.name}`);
+  const countdownEl = document.getElementById(`countdown-anth-${quota.name}`);
+
+  const utilPct = (quota.utilization || 0).toFixed(1);
+  const status = quota.status || 'healthy';
+
+  if (progressEl) {
+    progressEl.style.width = `${utilPct}%`;
+    progressEl.setAttribute('data-status', status);
+  }
+  if (percentEl) {
+    const oldVal = prev ? prev.percent : 0;
+    if (Math.abs(oldVal - quota.utilization) > 0.2) {
+      animateValue(percentEl, oldVal, quota.utilization, 400, v => `${v.toFixed(1)}%`);
+    } else {
+      percentEl.textContent = `${utilPct}%`;
+    }
+  }
+  if (statusEl) {
+    const config = statusConfig[status] || statusConfig.healthy;
+    statusEl.setAttribute('data-status', status);
+    statusEl.innerHTML = `<svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${config.icon}"/></svg>${config.label}`;
+  }
+  if (resetEl) {
+    resetEl.textContent = quota.resetsAt ? `Resets: ${formatDateTime(quota.resetsAt)}` : '';
+  }
+  if (countdownEl) {
+    if (quota.timeUntilResetSeconds > 0) {
+      countdownEl.textContent = formatDuration(quota.timeUntilResetSeconds);
+      countdownEl.classList.toggle('imminent', quota.timeUntilResetSeconds < 1800);
+      countdownEl.style.display = '';
+    } else {
+      countdownEl.style.display = 'none';
+    }
+  }
+}
+
+// Anthropic quota detail modal
+function openAnthropicModal(quotaName, providerOverride) {
+  const key = `anth-${quotaName}`;
+  const data = State.currentQuotas[key];
+  if (!data) return;
+
+  const modal = document.getElementById('detail-modal');
+  const titleEl = document.getElementById('modal-title');
+  const bodyEl = document.getElementById('modal-body');
+  if (!modal || !bodyEl) return;
+
+  const displayName = data.displayName || anthropicDisplayNames[quotaName] || quotaName;
+  titleEl.textContent = displayName;
+
+  const statusCfg = statusConfig[data.status] || statusConfig.healthy;
+  const timeLeft = data.timeUntilResetSeconds > 0 ? formatDuration(data.timeUntilResetSeconds) : 'N/A';
+
+  bodyEl.innerHTML = `
+    <div class="modal-kpi-row">
+      <div class="modal-kpi">
+        <div class="modal-kpi-value">${data.percent.toFixed(1)}%</div>
+        <div class="modal-kpi-label">Utilization</div>
+      </div>
+      <div class="modal-kpi">
+        <div class="modal-kpi-value"><span class="status-badge" data-status="${data.status}"><svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${statusCfg.icon}"/></svg>${statusCfg.label}</span></div>
+        <div class="modal-kpi-label">Status</div>
+      </div>
+      <div class="modal-kpi">
+        <div class="modal-kpi-value">${timeLeft}</div>
+        <div class="modal-kpi-label">Until Reset</div>
+      </div>
+    </div>
+    <h3 class="modal-section-title">Usage History</h3>
+    <div class="modal-chart-container">
+      <canvas id="modal-chart"></canvas>
+    </div>
+    <h3 class="modal-section-title">Recent Cycles</h3>
+    <div class="table-wrapper">
+      <table class="data-table" id="modal-cycles-table">
+        <thead><tr><th>Cycle</th><th>Duration</th><th>Peak</th><th>Total</th></tr></thead>
+        <tbody id="modal-cycles-tbody"><tr><td colspan="4" class="empty-state">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  `;
+
+  modal.hidden = false;
+  document.getElementById('modal-close').focus();
+
+  // Load chart and cycles for this Anthropic quota
+  loadAnthropicModalChart(quotaName);
+  loadAnthropicModalCycles(quotaName);
+}
+
+async function loadAnthropicModalChart(quotaName) {
+  const ctx = document.getElementById('modal-chart');
+  if (!ctx || typeof Chart === 'undefined') return;
+  if (State.modalChart) { State.modalChart.destroy(); State.modalChart = null; }
+
+  const activeRange = document.querySelector('.range-btn[data-range].active');
+  const range = activeRange ? activeRange.dataset.range : '6h';
+
+  try {
+    const res = await authFetch(`${API_BASE}/api/history?range=${range}&provider=anthropic`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) return;
+
+    const colors = getThemeColors();
+    const chartData = data.map(d => d[quotaName] || 0);
+    const maxVal = Math.max(...chartData, 0);
+    let yMax = maxVal <= 0 ? 10 : maxVal < 5 ? 10 : Math.min(Math.max(Math.ceil((maxVal * 1.2) / 5) * 5, 10), 100);
+
+    State.modalChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        datasets: [{
+          label: anthropicDisplayNames[quotaName] || quotaName,
+          data: chartData,
+          borderColor: '#D97706',
+          backgroundColor: 'rgba(217, 119, 6, 0.08)',
+          fill: true, tension: 0.3, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 5
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { backgroundColor: colors.surfaceContainer, titleColor: colors.onSurface, bodyColor: colors.text, borderColor: colors.outline, borderWidth: 1, callbacks: { label: c => `${c.parsed.y.toFixed(1)}%` } }
+        },
+        scales: {
+          x: { grid: { color: colors.grid, drawBorder: false }, ticks: { color: colors.text, maxTicksLimit: 6 } },
+          y: { grid: { color: colors.grid, drawBorder: false }, ticks: { color: colors.text, callback: v => v + '%' }, min: 0, max: yMax }
+        }
+      }
+    });
+  } catch (err) { console.error('Anthropic modal chart error:', err); }
+}
+
+async function loadAnthropicModalCycles(quotaName) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/cycles?type=${quotaName}&provider=anthropic`);
+    if (!res.ok) return;
+    const cycles = await res.json();
+    const tbody = document.getElementById('modal-cycles-tbody');
+    if (!tbody) return;
+    const recent = cycles.slice(0, 5);
+    if (recent.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No cycles yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = recent.map(cycle => {
+      const start = new Date(cycle.cycleStart);
+      const end = cycle.cycleEnd ? new Date(cycle.cycleEnd) : new Date();
+      const durationMins = Math.round((end - start) / 60000);
+      const hours = Math.floor(durationMins / 60);
+      const mins = durationMins % 60;
+      const isActive = !cycle.cycleEnd;
+      return `<tr>
+        <td>#${cycle.id}${isActive ? ' <span class="badge">Active</span>' : ''}</td>
+        <td>${hours}h ${mins}m</td>
+        <td>${formatNumber(cycle.peakUtilization || 0)}</td>
+        <td>${formatNumber(cycle.totalDelta || 0)}</td>
+      </tr>`;
+    }).join('');
+  } catch (err) { console.error('Anthropic modal cycles error:', err); }
+}
 
 // ── Utilities ──
 
@@ -618,7 +891,7 @@ async function fetchCurrent() {
     requestAnimationFrame(() => {
       const provider = getCurrentProvider();
       if (provider === 'both') {
-        // "both" response: { synthetic: {...}, zai: {...} }
+        // "both" response: { synthetic: {...}, zai: {...}, anthropic: {...} }
         if (data.synthetic) {
           updateCard('subscription', data.synthetic.subscription);
           updateCard('search', data.synthetic.search);
@@ -628,6 +901,26 @@ async function fetchCurrent() {
           updateCard('tokensLimit', data.zai.tokensLimit);
           updateCard('timeLimit', data.zai.timeLimit);
           updateCard('toolCalls', data.zai.toolCalls, 'zai');
+        }
+        if (data.anthropic && data.anthropic.quotas) {
+          const container = document.getElementById('quota-grid-anthropic-both');
+          if (container && container.children.length === 0) {
+            renderAnthropicQuotaCards(data.anthropic.quotas, 'quota-grid-anthropic-both');
+          } else {
+            data.anthropic.quotas.forEach(q => updateAnthropicCard(q));
+          }
+        }
+      } else if (provider === 'anthropic') {
+        // Anthropic response: { capturedAt: ..., quotas: [...] }
+        if (data.quotas) {
+          const container = document.getElementById('quota-grid-anthropic');
+          if (container && container.children.length === 0) {
+            renderAnthropicQuotaCards(data.quotas, 'quota-grid-anthropic');
+            // Also populate cycle quota select dynamically
+            populateAnthropicCycleSelect(data.quotas);
+          } else {
+            data.quotas.forEach(q => updateAnthropicCard(q));
+          }
         }
       } else if (provider === 'zai') {
         updateCard('tokensLimit', data.tokensLimit);
@@ -652,6 +945,31 @@ async function fetchCurrent() {
     console.error('Fetch error:', err);
     const statusDot = document.getElementById('status-dot');
     if (statusDot) statusDot.classList.add('stale');
+  }
+}
+
+// ── Anthropic Cycle Select Population ──
+
+function populateAnthropicCycleSelect(quotas) {
+  const select = document.getElementById('cycle-quota-select');
+  if (!select) return;
+
+  const provider = getCurrentProvider();
+  if (provider === 'anthropic') {
+    // Replace all options with Anthropic quota names
+    select.innerHTML = quotas.map(q => {
+      const displayName = q.displayName || anthropicDisplayNames[q.name] || q.name;
+      return `<option value="${q.name}">${displayName}</option>`;
+    }).join('');
+  } else if (provider === 'both') {
+    // Populate the Anthropic optgroup in "both" mode
+    const optgroup = document.getElementById('cycle-anthropic-optgroup');
+    if (optgroup) {
+      optgroup.innerHTML = quotas.map(q => {
+        const displayName = q.displayName || anthropicDisplayNames[q.name] || q.name;
+        return `<option value="${q.name}">${displayName}</option>`;
+      }).join('');
+    }
   }
 }
 
@@ -820,6 +1138,22 @@ function renderBothInsights(data, statsEl, cardsEl) {
         </div>`
       ).join('')}</div>
       <div class="insights-cards">${buildInsightCardsHTML(zaiInsights)}</div>
+    </div>`;
+  }
+
+  // Anthropic box
+  if (data.anthropic) {
+    const anthStats = data.anthropic.stats || [];
+    let anthInsights = (data.anthropic.insights || []).filter(i => !i.key || !expandedHidden.has(i.key));
+    html += `<div class="provider-insights-box" data-provider="anthropic">
+      <h4 class="provider-insights-label">Anthropic</h4>
+      <div class="insights-stats">${anthStats.map(s =>
+        `<div class="insight-stat">
+          <div class="insight-stat-value">${s.value}</div>
+          <div class="insight-stat-label">${s.label}</div>
+        </div>`
+      ).join('')}</div>
+      <div class="insights-cards">${buildInsightCardsHTML(anthInsights)}</div>
     </div>`;
   }
 
@@ -1111,6 +1445,32 @@ async function fetchHistory(range) {
 
     State.chart.data.labels = data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
 
+    if (provider === 'anthropic') {
+      // Anthropic history: array of { capturedAt, five_hour, seven_day, ... }
+      // Dynamic datasets based on available quota keys
+      const quotaKeys = new Set();
+      data.forEach(d => {
+        Object.keys(d).forEach(k => { if (k !== 'capturedAt') quotaKeys.add(k); });
+      });
+      const sortedKeys = [...quotaKeys].sort();
+      State.chart.data.datasets = sortedKeys.map((key, i) => {
+        const color = anthropicChartColors[i % anthropicChartColors.length];
+        return {
+          label: anthropicDisplayNames[key] || key,
+          data: data.map(d => d[key] || 0),
+          borderColor: color.border,
+          backgroundColor: color.bg,
+          fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4,
+          hidden: State.hiddenQuotas.has(key)
+        };
+      });
+      State.chart.data.labels = data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+      State.chartYMax = computeYMax(State.chart.data.datasets, State.chart);
+      State.chart.options.scales.y.max = State.chartYMax;
+      State.chart.update();
+      return;
+    }
+
     if (provider === 'zai') {
       while (State.chart.data.datasets.length > 2) State.chart.data.datasets.pop();
       if (State.chart.data.datasets.length < 2) {
@@ -1155,16 +1515,23 @@ function updateBothCharts(data) {
   const container = document.querySelector('.chart-container');
   if (!container) return;
 
-  // Create dual chart layout if not exists
+  const hasAnthData = data.anthropic && Array.isArray(data.anthropic) && data.anthropic.length > 0;
+  // Create multi-chart layout if not exists
   if (!container.classList.contains('both-charts')) {
     container.classList.add('both-charts');
-    container.innerHTML = `
+    let html = `
       <div class="chart-half"><h4 class="chart-half-label">Synthetic</h4><canvas id="usage-chart-syn"></canvas></div>
       <div class="chart-half"><h4 class="chart-half-label">Z.ai</h4><canvas id="usage-chart-zai"></canvas></div>
     `;
+    if (hasAnthData) {
+      html += `<div class="chart-half"><h4 class="chart-half-label">Anthropic</h4><canvas id="usage-chart-anth"></canvas></div>`;
+    }
+    container.innerHTML = html;
     // Hide the original single chart canvas
     const origCanvas = document.getElementById('usage-chart');
     if (origCanvas) origCanvas.style.display = 'none';
+  } else if (hasAnthData && !document.getElementById('usage-chart-anth')) {
+    container.insertAdjacentHTML('beforeend', '<div class="chart-half"><h4 class="chart-half-label">Anthropic</h4><canvas id="usage-chart-anth"></canvas></div>');
   }
 
   const style = getComputedStyle(document.documentElement);
@@ -1206,6 +1573,35 @@ function updateBothCharts(data) {
       options: buildChartOptions(colors)
     });
   }
+
+  // Anthropic chart
+  const anthCanvas = document.getElementById('usage-chart-anth');
+  if (anthCanvas && hasAnthData) {
+    if (State.chartAnth) State.chartAnth.destroy();
+    const anthData = data.anthropic;
+    // Discover dynamic quota keys
+    const quotaKeys = new Set();
+    anthData.forEach(d => {
+      Object.keys(d).forEach(k => { if (k !== 'capturedAt') quotaKeys.add(k); });
+    });
+    const sortedKeys = [...quotaKeys].sort();
+    State.chartAnth = new Chart(anthCanvas, {
+      type: 'line',
+      data: {
+        labels: anthData.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        datasets: sortedKeys.map((key, i) => {
+          const color = anthropicChartColors[i % anthropicChartColors.length];
+          return {
+            label: anthropicDisplayNames[key] || key,
+            data: anthData.map(d => d[key] || 0),
+            borderColor: color.border, backgroundColor: color.bg,
+            fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4
+          };
+        })
+      },
+      options: buildChartOptions(colors)
+    });
+  }
 }
 
 function buildChartOptions(colors) {
@@ -1238,15 +1634,18 @@ async function fetchCycles(quotaType) {
   const provider = getCurrentProvider();
   if (quotaType === undefined) {
     const select = document.getElementById('cycle-quota-select');
-    quotaType = select ? select.value : (provider === 'zai' ? 'tokens' : 'subscription');
+    quotaType = select ? select.value : (provider === 'anthropic' ? 'five_hour' : provider === 'zai' ? 'tokens' : 'subscription');
   }
 
   // In "both" mode, route the type to the correct provider param
   let cycleUrl = `${API_BASE}/api/cycles?type=${quotaType}&${providerParam()}`;
   if (provider === 'both') {
     const zaiTypes = ['tokens', 'time'];
+    const anthropicTypes = ['five_hour', 'seven_day', 'seven_day_sonnet', 'monthly_limit', 'extra_usage'];
     if (zaiTypes.includes(quotaType)) {
       cycleUrl = `${API_BASE}/api/cycles?type=subscription&zaiType=${quotaType}&${providerParam()}`;
+    } else if (anthropicTypes.includes(quotaType)) {
+      cycleUrl = `${API_BASE}/api/cycles?type=${quotaType}&provider=anthropic`;
     }
   }
 
@@ -1306,7 +1705,7 @@ function groupCyclesData(cycles, groupMs) {
     const bucket = buckets.get(bucketKey);
     bucket.cycles.push(c);
     bucket.cycleCount++;
-    bucket.peakRequests = Math.max(bucket.peakRequests, c.peakRequests);
+    bucket.peakRequests = Math.max(bucket.peakRequests, c.peakRequests || c.peakUtilization || 0);
     bucket.totalDelta += c.totalDelta;
     if (new Date(c.cycleStart) < new Date(bucket.earliestStart)) bucket.earliestStart = c.cycleStart;
     if (c.cycleEnd) {
@@ -1441,10 +1840,11 @@ async function fetchSessions() {
     const provider = getCurrentProvider();
 
     if (provider === 'both') {
-      // "both" response: { synthetic: [...], zai: [...] }
+      // "both" response: { synthetic: [...], zai: [...], anthropic: [...] }
       let merged = [];
       if (data.synthetic) merged = merged.concat(data.synthetic.map(s => ({ ...s, _provider: 'Syn' })));
       if (data.zai) merged = merged.concat(data.zai.map(s => ({ ...s, _provider: 'Z.ai' })));
+      if (data.anthropic) merged = merged.concat(data.anthropic.map(s => ({ ...s, _provider: 'Anth' })));
       merged.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
       State.allSessionsData = merged;
     } else {
@@ -2141,7 +2541,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load hidden insights from API (dashboard-only — requires auth)
     loadHiddenInsights();
     const provider = getCurrentProvider();
-    const defaultCycleType = provider === 'both' ? 'subscription' : provider === 'zai' ? 'tokens' : 'subscription';
+    const defaultCycleType = provider === 'both' ? 'subscription' : provider === 'anthropic' ? 'five_hour' : provider === 'zai' ? 'tokens' : 'subscription';
     initChart();
     fetchCurrent().then(() => fetchDeepInsights());
     fetchHistory('6h');

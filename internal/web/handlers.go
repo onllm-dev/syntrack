@@ -17,15 +17,16 @@ import (
 
 // Handler handles HTTP requests for the web dashboard
 type Handler struct {
-	store         *store.Store
-	tracker       *tracker.Tracker
-	zaiTracker    *tracker.ZaiTracker
-	logger        *slog.Logger
-	dashboardTmpl *template.Template
-	loginTmpl     *template.Template
-	sessions      *SessionStore
-	config        *config.Config
-	version       string
+	store              *store.Store
+	tracker            *tracker.Tracker
+	zaiTracker         *tracker.ZaiTracker
+	anthropicTracker   *tracker.AnthropicTracker
+	logger             *slog.Logger
+	dashboardTmpl      *template.Template
+	loginTmpl          *template.Template
+	sessions           *SessionStore
+	config             *config.Config
+	version            string
 }
 
 // NewHandler creates a new Handler instance
@@ -66,6 +67,11 @@ func NewHandler(store *store.Store, tracker *tracker.Tracker, logger *slog.Logge
 // SetVersion sets the version string for display in the dashboard.
 func (h *Handler) SetVersion(v string) {
 	h.version = v
+}
+
+// SetAnthropicTracker sets the Anthropic tracker for usage summary enrichment.
+func (h *Handler) SetAnthropicTracker(t *tracker.AnthropicTracker) {
+	h.anthropicTracker = t
 }
 
 // respondJSON sends a JSON response
@@ -152,12 +158,12 @@ func (h *Handler) getProviderFromRequest(r *http.Request) (string, error) {
 	// Normalize provider name
 	provider = strings.ToLower(provider)
 
-	// "both" is a virtual provider — allowed when both are configured
+	// "both" is a virtual provider — allowed when multiple are configured
 	if provider == "both" {
-		if h.config.HasBothProviders() {
+		if h.config.HasMultipleProviders() {
 			return "both", nil
 		}
-		return "", fmt.Errorf("'both' requires both Synthetic and Z.ai to be configured")
+		return "", fmt.Errorf("'both' requires multiple providers to be configured")
 	}
 
 	// Validate provider is available
@@ -176,7 +182,7 @@ func (h *Handler) Providers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	providers := h.config.AvailableProviders()
-	if h.config.HasBothProviders() {
+	if h.config.HasMultipleProviders() {
 		providers = append(providers, "both")
 	}
 	current := ""
@@ -212,8 +218,8 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	currentProvider := ""
 	if h.config != nil {
 		providers = h.config.AvailableProviders()
-		// Add "both" option when both providers are available
-		if h.config.HasBothProviders() {
+		// Add "both" option when multiple providers are available
+		if h.config.HasMultipleProviders() {
 			providers = append(providers, "both")
 		}
 		if len(providers) > 0 {
@@ -222,17 +228,19 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		// Allow overriding via query param
 		if reqProvider := r.URL.Query().Get("provider"); reqProvider != "" {
 			reqProvider = strings.ToLower(reqProvider)
-			if h.config.HasProvider(reqProvider) || (reqProvider == "both" && h.config.HasBothProviders()) {
+			if h.config.HasProvider(reqProvider) || (reqProvider == "both" && h.config.HasMultipleProviders()) {
 				currentProvider = reqProvider
 			}
 		}
 	}
 
+	hasAnthropic := h.config != nil && h.config.HasProvider("anthropic")
 	data := map[string]interface{}{
 		"Title":           "Dashboard",
 		"Providers":       providers,
 		"CurrentProvider": currentProvider,
 		"Version":         h.version,
+		"HasAnthropic":    hasAnthropic,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -257,12 +265,14 @@ func (h *Handler) Current(w http.ResponseWriter, r *http.Request) {
 		h.currentZai(w, r)
 	case "synthetic":
 		h.currentSynthetic(w, r)
+	case "anthropic":
+		h.currentAnthropic(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
 }
 
-// currentBoth returns combined quota status for both providers.
+// currentBoth returns combined quota status for all configured providers.
 func (h *Handler) currentBoth(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{}
 	if h.config.HasProvider("synthetic") {
@@ -270,6 +280,9 @@ func (h *Handler) currentBoth(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.config.HasProvider("zai") {
 		response["zai"] = h.buildZaiCurrent()
+	}
+	if h.config.HasProvider("anthropic") {
+		response["anthropic"] = h.buildAnthropicCurrent()
 	}
 	respondJSON(w, http.StatusOK, response)
 }
@@ -579,6 +592,8 @@ func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 		h.historyZai(w, r)
 	case "synthetic":
 		h.historySynthetic(w, r)
+	case "anthropic":
+		h.historyAnthropic(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -646,6 +661,23 @@ func (h *Handler) historyBoth(w http.ResponseWriter, r *http.Request) {
 				})
 			}
 			response["zai"] = zaiData
+		}
+	}
+
+	if h.config.HasProvider("anthropic") && h.store != nil {
+		snapshots, err := h.store.QueryAnthropicRange(start, now, 200)
+		if err == nil {
+			anthData := make([]map[string]interface{}, 0, len(snapshots))
+			for _, snap := range snapshots {
+				entry := map[string]interface{}{
+					"capturedAt": snap.CapturedAt.Format(time.RFC3339),
+				}
+				for _, q := range snap.Quotas {
+					entry[q.Name] = q.Utilization
+				}
+				anthData = append(anthData, entry)
+			}
+			response["anthropic"] = anthData
 		}
 	}
 
@@ -768,12 +800,14 @@ func (h *Handler) Cycles(w http.ResponseWriter, r *http.Request) {
 		h.cyclesZai(w, r)
 	case "synthetic":
 		h.cyclesSynthetic(w, r)
+	case "anthropic":
+		h.cyclesAnthropic(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
 }
 
-// cyclesBoth returns combined cycles from both providers.
+// cyclesBoth returns combined cycles from all configured providers.
 func (h *Handler) cyclesBoth(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{}
 	if h.store == nil {
@@ -813,6 +847,23 @@ func (h *Handler) cyclesBoth(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		response["zai"] = zaiCycles
+	}
+
+	if h.config.HasProvider("anthropic") {
+		anthType := r.URL.Query().Get("anthropicType")
+		if anthType == "" {
+			anthType = "five_hour"
+		}
+		var anthCycles []map[string]interface{}
+		if active, err := h.store.QueryActiveAnthropicCycle(anthType); err == nil && active != nil {
+			anthCycles = append(anthCycles, anthropicCycleToMap(active))
+		}
+		if history, err := h.store.QueryAnthropicCycleHistory(anthType); err == nil {
+			for _, c := range history {
+				anthCycles = append(anthCycles, anthropicCycleToMap(c))
+			}
+		}
+		response["anthropic"] = anthCycles
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -973,12 +1024,14 @@ func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 		h.summaryZai(w, r)
 	case "synthetic":
 		h.summarySynthetic(w, r)
+	case "anthropic":
+		h.summaryAnthropic(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
 }
 
-// summaryBoth returns combined summaries from both providers.
+// summaryBoth returns combined summaries from all configured providers.
 func (h *Handler) summaryBoth(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{}
 	if h.config.HasProvider("synthetic") {
@@ -1002,6 +1055,9 @@ func (h *Handler) summaryBoth(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.config.HasProvider("zai") {
 		response["zai"] = h.buildZaiSummaryMap()
+	}
+	if h.config.HasProvider("anthropic") {
+		response["anthropic"] = h.buildAnthropicSummaryMap()
 	}
 	respondJSON(w, http.StatusOK, response)
 }
@@ -1294,6 +1350,9 @@ func (h *Handler) sessionsBoth(w http.ResponseWriter, r *http.Request) {
 	if h.config.HasProvider("zai") {
 		response["zai"] = buildSessionList("zai")
 	}
+	if h.config.HasProvider("anthropic") {
+		response["anthropic"] = buildSessionList("anthropic")
+	}
 
 	respondJSON(w, http.StatusOK, response)
 }
@@ -1382,12 +1441,14 @@ func (h *Handler) Insights(w http.ResponseWriter, r *http.Request) {
 		h.insightsZai(w, r, rangeDur)
 	case "synthetic":
 		h.insightsSynthetic(w, r, rangeDur)
+	case "anthropic":
+		h.insightsAnthropic(w, r, rangeDur)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
 }
 
-// insightsBoth returns combined insights from both providers.
+// insightsBoth returns combined insights from all configured providers.
 func (h *Handler) insightsBoth(w http.ResponseWriter, r *http.Request, rangeDur time.Duration) {
 	hidden := h.getHiddenInsightKeys()
 	response := map[string]interface{}{}
@@ -1397,6 +1458,9 @@ func (h *Handler) insightsBoth(w http.ResponseWriter, r *http.Request, rangeDur 
 	}
 	if h.config.HasProvider("zai") {
 		response["zai"] = h.buildZaiInsights(hidden)
+	}
+	if h.config.HasProvider("anthropic") {
+		response["anthropic"] = h.buildAnthropicInsights()
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -1913,6 +1977,247 @@ func (h *Handler) buildZaiInsights(hidden map[string]bool) insightsResponse {
 				})
 			}
 		}
+	}
+
+	return resp
+}
+
+// ── Anthropic Provider Handlers ──
+
+// currentAnthropic returns Anthropic quota status.
+func (h *Handler) currentAnthropic(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, h.buildAnthropicCurrent())
+}
+
+// buildAnthropicCurrent builds the Anthropic current quota response map.
+func (h *Handler) buildAnthropicCurrent() map[string]interface{} {
+	now := time.Now().UTC()
+	response := map[string]interface{}{
+		"capturedAt": now.Format(time.RFC3339),
+		"quotas":     []interface{}{},
+	}
+
+	if h.store == nil {
+		return response
+	}
+
+	latest, err := h.store.QueryLatestAnthropic()
+	if err != nil {
+		h.logger.Error("failed to query latest Anthropic snapshot", "error", err)
+		return response
+	}
+
+	if latest == nil {
+		return response
+	}
+
+	response["capturedAt"] = latest.CapturedAt.Format(time.RFC3339)
+	var quotas []map[string]interface{}
+	for _, q := range latest.Quotas {
+		qMap := map[string]interface{}{
+			"name":        q.Name,
+			"displayName": api.AnthropicDisplayName(q.Name),
+			"utilization": q.Utilization,
+			"status":      anthropicUtilStatus(q.Utilization),
+		}
+		if q.ResetsAt != nil {
+			timeUntilReset := time.Until(*q.ResetsAt)
+			qMap["resetsAt"] = q.ResetsAt.Format(time.RFC3339)
+			qMap["timeUntilReset"] = formatDuration(timeUntilReset)
+			qMap["timeUntilResetSeconds"] = int64(timeUntilReset.Seconds())
+		}
+		// Enrich with tracker data
+		if h.anthropicTracker != nil {
+			if summary, err := h.anthropicTracker.UsageSummary(q.Name); err == nil && summary != nil {
+				qMap["currentRate"] = summary.CurrentRate
+				qMap["projectedUtil"] = summary.ProjectedUtil
+			}
+		}
+		quotas = append(quotas, qMap)
+	}
+	response["quotas"] = quotas
+	return response
+}
+
+// anthropicUtilStatus returns a status string based on utilization percentage.
+func anthropicUtilStatus(util float64) string {
+	switch {
+	case util >= 95:
+		return "critical"
+	case util >= 80:
+		return "danger"
+	case util >= 50:
+		return "warning"
+	default:
+		return "healthy"
+	}
+}
+
+// historyAnthropic returns Anthropic usage history.
+func (h *Handler) historyAnthropic(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+	rangeStr := r.URL.Query().Get("range")
+	duration, err := parseTimeRange(rangeStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	now := time.Now().UTC()
+	start := now.Add(-duration)
+	snapshots, err := h.store.QueryAnthropicRange(start, now, 200)
+	if err != nil {
+		h.logger.Error("failed to query Anthropic history", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query history")
+		return
+	}
+	response := make([]map[string]interface{}, 0, len(snapshots))
+	for _, snap := range snapshots {
+		entry := map[string]interface{}{
+			"capturedAt": snap.CapturedAt.Format(time.RFC3339),
+		}
+		for _, q := range snap.Quotas {
+			entry[q.Name] = q.Utilization
+		}
+		response = append(response, entry)
+	}
+	respondJSON(w, http.StatusOK, response)
+}
+
+// cyclesAnthropic returns Anthropic reset cycles.
+func (h *Handler) cyclesAnthropic(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+	quotaName := r.URL.Query().Get("type")
+	if quotaName == "" {
+		quotaName = "five_hour"
+	}
+	response := []map[string]interface{}{}
+	if active, err := h.store.QueryActiveAnthropicCycle(quotaName); err == nil && active != nil {
+		response = append(response, anthropicCycleToMap(active))
+	}
+	if history, err := h.store.QueryAnthropicCycleHistory(quotaName); err == nil {
+		for _, c := range history {
+			response = append(response, anthropicCycleToMap(c))
+		}
+	}
+	respondJSON(w, http.StatusOK, response)
+}
+
+// anthropicCycleToMap converts an AnthropicResetCycle to a JSON-friendly map.
+func anthropicCycleToMap(cycle *store.AnthropicResetCycle) map[string]interface{} {
+	result := map[string]interface{}{
+		"id":              cycle.ID,
+		"quotaName":       cycle.QuotaName,
+		"cycleStart":      cycle.CycleStart.Format(time.RFC3339),
+		"cycleEnd":        nil,
+		"peakUtilization": cycle.PeakUtilization,
+		"totalDelta":      cycle.TotalDelta,
+	}
+	if cycle.CycleEnd != nil {
+		result["cycleEnd"] = cycle.CycleEnd.Format(time.RFC3339)
+	}
+	if cycle.ResetsAt != nil {
+		result["renewsAt"] = cycle.ResetsAt.Format(time.RFC3339)
+	}
+	return result
+}
+
+// summaryAnthropic returns Anthropic usage summary.
+func (h *Handler) summaryAnthropic(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, h.buildAnthropicSummaryMap())
+}
+
+// buildAnthropicSummaryMap builds the Anthropic summary response.
+func (h *Handler) buildAnthropicSummaryMap() map[string]interface{} {
+	response := map[string]interface{}{}
+	if h.anthropicTracker != nil && h.store != nil {
+		latest, err := h.store.QueryLatestAnthropic()
+		if err == nil && latest != nil {
+			for _, q := range latest.Quotas {
+				if summary, err := h.anthropicTracker.UsageSummary(q.Name); err == nil && summary != nil {
+					response[q.Name] = buildAnthropicSummaryResponse(summary)
+				}
+			}
+		}
+	}
+	return response
+}
+
+// buildAnthropicSummaryResponse builds a summary response from AnthropicTracker data.
+func buildAnthropicSummaryResponse(summary *tracker.AnthropicSummary) map[string]interface{} {
+	result := map[string]interface{}{
+		"quotaName":       summary.QuotaName,
+		"currentUtil":     summary.CurrentUtil,
+		"currentRate":     summary.CurrentRate,
+		"projectedUtil":   summary.ProjectedUtil,
+		"completedCycles": summary.CompletedCycles,
+		"avgPerCycle":     summary.AvgPerCycle,
+		"peakCycle":       summary.PeakCycle,
+		"totalTracked":    summary.TotalTracked,
+		"trackingSince":   nil,
+	}
+	if summary.ResetsAt != nil {
+		result["resetsAt"] = summary.ResetsAt.Format(time.RFC3339)
+		result["timeUntilReset"] = formatDuration(summary.TimeUntilReset)
+	}
+	if !summary.TrackingSince.IsZero() {
+		result["trackingSince"] = summary.TrackingSince.Format(time.RFC3339)
+	}
+	return result
+}
+
+// insightsAnthropic returns Anthropic deep analytics.
+func (h *Handler) insightsAnthropic(w http.ResponseWriter, r *http.Request, rangeDur time.Duration) {
+	respondJSON(w, http.StatusOK, h.buildAnthropicInsights())
+}
+
+// buildAnthropicInsights builds the Anthropic insights response.
+func (h *Handler) buildAnthropicInsights() insightsResponse {
+	resp := insightsResponse{Stats: []insightStat{}, Insights: []insightItem{}}
+	if h.store == nil {
+		return resp
+	}
+	latest, err := h.store.QueryLatestAnthropic()
+	if err != nil || latest == nil {
+		resp.Insights = append(resp.Insights, insightItem{
+			Type: "info", Severity: "info",
+			Title: "Getting Started",
+			Desc:  "Keep onWatch running to collect Anthropic usage data. Insights will appear after a few snapshots.",
+		})
+		return resp
+	}
+
+	// Stats cards: show each quota's utilization
+	for _, q := range latest.Quotas {
+		resp.Stats = append(resp.Stats, insightStat{
+			Value: fmt.Sprintf("%.0f%%", q.Utilization),
+			Label: api.AnthropicDisplayName(q.Name),
+		})
+	}
+
+	// Find highest utilization quota
+	var maxQuota api.AnthropicQuota
+	for _, q := range latest.Quotas {
+		if q.Utilization > maxQuota.Utilization {
+			maxQuota = q
+		}
+	}
+
+	if maxQuota.Name != "" {
+		sev := severityFromPercent(maxQuota.Utilization)
+		resp.Insights = append(resp.Insights, insightItem{
+			Key:  "highest_util",
+			Type: "factual", Severity: sev,
+			Title:    "Highest Utilization",
+			Metric:   fmt.Sprintf("%.0f%%", maxQuota.Utilization),
+			Sublabel: api.AnthropicDisplayName(maxQuota.Name),
+			Desc:     fmt.Sprintf("%s quota is at %.1f%% utilization.", api.AnthropicDisplayName(maxQuota.Name), maxQuota.Utilization),
+		})
 	}
 
 	return resp

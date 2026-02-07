@@ -1,0 +1,291 @@
+package store
+
+import (
+	"database/sql"
+	"fmt"
+	"time"
+
+	"github.com/onllm-dev/onwatch/internal/api"
+)
+
+// AnthropicResetCycle represents an Anthropic quota reset cycle
+type AnthropicResetCycle struct {
+	ID              int64
+	QuotaName       string
+	CycleStart      time.Time
+	CycleEnd        *time.Time
+	ResetsAt        *time.Time
+	PeakUtilization float64
+	TotalDelta      float64
+}
+
+// InsertAnthropicSnapshot inserts an Anthropic snapshot with its quota values.
+func (s *Store) InsertAnthropicSnapshot(snapshot *api.AnthropicSnapshot) (int64, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(
+		`INSERT INTO anthropic_snapshots (captured_at, raw_json, quota_count) VALUES (?, ?, ?)`,
+		snapshot.CapturedAt.Format(time.RFC3339Nano),
+		snapshot.RawJSON,
+		len(snapshot.Quotas),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to insert anthropic snapshot: %w", err)
+	}
+
+	snapshotID, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get snapshot ID: %w", err)
+	}
+
+	for _, q := range snapshot.Quotas {
+		var resetsAt interface{}
+		if q.ResetsAt != nil {
+			resetsAt = q.ResetsAt.Format(time.RFC3339Nano)
+		}
+		_, err := tx.Exec(
+			`INSERT INTO anthropic_quota_values (snapshot_id, quota_name, utilization, resets_at) VALUES (?, ?, ?, ?)`,
+			snapshotID, q.Name, q.Utilization, resetsAt,
+		)
+		if err != nil {
+			return 0, fmt.Errorf("failed to insert quota value %s: %w", q.Name, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit: %w", err)
+	}
+
+	return snapshotID, nil
+}
+
+// QueryLatestAnthropic returns the most recent Anthropic snapshot with quotas.
+func (s *Store) QueryLatestAnthropic() (*api.AnthropicSnapshot, error) {
+	var snapshot api.AnthropicSnapshot
+	var capturedAt string
+
+	err := s.db.QueryRow(
+		`SELECT id, captured_at, raw_json, quota_count FROM anthropic_snapshots ORDER BY captured_at DESC LIMIT 1`,
+	).Scan(&snapshot.ID, &capturedAt, &snapshot.RawJSON, new(int))
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query latest anthropic: %w", err)
+	}
+
+	snapshot.CapturedAt, _ = time.Parse(time.RFC3339Nano, capturedAt)
+
+	// Load quota values
+	rows, err := s.db.Query(
+		`SELECT quota_name, utilization, resets_at FROM anthropic_quota_values WHERE snapshot_id = ? ORDER BY quota_name`,
+		snapshot.ID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query quota values: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var q api.AnthropicQuota
+		var resetsAt sql.NullString
+		if err := rows.Scan(&q.Name, &q.Utilization, &resetsAt); err != nil {
+			return nil, fmt.Errorf("failed to scan quota value: %w", err)
+		}
+		if resetsAt.Valid && resetsAt.String != "" {
+			t, _ := time.Parse(time.RFC3339Nano, resetsAt.String)
+			q.ResetsAt = &t
+		}
+		snapshot.Quotas = append(snapshot.Quotas, q)
+	}
+
+	return &snapshot, rows.Err()
+}
+
+// QueryAnthropicRange returns Anthropic snapshots within a time range with optional limit.
+func (s *Store) QueryAnthropicRange(start, end time.Time, limit ...int) ([]*api.AnthropicSnapshot, error) {
+	query := `SELECT id, captured_at, raw_json, quota_count FROM anthropic_snapshots
+		WHERE captured_at BETWEEN ? AND ? ORDER BY captured_at ASC`
+	args := []interface{}{start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano)}
+	if len(limit) > 0 && limit[0] > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit[0])
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query anthropic range: %w", err)
+	}
+	defer rows.Close()
+
+	var snapshots []*api.AnthropicSnapshot
+	for rows.Next() {
+		var snap api.AnthropicSnapshot
+		var capturedAt string
+		if err := rows.Scan(&snap.ID, &capturedAt, &snap.RawJSON, new(int)); err != nil {
+			return nil, fmt.Errorf("failed to scan anthropic snapshot: %w", err)
+		}
+		snap.CapturedAt, _ = time.Parse(time.RFC3339Nano, capturedAt)
+		snapshots = append(snapshots, &snap)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Load quota values for each snapshot
+	for _, snap := range snapshots {
+		qRows, err := s.db.Query(
+			`SELECT quota_name, utilization, resets_at FROM anthropic_quota_values WHERE snapshot_id = ? ORDER BY quota_name`,
+			snap.ID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to query quota values for snapshot %d: %w", snap.ID, err)
+		}
+		for qRows.Next() {
+			var q api.AnthropicQuota
+			var resetsAt sql.NullString
+			if err := qRows.Scan(&q.Name, &q.Utilization, &resetsAt); err != nil {
+				qRows.Close()
+				return nil, fmt.Errorf("failed to scan quota value: %w", err)
+			}
+			if resetsAt.Valid && resetsAt.String != "" {
+				t, _ := time.Parse(time.RFC3339Nano, resetsAt.String)
+				q.ResetsAt = &t
+			}
+			snap.Quotas = append(snap.Quotas, q)
+		}
+		qRows.Close()
+	}
+
+	return snapshots, nil
+}
+
+// CreateAnthropicCycle creates a new Anthropic reset cycle.
+func (s *Store) CreateAnthropicCycle(quotaName string, cycleStart time.Time, resetsAt *time.Time) (int64, error) {
+	var resetsAtVal interface{}
+	if resetsAt != nil {
+		resetsAtVal = resetsAt.Format(time.RFC3339Nano)
+	}
+
+	result, err := s.db.Exec(
+		`INSERT INTO anthropic_reset_cycles (quota_name, cycle_start, resets_at) VALUES (?, ?, ?)`,
+		quotaName, cycleStart.Format(time.RFC3339Nano), resetsAtVal,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create anthropic cycle: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get cycle ID: %w", err)
+	}
+	return id, nil
+}
+
+// CloseAnthropicCycle closes an Anthropic reset cycle with final stats.
+func (s *Store) CloseAnthropicCycle(quotaName string, cycleEnd time.Time, peak, delta float64) error {
+	_, err := s.db.Exec(
+		`UPDATE anthropic_reset_cycles SET cycle_end = ?, peak_utilization = ?, total_delta = ?
+		WHERE quota_name = ? AND cycle_end IS NULL`,
+		cycleEnd.Format(time.RFC3339Nano), peak, delta, quotaName,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to close anthropic cycle: %w", err)
+	}
+	return nil
+}
+
+// UpdateAnthropicCycle updates the peak and delta for an active Anthropic cycle.
+func (s *Store) UpdateAnthropicCycle(quotaName string, peak, delta float64) error {
+	_, err := s.db.Exec(
+		`UPDATE anthropic_reset_cycles SET peak_utilization = ?, total_delta = ?
+		WHERE quota_name = ? AND cycle_end IS NULL`,
+		peak, delta, quotaName,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update anthropic cycle: %w", err)
+	}
+	return nil
+}
+
+// QueryActiveAnthropicCycle returns the active cycle for an Anthropic quota.
+func (s *Store) QueryActiveAnthropicCycle(quotaName string) (*AnthropicResetCycle, error) {
+	var cycle AnthropicResetCycle
+	var cycleStart string
+	var cycleEnd, resetsAt sql.NullString
+
+	err := s.db.QueryRow(
+		`SELECT id, quota_name, cycle_start, cycle_end, resets_at, peak_utilization, total_delta
+		FROM anthropic_reset_cycles WHERE quota_name = ? AND cycle_end IS NULL`,
+		quotaName,
+	).Scan(
+		&cycle.ID, &cycle.QuotaName, &cycleStart, &cycleEnd, &resetsAt,
+		&cycle.PeakUtilization, &cycle.TotalDelta,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query active anthropic cycle: %w", err)
+	}
+
+	cycle.CycleStart, _ = time.Parse(time.RFC3339Nano, cycleStart)
+	if cycleEnd.Valid {
+		t, _ := time.Parse(time.RFC3339Nano, cycleEnd.String)
+		cycle.CycleEnd = &t
+	}
+	if resetsAt.Valid {
+		t, _ := time.Parse(time.RFC3339Nano, resetsAt.String)
+		cycle.ResetsAt = &t
+	}
+
+	return &cycle, nil
+}
+
+// QueryAnthropicCycleHistory returns completed cycles for an Anthropic quota with optional limit.
+func (s *Store) QueryAnthropicCycleHistory(quotaName string, limit ...int) ([]*AnthropicResetCycle, error) {
+	query := `SELECT id, quota_name, cycle_start, cycle_end, resets_at, peak_utilization, total_delta
+		FROM anthropic_reset_cycles WHERE quota_name = ? AND cycle_end IS NOT NULL ORDER BY cycle_start DESC`
+	args := []interface{}{quotaName}
+	if len(limit) > 0 && limit[0] > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit[0])
+	}
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query anthropic cycles: %w", err)
+	}
+	defer rows.Close()
+
+	var cycles []*AnthropicResetCycle
+	for rows.Next() {
+		var cycle AnthropicResetCycle
+		var cycleStart, cycleEnd string
+		var resetsAt sql.NullString
+
+		if err := rows.Scan(&cycle.ID, &cycle.QuotaName, &cycleStart, &cycleEnd, &resetsAt,
+			&cycle.PeakUtilization, &cycle.TotalDelta); err != nil {
+			return nil, fmt.Errorf("failed to scan anthropic cycle: %w", err)
+		}
+
+		cycle.CycleStart, _ = time.Parse(time.RFC3339Nano, cycleStart)
+		t, _ := time.Parse(time.RFC3339Nano, cycleEnd)
+		cycle.CycleEnd = &t
+		if resetsAt.Valid {
+			rt, _ := time.Parse(time.RFC3339Nano, resetsAt.String)
+			cycle.ResetsAt = &rt
+		}
+
+		cycles = append(cycles, &cycle)
+	}
+
+	return cycles, rows.Err()
+}

@@ -23,6 +23,10 @@ type Config struct {
 	ZaiAPIKey  string // ZAI_API_KEY
 	ZaiBaseURL string // ZAI_BASE_URL
 
+	// Anthropic provider configuration
+	AnthropicToken     string // ANTHROPIC_TOKEN or auto-detected
+	AnthropicAutoToken bool   // true if token was auto-detected
+
 	// Shared configuration
 	PollInterval time.Duration // ONWATCH_POLL_INTERVAL (seconds → Duration)
 	Port         int           // ONWATCH_PORT
@@ -124,6 +128,9 @@ func loadFromEnvAndFlags(flags *flagValues) (*Config, error) {
 	cfg.ZaiAPIKey = os.Getenv("ZAI_API_KEY")
 	cfg.ZaiBaseURL = os.Getenv("ZAI_BASE_URL")
 
+	// Anthropic provider
+	cfg.AnthropicToken = os.Getenv("ANTHROPIC_TOKEN")
+
 	// Poll Interval (seconds) — ONWATCH_* first, SYNTRACK_* fallback
 	if flags.interval > 0 {
 		cfg.PollInterval = time.Duration(flags.interval) * time.Second
@@ -208,8 +215,8 @@ func (c *Config) applyDefaults() {
 // Validate checks the configuration for errors.
 func (c *Config) Validate() error {
 	// At least one provider must be configured
-	if c.SyntheticAPIKey == "" && c.ZaiAPIKey == "" {
-		return fmt.Errorf("at least one provider must be configured: set SYNTHETIC_API_KEY or ZAI_API_KEY (or both)")
+	if c.SyntheticAPIKey == "" && c.ZaiAPIKey == "" && c.AnthropicToken == "" {
+		return fmt.Errorf("at least one provider must be configured: set SYNTHETIC_API_KEY, ZAI_API_KEY, or ANTHROPIC_TOKEN")
 	}
 
 	// Validate Synthetic API key if provided
@@ -249,6 +256,9 @@ func (c *Config) AvailableProviders() []string {
 	if c.ZaiAPIKey != "" {
 		providers = append(providers, "zai")
 	}
+	if c.AnthropicToken != "" {
+		providers = append(providers, "anthropic")
+	}
 	return providers
 }
 
@@ -259,13 +269,30 @@ func (c *Config) HasProvider(name string) bool {
 		return c.SyntheticAPIKey != ""
 	case "zai":
 		return c.ZaiAPIKey != ""
+	case "anthropic":
+		return c.AnthropicToken != ""
 	}
 	return false
 }
 
-// HasBothProviders returns true if both Synthetic and Z.ai are configured.
+// HasMultipleProviders returns true if more than one provider is configured.
+func (c *Config) HasMultipleProviders() bool {
+	count := 0
+	if c.SyntheticAPIKey != "" {
+		count++
+	}
+	if c.ZaiAPIKey != "" {
+		count++
+	}
+	if c.AnthropicToken != "" {
+		count++
+	}
+	return count > 1
+}
+
+// HasBothProviders is an alias for HasMultipleProviders (backward compat).
 func (c *Config) HasBothProviders() bool {
-	return c.SyntheticAPIKey != "" && c.ZaiAPIKey != ""
+	return c.HasMultipleProviders()
 }
 
 // String returns a redacted string representation of the config.
@@ -284,6 +311,13 @@ func (c *Config) String() string {
 	zaiKeyDisplay := redactAPIKey(c.ZaiAPIKey, "")
 	fmt.Fprintf(&sb, "  ZaiAPIKey: %s,\n", zaiKeyDisplay)
 	fmt.Fprintf(&sb, "  ZaiBaseURL: %s,\n", c.ZaiBaseURL)
+
+	// Redact Anthropic token
+	anthropicDisplay := redactAPIKey(c.AnthropicToken, "")
+	fmt.Fprintf(&sb, "  AnthropicToken: %s,\n", anthropicDisplay)
+	if c.AnthropicAutoToken {
+		fmt.Fprintf(&sb, "  AnthropicAutoToken: true,\n")
+	}
 
 	fmt.Fprintf(&sb, "  PollInterval: %v,\n", c.PollInterval)
 	fmt.Fprintf(&sb, "  Port: %d,\n", c.Port)

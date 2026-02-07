@@ -85,10 +85,17 @@
   --transition-base: 200ms ease;
   --transition-slow: 300ms ease;
 
+  /* Accent: Anthropic (Amber/Orange) */
+  --accent-anthropic: #D97706;
+  --accent-anthropic-light: #FEF3C7;
+  --accent-anthropic-muted: rgba(217, 119, 6, 0.1);
+  --accent-anthropic-text: #92400E;
+
   /* Chart colors (same in both modes) */
   --chart-subscription: #0D9488;
   --chart-search: #F59E0B;
   --chart-toolcalls: #3B82F6;
+  --chart-anthropic: #D97706;
 }
 
 /* ═══════════════════════════════════════════
@@ -154,6 +161,12 @@
   --chart-subscription: #14B8A6;
   --chart-search: #FBBF24;
   --chart-toolcalls: #60A5FA;
+  --chart-anthropic: #FBBF24;
+
+  --accent-anthropic: #FBBF24;
+  --accent-anthropic-light: #2D2410;
+  --accent-anthropic-muted: rgba(251, 191, 36, 0.12);
+  --accent-anthropic-text: #FDE68A;
 }
 
 /* ═══════════════════════════════════════════
@@ -275,6 +288,9 @@ button, input, select { font-family: inherit; }
   color: var(--accent-teal);
   font-weight: 600;
   box-shadow: var(--shadow-xs);
+}
+.provider-tab.active[data-provider="anthropic"] {
+  color: var(--accent-anthropic);
 }
 
 .header-actions {
@@ -464,10 +480,10 @@ button, input, select { font-family: inherit; }
   gap: 20px;
   margin-bottom: 28px;
 }
-/* Both View — Two-Column Layout */
+/* Both View — Multi-Column Layout */
 .both-view {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 24px;
   margin-bottom: 28px;
 }
@@ -496,7 +512,7 @@ button, input, select { font-family: inherit; }
 /* Both Charts */
 .chart-container.both-charts {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 20px;
   height: auto;
 }
@@ -540,6 +556,7 @@ button, input, select { font-family: inherit; }
   border-color: var(--border-focus);
 }
 .quota-card:active { transform: translateY(0); }
+.quota-card.anthropic-card:hover { border-color: var(--accent-anthropic); }
 
 @keyframes cardEntrance {
   from { opacity: 0; transform: translateY(10px); }
@@ -824,6 +841,9 @@ button, input, select { font-family: inherit; }
 }
 .provider-insights-box[data-provider="zai"] .provider-insights-label {
   border-bottom-color: var(--accent-peach);
+}
+.provider-insights-box[data-provider="anthropic"] .provider-insights-label {
+  border-bottom-color: var(--accent-anthropic);
 }
 
 .insight-card {

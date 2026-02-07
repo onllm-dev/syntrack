@@ -229,9 +229,10 @@ migrate_from_syntrack() {
     mkdir -p "${INSTALL_DIR}" "${BIN_DIR}" "${INSTALL_DIR}/data"
 
     # Copy and transform .env (SYNTRACK_ -> ONWATCH_)
+    # Also remove DB_PATH so the default (~/.onwatch/data/onwatch.db) takes effect
     if [[ -f "${old_dir}/.env" ]]; then
-        sed 's/SYNTRACK_/ONWATCH_/g' "${old_dir}/.env" > "${INSTALL_DIR}/.env"
-        ok "Migrated .env (SYNTRACK_* -> ONWATCH_*)"
+        sed -e 's/SYNTRACK_/ONWATCH_/g' -e '/^ONWATCH_DB_PATH=/d' -e '/^SYNTRACK_DB_PATH=/d' "${old_dir}/.env" > "${INSTALL_DIR}/.env"
+        ok "Migrated .env (SYNTRACK_* -> ONWATCH_*, removed DB_PATH override)"
     fi
 
     # Move DB files (rename syntrack.db -> onwatch.db)
@@ -386,6 +387,119 @@ collect_zai_config() {
     printf '%s\n%s' "$_zai_key" "$_zai_base_url"
 }
 
+# Shared between fresh setup and add-provider flow
+collect_anthropic_config() {
+    local _anthropic_token=""
+
+    # Try auto-detection first
+    printf "\n  ${BOLD}Anthropic (Claude Code) Token Setup${NC}\n" >&2
+    printf "  ${DIM}onWatch can auto-detect your Claude Code credentials.${NC}\n\n" >&2
+
+    local auto_token=""
+    auto_token=$(detect_anthropic_token 2>/dev/null) || true
+
+    if [[ -n "$auto_token" ]]; then
+        printf "  ${GREEN}✓${NC} Auto-detected Claude Code token\n" >&2
+        local masked="${auto_token:0:8}...${auto_token: -4}"
+        printf "  ${DIM}Token: %s${NC}\n" "$masked" >&2
+        local use_auto
+        use_auto=$(prompt_with_default "Use auto-detected token? (Y/n)" "Y")
+        if [[ "$use_auto" =~ ^[Yy] ]] || [[ -z "$use_auto" ]]; then
+            printf '%s' "$auto_token"
+            return
+        fi
+    else
+        printf "  ${YELLOW}!${NC} Could not auto-detect Claude Code credentials\n" >&2
+    fi
+
+    # Manual entry
+    local entry_choice
+    entry_choice=$(prompt_choice "How would you like to provide the token?" \
+        "Enter token directly" \
+        "Show help for retrieving token")
+
+    if [[ "$entry_choice" == "2" ]]; then
+        printf "\n  ${BOLD}How to retrieve your Anthropic token:${NC}\n\n" >&2
+        case "$(uname -s)" in
+            Darwin*)
+                printf "  ${CYAN}macOS Keychain:${NC}\n" >&2
+                printf "    security find-generic-password -s \"Claude Code-credentials\" -a \"\$(whoami)\" -w | python3 -c \"import sys,json; print(json.loads(sys.stdin.read())['claudeAiOauth']['accessToken'])\"\n\n" >&2
+                ;;
+            Linux*)
+                printf "  ${CYAN}Linux Keyring (GNOME/KDE):${NC}\n" >&2
+                printf "    secret-tool lookup service \"Claude Code-credentials\" account \"\$(whoami)\" | python3 -c \"import sys,json; print(json.loads(sys.stdin.read())['claudeAiOauth']['accessToken'])\"\n\n" >&2
+                printf "  ${CYAN}Linux File Fallback:${NC}\n" >&2
+                printf "    python3 -c \"import json; print(json.load(open('\$HOME/.claude/.credentials.json'))['claudeAiOauth']['accessToken'])\"\n\n" >&2
+                ;;
+            *)
+                printf "  ${CYAN}File-based (Windows/Other):${NC}\n" >&2
+                printf "    Check: ~/.claude/.credentials.json\n" >&2
+                printf "    Extract: claudeAiOauth.accessToken from the JSON\n\n" >&2
+                ;;
+        esac
+        printf "  ${DIM}Paste the token below after running the command above.${NC}\n" >&2
+    fi
+
+    _anthropic_token=$(prompt_secret "Anthropic token" validate_nonempty)
+    printf '%s' "$_anthropic_token"
+}
+
+# Auto-detect Anthropic token from Claude Code credentials
+detect_anthropic_token() {
+    local creds_json=""
+
+    case "$(uname -s)" in
+        Darwin*)
+            creds_json=$(security find-generic-password -s "Claude Code-credentials" -a "$(whoami)" -w 2>/dev/null) || true
+            ;;
+        Linux*)
+            if command -v secret-tool &>/dev/null; then
+                creds_json=$(secret-tool lookup service "Claude Code-credentials" account "$(whoami)" 2>/dev/null) || true
+            fi
+            if [[ -z "$creds_json" ]] && [[ -f "$HOME/.claude/.credentials.json" ]]; then
+                creds_json=$(cat "$HOME/.claude/.credentials.json" 2>/dev/null) || true
+            fi
+            ;;
+        *)
+            if [[ -f "$HOME/.claude/.credentials.json" ]]; then
+                creds_json=$(cat "$HOME/.claude/.credentials.json" 2>/dev/null) || true
+            fi
+            ;;
+    esac
+
+    if [[ -z "$creds_json" ]]; then
+        return 1
+    fi
+
+    # Extract accessToken using python3
+    local token=""
+    token=$(printf '%s' "$creds_json" | python3 -c "import sys,json; print(json.loads(sys.stdin.read())['claudeAiOauth']['accessToken'])" 2>/dev/null) || true
+
+    if [[ -z "$token" ]]; then
+        return 1
+    fi
+
+    printf '%s' "$token"
+}
+
+# Check if Anthropic key is configured
+has_anthropic_key() {
+    local val
+    val=$(env_get ANTHROPIC_TOKEN)
+    [[ -n "$val" && "$val" != "your_token_here" ]]
+}
+
+# Append Anthropic config to existing .env
+append_anthropic_to_env() {
+    local key="$1"
+    local env_file="${INSTALL_DIR}/.env"
+    {
+        echo ""
+        echo "# Anthropic token (Claude Code — auto-detected or manual)"
+        echo "ANTHROPIC_TOKEN=${key}"
+    } >> "$env_file"
+}
+
 # ─── Interactive Setup ──────────────────────────────────────────────
 # Fully interactive .env configuration for fresh installs.
 # On upgrade: checks for missing providers and offers to add them.
@@ -402,17 +516,18 @@ interactive_setup() {
         SETUP_USERNAME="${SETUP_USERNAME:-admin}"
         SETUP_PASSWORD=""  # Don't show existing password
 
-        local has_syn=false has_zai=false
+        local has_syn=false has_zai=false has_anth=false
         has_synthetic_key && has_syn=true
         has_zai_key && has_zai=true
+        has_anthropic_key && has_anth=true
 
-        if $has_syn && $has_zai; then
-            # Both providers configured — nothing to do
-            info "Existing .env found — both providers configured"
+        if $has_syn && $has_zai && $has_anth; then
+            # All providers configured — nothing to do
+            info "Existing .env found — all providers configured"
             return
         fi
 
-        if ! $has_syn && ! $has_zai; then
+        if ! $has_syn && ! $has_zai && ! $has_anth; then
             # .env exists but no keys at all — run full setup
             warn "Existing .env found but no API keys configured"
             info "Running interactive setup..."
@@ -420,15 +535,32 @@ interactive_setup() {
             rm -f "$env_file"
             # Fall through to fresh setup below
         else
-            # One provider configured — offer to add the missing one
+            # Some providers configured — offer to add missing ones
             if ! { true <&3; } 2>/dev/null; then
                 exec 3</dev/tty || fail "Cannot read from terminal. Run the script directly instead of piping."
                 _opened_fd3=true
             fi
 
-            if $has_syn && ! $has_zai; then
-                info "Existing .env found — Synthetic configured"
-                printf "\n"
+            local configured=""
+            $has_syn && configured="${configured}Synthetic "
+            $has_zai && configured="${configured}Z.ai "
+            $has_anth && configured="${configured}Anthropic "
+            info "Existing .env found — configured: ${configured}"
+            printf "\n"
+
+            if ! $has_syn; then
+                local add_syn
+                add_syn=$(prompt_with_default "Add Synthetic provider? (y/N)" "N")
+                if [[ "$add_syn" =~ ^[Yy] ]]; then
+                    printf "\n  ${DIM}Get your key: https://synthetic.new/settings/api${NC}\n"
+                    local syn_key
+                    syn_key=$(prompt_secret "Synthetic API key (syn_...)" validate_synthetic_key)
+                    append_synthetic_to_env "$syn_key"
+                    ok "Added Synthetic provider to .env"
+                fi
+            fi
+
+            if ! $has_zai; then
                 local add_zai
                 add_zai=$(prompt_with_default "Add Z.ai provider? (y/N)" "N")
                 if [[ "$add_zai" =~ ^[Yy] ]]; then
@@ -439,17 +571,29 @@ interactive_setup() {
                     append_zai_to_env "$zai_key" "$zai_base_url"
                     ok "Added Z.ai provider to .env"
                 fi
-            elif $has_zai && ! $has_syn; then
-                info "Existing .env found — Z.ai configured"
-                printf "\n"
-                local add_syn
-                add_syn=$(prompt_with_default "Add Synthetic provider? (y/N)" "N")
-                if [[ "$add_syn" =~ ^[Yy] ]]; then
-                    printf "\n  ${DIM}Get your key: https://synthetic.new/settings/api${NC}\n"
-                    local syn_key
-                    syn_key=$(prompt_secret "Synthetic API key (syn_...)" validate_synthetic_key)
-                    append_synthetic_to_env "$syn_key"
-                    ok "Added Synthetic provider to .env"
+            fi
+
+            if ! $has_anth; then
+                # Try auto-detection silently first
+                local auto_token=""
+                auto_token=$(detect_anthropic_token 2>/dev/null) || true
+                if [[ -n "$auto_token" ]]; then
+                    printf "  ${GREEN}✓${NC} Claude Code credentials detected on this system\n"
+                    local add_anth
+                    add_anth=$(prompt_with_default "Enable Anthropic tracking? (Y/n)" "Y")
+                    if [[ "$add_anth" =~ ^[Yy] ]] || [[ -z "$add_anth" ]]; then
+                        append_anthropic_to_env "$auto_token"
+                        ok "Added Anthropic provider to .env (auto-detected)"
+                    fi
+                else
+                    local add_anth
+                    add_anth=$(prompt_with_default "Add Anthropic (Claude Code) provider? (y/N)" "N")
+                    if [[ "$add_anth" =~ ^[Yy] ]]; then
+                        local anth_token
+                        anth_token=$(collect_anthropic_config)
+                        append_anthropic_to_env "$anth_token"
+                        ok "Added Anthropic provider to .env"
+                    fi
                 fi
             fi
 
@@ -475,22 +619,84 @@ interactive_setup() {
     provider_choice=$(prompt_choice "Which providers do you want to track?" \
         "Synthetic only" \
         "Z.ai only" \
-        "Both")
+        "Anthropic (Claude Code) only" \
+        "Multiple (choose one at a time)" \
+        "All available")
 
-    local synthetic_key="" zai_key="" zai_base_url=""
+    local synthetic_key="" zai_key="" zai_base_url="" anthropic_token=""
 
-    # ── Synthetic API Key ──
-    if [[ "$provider_choice" == "1" || "$provider_choice" == "3" ]]; then
-        printf "\n  ${DIM}Get your key: https://synthetic.new/settings/api${NC}\n"
-        synthetic_key=$(prompt_secret "Synthetic API key (syn_...)" validate_synthetic_key)
-    fi
+    if [[ "$provider_choice" == "4" ]]; then
+        # ── Multiple: ask for each provider individually ──
+        local add_it
+        add_it=$(prompt_with_default "Add Synthetic provider? (y/N)" "N")
+        if [[ "$add_it" =~ ^[Yy] ]]; then
+            printf "\n  ${DIM}Get your key: https://synthetic.new/settings/api${NC}\n"
+            synthetic_key=$(prompt_secret "Synthetic API key (syn_...)" validate_synthetic_key)
+        fi
 
-    # ── Z.ai API Key ──
-    if [[ "$provider_choice" == "2" || "$provider_choice" == "3" ]]; then
-        local zai_result
-        zai_result=$(collect_zai_config)
-        zai_key=$(echo "$zai_result" | head -1)
-        zai_base_url=$(echo "$zai_result" | tail -1)
+        add_it=$(prompt_with_default "Add Z.ai provider? (y/N)" "N")
+        if [[ "$add_it" =~ ^[Yy] ]]; then
+            local zai_result
+            zai_result=$(collect_zai_config)
+            zai_key=$(echo "$zai_result" | head -1)
+            zai_base_url=$(echo "$zai_result" | tail -1)
+        fi
+
+        add_it=$(prompt_with_default "Add Anthropic (Claude Code) provider? (y/N)" "N")
+        if [[ "$add_it" =~ ^[Yy] ]]; then
+            anthropic_token=$(collect_anthropic_config)
+        fi
+
+        # Validate at least one provider selected
+        if [[ -z "$synthetic_key" && -z "$zai_key" && -z "$anthropic_token" ]]; then
+            printf "  ${RED}No providers selected. Please select at least one.${NC}\n"
+            # Re-run provider selection by recursion-safe retry
+            printf "\n"
+            add_it=$(prompt_with_default "Add Synthetic provider? (y/N)" "N")
+            if [[ "$add_it" =~ ^[Yy] ]]; then
+                printf "\n  ${DIM}Get your key: https://synthetic.new/settings/api${NC}\n"
+                synthetic_key=$(prompt_secret "Synthetic API key (syn_...)" validate_synthetic_key)
+            fi
+            if [[ -z "$synthetic_key" ]]; then
+                add_it=$(prompt_with_default "Add Z.ai provider? (y/N)" "N")
+                if [[ "$add_it" =~ ^[Yy] ]]; then
+                    local zai_result
+                    zai_result=$(collect_zai_config)
+                    zai_key=$(echo "$zai_result" | head -1)
+                    zai_base_url=$(echo "$zai_result" | tail -1)
+                fi
+            fi
+            if [[ -z "$synthetic_key" && -z "$zai_key" ]]; then
+                add_it=$(prompt_with_default "Add Anthropic (Claude Code) provider? (y/N)" "N")
+                if [[ "$add_it" =~ ^[Yy] ]]; then
+                    anthropic_token=$(collect_anthropic_config)
+                fi
+            fi
+            if [[ -z "$synthetic_key" && -z "$zai_key" && -z "$anthropic_token" ]]; then
+                fail "At least one provider is required"
+            fi
+        fi
+    else
+        # ── Single provider or All ──
+
+        # ── Synthetic API Key ──
+        if [[ "$provider_choice" == "1" || "$provider_choice" == "5" ]]; then
+            printf "\n  ${DIM}Get your key: https://synthetic.new/settings/api${NC}\n"
+            synthetic_key=$(prompt_secret "Synthetic API key (syn_...)" validate_synthetic_key)
+        fi
+
+        # ── Z.ai API Key ──
+        if [[ "$provider_choice" == "2" || "$provider_choice" == "5" ]]; then
+            local zai_result
+            zai_result=$(collect_zai_config)
+            zai_key=$(echo "$zai_result" | head -1)
+            zai_base_url=$(echo "$zai_result" | tail -1)
+        fi
+
+        # ── Anthropic Token ──
+        if [[ "$provider_choice" == "3" || "$provider_choice" == "5" ]]; then
+            anthropic_token=$(collect_anthropic_config)
+        fi
     fi
 
     # ── Dashboard Credentials ──
@@ -558,6 +764,12 @@ interactive_setup() {
             echo ""
         fi
 
+        if [[ -n "$anthropic_token" ]]; then
+            echo "# Anthropic token (Claude Code)"
+            echo "ANTHROPIC_TOKEN=${anthropic_token}"
+            echo ""
+        fi
+
         echo "# Dashboard credentials"
         echo "ONWATCH_ADMIN_USER=${SETUP_USERNAME}"
         echo "ONWATCH_ADMIN_PASS=${SETUP_PASSWORD}"
@@ -576,7 +788,16 @@ interactive_setup() {
     case "$provider_choice" in
         1) provider_label="Synthetic" ;;
         2) provider_label="Z.ai" ;;
-        3) provider_label="Synthetic + Z.ai" ;;
+        3) provider_label="Anthropic" ;;
+        4)
+            # Multiple — build label from selected providers
+            local parts=()
+            [[ -n "$synthetic_key" ]] && parts+=("Synthetic")
+            [[ -n "$zai_key" ]] && parts+=("Z.ai")
+            [[ -n "$anthropic_token" ]] && parts+=("Anthropic")
+            provider_label=$(IFS=", "; echo "${parts[*]}")
+            ;;
+        5) provider_label="All providers" ;;
     esac
 
     local masked_pass

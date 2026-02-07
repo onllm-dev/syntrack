@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1847,5 +1848,437 @@ func TestHandler_History_EmptyDB_ReturnsEmptyArrays_Both(t *testing.T) {
 		if len(arr) != 0 {
 			t.Errorf("expected %s to be empty array, got %d items", key, len(arr))
 		}
+	}
+}
+
+// ── Anthropic Provider Tests ──
+
+func createTestConfigWithAnthropic() *config.Config {
+	return &config.Config{
+		AnthropicToken: "test_anthropic_token",
+		PollInterval:   60 * time.Second,
+		Port:           9211,
+		AdminUser:      "admin",
+		AdminPass:      "test",
+		DBPath:         "./test.db",
+	}
+}
+
+func createTestConfigWithAll() *config.Config {
+	return &config.Config{
+		SyntheticAPIKey: "syn_test_key",
+		ZaiAPIKey:       "zai_test_key",
+		ZaiBaseURL:      "https://api.z.ai/api",
+		AnthropicToken:  "test_anthropic_token",
+		PollInterval:    60 * time.Second,
+		Port:            9211,
+		AdminUser:       "admin",
+		AdminPass:       "test",
+		DBPath:          "./test.db",
+	}
+}
+
+func TestHandler_SetAnthropicTracker(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	tr := tracker.NewAnthropicTracker(s, nil)
+	h.SetAnthropicTracker(tr)
+
+	if h.anthropicTracker == nil {
+		t.Error("expected anthropicTracker to be set")
+	}
+}
+
+func TestHandler_Current_WithAnthropicProvider(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	resetsAt := time.Now().Add(5 * time.Hour)
+	snapshot := &api.AnthropicSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Quotas: []api.AnthropicQuota{
+			{Name: "five_hour", Utilization: 45.0, ResetsAt: &resetsAt},
+			{Name: "seven_day", Utilization: 20.0, ResetsAt: &resetsAt},
+		},
+		RawJSON: `{"five_hour":{"utilization":0.45},"seven_day":{"utilization":0.20}}`,
+	}
+	s.InsertAnthropicSnapshot(snapshot)
+
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/current?provider=anthropic", nil)
+	rr := httptest.NewRecorder()
+	h.Current(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if _, ok := response["capturedAt"]; !ok {
+		t.Error("expected capturedAt field")
+	}
+
+	quotas, ok := response["quotas"].([]interface{})
+	if !ok {
+		t.Fatal("expected quotas array")
+	}
+
+	if len(quotas) != 2 {
+		t.Errorf("expected 2 quotas, got %d", len(quotas))
+	}
+
+	// Verify first quota has expected fields
+	q0, ok := quotas[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected first quota to be a map")
+	}
+	if q0["name"] != "five_hour" {
+		t.Errorf("expected first quota name 'five_hour', got %v", q0["name"])
+	}
+	if q0["displayName"] != "5-Hour" {
+		t.Errorf("expected displayName '5-Hour', got %v", q0["displayName"])
+	}
+	if _, ok := q0["status"]; !ok {
+		t.Error("expected status field")
+	}
+}
+
+func TestHandler_Current_AnthropicEmptyDB(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/current?provider=anthropic", nil)
+	rr := httptest.NewRecorder()
+	h.Current(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200 for empty DB, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if _, ok := response["capturedAt"]; !ok {
+		t.Error("expected capturedAt field even with empty DB")
+	}
+
+	quotas, ok := response["quotas"].([]interface{})
+	if !ok {
+		t.Fatal("expected quotas array")
+	}
+	if len(quotas) != 0 {
+		t.Errorf("expected 0 quotas with empty DB, got %d", len(quotas))
+	}
+}
+
+func TestHandler_History_WithAnthropicProvider(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	resetsAt := time.Now().Add(5 * time.Hour)
+	snapshot := &api.AnthropicSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Quotas: []api.AnthropicQuota{
+			{Name: "five_hour", Utilization: 45.0, ResetsAt: &resetsAt},
+		},
+		RawJSON: `{"five_hour":{"utilization":0.45}}`,
+	}
+	s.InsertAnthropicSnapshot(snapshot)
+
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/history?provider=anthropic&range=24h", nil)
+	rr := httptest.NewRecorder()
+	h.History(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response []map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if len(response) != 1 {
+		t.Errorf("expected 1 history entry, got %d", len(response))
+	}
+
+	if _, ok := response[0]["capturedAt"]; !ok {
+		t.Error("expected capturedAt field in history entry")
+	}
+	if _, ok := response[0]["five_hour"]; !ok {
+		t.Error("expected five_hour utilization in history entry")
+	}
+}
+
+func TestHandler_Cycles_WithAnthropicProvider(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	now := time.Now().UTC()
+	resetsAt := now.Add(5 * time.Hour)
+	s.CreateAnthropicCycle("five_hour", now, &resetsAt)
+
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cycles?provider=anthropic&type=five_hour", nil)
+	rr := httptest.NewRecorder()
+	h.Cycles(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response []map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if len(response) == 0 {
+		t.Fatal("expected at least one cycle")
+	}
+
+	if response[0]["quotaName"] != "five_hour" {
+		t.Errorf("expected quotaName to be five_hour, got %v", response[0]["quotaName"])
+	}
+}
+
+func TestHandler_Summary_WithAnthropicProvider(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	resetsAt := time.Now().Add(5 * time.Hour)
+	snapshot := &api.AnthropicSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Quotas: []api.AnthropicQuota{
+			{Name: "five_hour", Utilization: 45.0, ResetsAt: &resetsAt},
+		},
+		RawJSON: `{"five_hour":{"utilization":0.45}}`,
+	}
+	s.InsertAnthropicSnapshot(snapshot)
+
+	tr := tracker.NewAnthropicTracker(s, nil)
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+	h.SetAnthropicTracker(tr)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/summary?provider=anthropic", nil)
+	rr := httptest.NewRecorder()
+	h.Summary(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	// Summary should be keyed by quota name
+	if _, ok := response["five_hour"]; !ok {
+		t.Error("expected five_hour summary")
+	}
+}
+
+func TestHandler_Insights_WithAnthropicProvider(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	resetsAt := time.Now().Add(5 * time.Hour)
+	snapshot := &api.AnthropicSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Quotas: []api.AnthropicQuota{
+			{Name: "five_hour", Utilization: 45.0, ResetsAt: &resetsAt},
+		},
+		RawJSON: `{"five_hour":{"utilization":0.45}}`,
+	}
+	s.InsertAnthropicSnapshot(snapshot)
+
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/insights?provider=anthropic", nil)
+	rr := httptest.NewRecorder()
+	h.Insights(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if _, ok := response["stats"]; !ok {
+		t.Error("expected stats field")
+	}
+	if _, ok := response["insights"]; !ok {
+		t.Error("expected insights field")
+	}
+}
+
+func TestHandler_Providers_WithAnthropicOnly(t *testing.T) {
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/providers", nil)
+	rr := httptest.NewRecorder()
+	h.Providers(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	providers, ok := response["providers"].([]interface{})
+	if !ok {
+		t.Fatal("expected providers array")
+	}
+	if len(providers) != 1 {
+		t.Errorf("expected 1 provider, got %d", len(providers))
+	}
+	if providers[0] != "anthropic" {
+		t.Errorf("expected anthropic provider, got %v", providers[0])
+	}
+}
+
+func TestHandler_Providers_WithAllProviders_IncludesBoth(t *testing.T) {
+	cfg := createTestConfigWithAll()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/providers", nil)
+	rr := httptest.NewRecorder()
+	h.Providers(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	providers, ok := response["providers"].([]interface{})
+	if !ok {
+		t.Fatal("expected providers array")
+	}
+
+	// Should have synthetic, zai, anthropic, both = 4
+	if len(providers) != 4 {
+		t.Errorf("expected 4 providers (synthetic, zai, anthropic, both), got %d: %v", len(providers), providers)
+	}
+}
+
+func TestHandler_Current_BothIncludesAnthropic(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	resetsAt := time.Now().Add(5 * time.Hour)
+	snapshot := &api.AnthropicSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Quotas: []api.AnthropicQuota{
+			{Name: "five_hour", Utilization: 45.0, ResetsAt: &resetsAt},
+		},
+		RawJSON: `{"five_hour":{"utilization":0.45}}`,
+	}
+	s.InsertAnthropicSnapshot(snapshot)
+
+	cfg := createTestConfigWithAll()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/current?provider=both", nil)
+	rr := httptest.NewRecorder()
+	h.Current(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if _, ok := response["anthropic"]; !ok {
+		t.Error("expected anthropic field in 'both' response")
+	}
+}
+
+func TestHandler_AnthropicUtilStatus(t *testing.T) {
+	tests := []struct {
+		util   float64
+		status string
+	}{
+		{0, "healthy"},
+		{49.9, "healthy"},
+		{50, "warning"},
+		{79.9, "warning"},
+		{80, "danger"},
+		{94.9, "danger"},
+		{95, "critical"},
+		{100, "critical"},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("util_%.0f", tt.util), func(t *testing.T) {
+			got := anthropicUtilStatus(tt.util)
+			if got != tt.status {
+				t.Errorf("anthropicUtilStatus(%.1f) = %q, want %q", tt.util, got, tt.status)
+			}
+		})
+	}
+}
+
+func TestHandler_Insights_AnthropicEmptyDB(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/insights?provider=anthropic", nil)
+	rr := httptest.NewRecorder()
+	h.Insights(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response insightsResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	// Should have a "Getting Started" insight for empty DB
+	if len(response.Insights) == 0 {
+		t.Fatal("expected at least one insight")
+	}
+	if response.Insights[0].Title != "Getting Started" {
+		t.Errorf("expected 'Getting Started' insight, got %q", response.Insights[0].Title)
 	}
 }

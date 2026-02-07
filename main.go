@@ -239,6 +239,50 @@ func migrateDBLocation(newPath string, logger *slog.Logger) {
 	}
 }
 
+// fixExplicitDBPath detects when a user's .env has a misconfigured DB_PATH
+// (e.g., ./onwatch.db or ./syntrack.db) while the canonical data/ path holds
+// the actual historical data. It redirects to the canonical path so the
+// dashboard shows existing data instead of appearing empty.
+func fixExplicitDBPath(cfg *config.Config, logger *slog.Logger) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return
+	}
+
+	canonicalPath := filepath.Join(home, ".onwatch", "data", "onwatch.db")
+
+	// Already using the canonical path — nothing to fix
+	absExplicit, _ := filepath.Abs(cfg.DBPath)
+	absCan, _ := filepath.Abs(canonicalPath)
+	if absExplicit == absCan {
+		return
+	}
+
+	// Check if canonical path exists and has data
+	canInfo, err := os.Stat(canonicalPath)
+	if err != nil || canInfo.Size() == 0 {
+		return // canonical doesn't exist or is empty
+	}
+
+	// Check if the explicit path exists
+	expInfo, err := os.Stat(cfg.DBPath)
+	if err != nil {
+		// Explicit path doesn't even exist — use canonical
+		logger.Info("Explicit DB path not found, redirecting to canonical",
+			"explicit", cfg.DBPath, "canonical", canonicalPath)
+		cfg.DBPath = canonicalPath
+		return
+	}
+
+	// Both exist — use whichever is larger (has more data)
+	if canInfo.Size() > expInfo.Size() {
+		logger.Warn("Explicit DB path has less data than canonical path, redirecting",
+			"explicit", cfg.DBPath, "explicitSize", expInfo.Size(),
+			"canonical", canonicalPath, "canonicalSize", canInfo.Size())
+		cfg.DBPath = canonicalPath
+	}
+}
+
 func writePIDFile(port int) error {
 	if err := ensurePIDDir(); err != nil {
 		return fmt.Errorf("failed to create PID directory: %w", err)
@@ -400,6 +444,11 @@ func run() error {
 	}
 	if !cfg.DBPathExplicit {
 		migrateDBLocation(cfg.DBPath, logger)
+	} else {
+		// Fix for misconfigured DB_PATH: if the user's .env has a relative path
+		// like ./onwatch.db or ./syntrack.db but the canonical data/ path has
+		// existing data, redirect to the canonical path to avoid empty dashboard.
+		fixExplicitDBPath(cfg, logger)
 	}
 
 	// Open database
@@ -433,6 +482,15 @@ func run() error {
 		logger.Info("Closed orphaned sessions", "count", closed)
 	}
 
+	// Auto-detect Anthropic token if not explicitly configured
+	if cfg.AnthropicToken == "" {
+		if token := api.DetectAnthropicToken(logger); token != "" {
+			cfg.AnthropicToken = token
+			cfg.AnthropicAutoToken = true
+			logger.Info("Auto-detected Anthropic token from Claude Code credentials")
+		}
+	}
+
 	// Create API clients based on configured providers
 	var syntheticClient *api.Client
 	var zaiClient *api.ZaiClient
@@ -445,6 +503,12 @@ func run() error {
 	if cfg.HasProvider("zai") {
 		zaiClient = api.NewZaiClient(cfg.ZaiAPIKey, logger)
 		logger.Info("Z.ai API client configured", "base_url", cfg.ZaiBaseURL)
+	}
+
+	var anthropicClient *api.AnthropicClient
+	if cfg.HasProvider("anthropic") {
+		anthropicClient = api.NewAnthropicClient(cfg.AnthropicToken, logger)
+		logger.Info("Anthropic API client configured")
 	}
 
 	// Create components
@@ -467,8 +531,22 @@ func run() error {
 		zaiAg = agent.NewZaiAgent(zaiClient, db, zaiTr, cfg.PollInterval, logger)
 	}
 
+	// Create Anthropic tracker
+	var anthropicTr *tracker.AnthropicTracker
+	if cfg.HasProvider("anthropic") {
+		anthropicTr = tracker.NewAnthropicTracker(db, logger)
+	}
+
+	var anthropicAg *agent.AnthropicAgent
+	if anthropicClient != nil {
+		anthropicAg = agent.NewAnthropicAgent(anthropicClient, db, anthropicTr, cfg.PollInterval, logger)
+	}
+
 	handler := web.NewHandler(db, tr, logger, nil, cfg, zaiTr)
 	handler.SetVersion(version)
+	if anthropicTr != nil {
+		handler.SetAnthropicTracker(anthropicTr)
+	}
 	server := web.NewServer(cfg.Port, handler, logger, cfg.AdminUser, cfg.AdminPassHash)
 
 	// Setup signal handling
@@ -479,7 +557,7 @@ func run() error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// Start agents in goroutines
-	agentErr := make(chan error, 2)
+	agentErr := make(chan error, 3)
 	if ag != nil {
 		go func() {
 			logger.Info("Starting Synthetic agent", "interval", cfg.PollInterval)
@@ -498,7 +576,16 @@ func run() error {
 		}()
 	}
 
-	if ag == nil && zaiAg == nil {
+	if anthropicAg != nil {
+		go func() {
+			logger.Info("Starting Anthropic agent", "interval", cfg.PollInterval)
+			if err := anthropicAg.Run(ctx); err != nil {
+				agentErr <- fmt.Errorf("anthropic agent error: %w", err)
+			}
+		}()
+	}
+
+	if ag == nil && zaiAg == nil && anthropicAg == nil {
 		logger.Info("No agents configured")
 	}
 
@@ -784,6 +871,13 @@ func printBanner(cfg *config.Config, version string) {
 	if cfg.HasProvider("zai") {
 		fmt.Println("║  API:       z.ai/api                ║")
 	}
+	if cfg.HasProvider("anthropic") {
+		if cfg.AnthropicAutoToken {
+			fmt.Println("║  API:       anthropic (auto-detect)  ║")
+		} else {
+			fmt.Println("║  API:       anthropic.com/usage      ║")
+		}
+	}
 
 	fmt.Printf("║  Polling:   every %s              ║\n", cfg.PollInterval)
 	fmt.Printf("║  Dashboard: http://localhost:%d    ║\n", cfg.Port)
@@ -801,6 +895,13 @@ func printBanner(cfg *config.Config, version string) {
 	}
 	if cfg.HasProvider("zai") {
 		fmt.Printf("Z.ai API Key:      %s\n", redactAPIKey(cfg.ZaiAPIKey))
+	}
+	if cfg.HasProvider("anthropic") {
+		label := "Anthropic Token:   "
+		if cfg.AnthropicAutoToken {
+			label = "Anthropic (auto):  "
+		}
+		fmt.Printf("%s%s\n", label, redactAPIKey(cfg.AnthropicToken))
 	}
 	fmt.Println()
 }
@@ -827,6 +928,7 @@ func printHelp() {
 	fmt.Println("  SYNTHETIC_API_KEY       Synthetic API key (configure at least one provider)")
 	fmt.Println("  ZAI_API_KEY            Z.ai API key")
 	fmt.Println("  ZAI_BASE_URL           Z.ai base URL (default: https://api.z.ai/api)")
+	fmt.Println("  ANTHROPIC_TOKEN         Anthropic token (auto-detected if not set)")
 	fmt.Println("  ONWATCH_POLL_INTERVAL   Polling interval in seconds")
 	fmt.Println("  ONWATCH_PORT            Dashboard HTTP port")
 	fmt.Println("  ONWATCH_ADMIN_USER      Dashboard admin username")
@@ -852,7 +954,7 @@ func printHelp() {
 	fmt.Println("  Use --db and --port to further isolate test from production.")
 	fmt.Println()
 	fmt.Println("Configure providers in .env file or environment variables.")
-	fmt.Println("At least one provider (Synthetic or Z.ai) must be configured.")
+	fmt.Println("At least one provider (Synthetic, Z.ai, or Anthropic) must be configured.")
 }
 
 func redactAPIKey(key string) string {

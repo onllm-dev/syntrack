@@ -400,6 +400,149 @@ func TestConfig_LogWriter(t *testing.T) {
 	}
 }
 
+func TestConfig_LoadsAnthropicFromEnv(t *testing.T) {
+	os.Setenv("ANTHROPIC_TOKEN", "sk-ant-test-token-123")
+	defer os.Clearenv()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	if cfg.AnthropicToken != "sk-ant-test-token-123" {
+		t.Errorf("AnthropicToken = %q, want %q", cfg.AnthropicToken, "sk-ant-test-token-123")
+	}
+}
+
+func TestConfig_OnlyAnthropicProvider(t *testing.T) {
+	os.Setenv("ANTHROPIC_TOKEN", "sk-ant-test-token")
+	defer os.Clearenv()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	providers := cfg.AvailableProviders()
+	if len(providers) != 1 || providers[0] != "anthropic" {
+		t.Errorf("AvailableProviders() = %v, want [anthropic]", providers)
+	}
+
+	if !cfg.HasProvider("anthropic") {
+		t.Error("HasProvider('anthropic') should be true")
+	}
+
+	if cfg.HasProvider("synthetic") {
+		t.Error("HasProvider('synthetic') should be false")
+	}
+
+	if cfg.HasProvider("zai") {
+		t.Error("HasProvider('zai') should be false")
+	}
+}
+
+func TestConfig_AnthropicWithOtherProviders(t *testing.T) {
+	os.Setenv("SYNTHETIC_API_KEY", "syn_test_key")
+	os.Setenv("ANTHROPIC_TOKEN", "sk-ant-test-token")
+	defer os.Clearenv()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	providers := cfg.AvailableProviders()
+	if len(providers) != 2 {
+		t.Errorf("AvailableProviders() = %v, want 2 providers", providers)
+	}
+
+	if !cfg.HasProvider("synthetic") {
+		t.Error("HasProvider('synthetic') should be true")
+	}
+	if !cfg.HasProvider("anthropic") {
+		t.Error("HasProvider('anthropic') should be true")
+	}
+}
+
+func TestConfig_HasMultipleProviders(t *testing.T) {
+	tests := []struct {
+		name     string
+		cfg      Config
+		wantBoth bool
+	}{
+		{
+			name:     "no providers",
+			cfg:      Config{},
+			wantBoth: false,
+		},
+		{
+			name:     "synthetic only",
+			cfg:      Config{SyntheticAPIKey: "syn_test"},
+			wantBoth: false,
+		},
+		{
+			name:     "anthropic only",
+			cfg:      Config{AnthropicToken: "sk-ant-test"},
+			wantBoth: false,
+		},
+		{
+			name:     "synthetic and zai",
+			cfg:      Config{SyntheticAPIKey: "syn_test", ZaiAPIKey: "zai_test"},
+			wantBoth: true,
+		},
+		{
+			name:     "synthetic and anthropic",
+			cfg:      Config{SyntheticAPIKey: "syn_test", AnthropicToken: "sk-ant-test"},
+			wantBoth: true,
+		},
+		{
+			name:     "all three",
+			cfg:      Config{SyntheticAPIKey: "syn_test", ZaiAPIKey: "zai_test", AnthropicToken: "sk-ant-test"},
+			wantBoth: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.cfg.HasMultipleProviders()
+			if got != tt.wantBoth {
+				t.Errorf("HasMultipleProviders() = %v, want %v", got, tt.wantBoth)
+			}
+			// HasBothProviders should be backward-compatible alias
+			gotAlias := tt.cfg.HasBothProviders()
+			if gotAlias != tt.wantBoth {
+				t.Errorf("HasBothProviders() = %v, want %v", gotAlias, tt.wantBoth)
+			}
+		})
+	}
+}
+
+func TestConfig_RedactsAnthropicToken(t *testing.T) {
+	cfg := &Config{
+		AnthropicToken: "sk-ant-secret-token-abc123",
+	}
+
+	str := cfg.String()
+	if strings.Contains(str, "sk-ant-secret-token-abc123") {
+		t.Error("String() should not contain full Anthropic token")
+	}
+	if !strings.Contains(str, "AnthropicToken:") {
+		t.Error("String() should contain AnthropicToken field")
+	}
+}
+
+func TestConfig_RedactsAnthropicToken_AutoDetected(t *testing.T) {
+	cfg := &Config{
+		AnthropicToken:     "sk-ant-auto-token-xyz",
+		AnthropicAutoToken: true,
+	}
+
+	str := cfg.String()
+	if !strings.Contains(str, "AnthropicAutoToken: true") {
+		t.Error("String() should contain AnthropicAutoToken: true when auto-detected")
+	}
+}
+
 func TestConfig_AvailableProviders_Empty(t *testing.T) {
 	cfg := &Config{}
 	providers := cfg.AvailableProviders()

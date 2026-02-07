@@ -12,7 +12,7 @@
             {{range .Providers}}
             <button class="provider-tab {{if eq . $.CurrentProvider}}active{{end}}"
                     data-provider="{{.}}" role="tab" aria-selected="{{if eq . $.CurrentProvider}}true{{else}}false{{end}}">
-                {{if eq . "synthetic"}}Synthetic{{else if eq . "zai"}}Z.ai{{else if eq . "both"}}Both{{else}}{{.}}{{end}}
+                {{if eq . "synthetic"}}Synthetic{{else if eq . "zai"}}Z.ai{{else if eq . "anthropic"}}Anthropic{{else if eq . "both"}}All{{else}}{{.}}{{end}}
             </button>
             {{end}}
         </div>
@@ -49,7 +49,7 @@
             <h1 class="welcome-title">Dashboard</h1>
             <p class="welcome-subtitle">
                 {{if eq .CurrentProvider "both"}}Track all your API quotas in real time.
-                {{else}}Track your {{if eq .CurrentProvider "synthetic"}}Synthetic{{else if eq .CurrentProvider "zai"}}Z.ai{{else}}{{.CurrentProvider}}{{end}} API quota usage in real time.
+                {{else}}Track your {{if eq .CurrentProvider "synthetic"}}Synthetic{{else if eq .CurrentProvider "zai"}}Z.ai{{else if eq .CurrentProvider "anthropic"}}Anthropic (Claude Code){{else}}{{.CurrentProvider}}{{end}} API quota usage in real time.
                 {{end}}
             </p>
         </div>
@@ -104,7 +104,16 @@
                     </article>
                 </div>
             </section>
+            {{if .HasAnthropic}}
+            <section class="provider-column" data-provider="anthropic">
+                <h3 class="provider-label">Anthropic</h3>
+                <div class="quota-grid quota-grid-stacked" id="quota-grid-anthropic-both" data-provider="anthropic"></div>
+            </section>
+            {{end}}
         </div>
+        {{else if eq .CurrentProvider "anthropic"}}
+        <!-- Anthropic quota cards (dynamically populated by JS) -->
+        <div class="quota-grid" id="quota-grid-anthropic" data-provider="anthropic"></div>
         {{else}}
         <div class="quota-grid" id="quota-grid" data-provider="{{.CurrentProvider}}">
             {{if eq .CurrentProvider "zai"}}
@@ -355,6 +364,12 @@
                             <option value="tokens">Tokens</option>
                             <option value="time">Time</option>
                         </optgroup>
+                        {{if .HasAnthropic}}
+                        <optgroup label="Anthropic" id="cycle-anthropic-optgroup">
+                        </optgroup>
+                        {{end}}
+                        {{else if eq .CurrentProvider "anthropic"}}
+                        <!-- Anthropic cycle options populated dynamically by JS -->
                         {{else if eq .CurrentProvider "zai"}}
                         <option value="tokens">Tokens</option>
                         <option value="time">Time</option>
