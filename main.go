@@ -182,13 +182,23 @@ func daemonize(cfg *config.Config) error {
 }
 
 func run() error {
-	// Parse flags and load config
-	cfg, err := config.Load()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+	// Handle subcommands that don't need full config first
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "stop":
+			return runStop()
+		case "status":
+			return runStatus()
+		case "--version", "-v":
+			fmt.Printf("SynTrack v%s\n", version)
+			return nil
+		case "--help", "-h":
+			printHelp()
+			return nil
+		}
 	}
 
-	// Handle version flag
+	// Also check for flags anywhere in args (backward compat)
 	for _, arg := range os.Args[1:] {
 		if arg == "--version" || arg == "-v" {
 			fmt.Printf("SynTrack v%s\n", version)
@@ -198,6 +208,12 @@ func run() error {
 			printHelp()
 			return nil
 		}
+	}
+
+	// Parse flags and load config
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	isDaemonChild := os.Getenv("_SYNTRACK_DAEMON") == "1"
@@ -284,13 +300,17 @@ func run() error {
 	// Create components
 	tr := tracker.New(db, logger)
 
-	// Create agent for Synthetic only (Z.ai agent can be added later)
+	// Create agents
 	var ag *agent.Agent
 	if syntheticClient != nil {
 		ag = agent.New(syntheticClient, db, tr, cfg.PollInterval, logger)
 	}
 
-	_ = zaiClient // Suppress unused variable warning for now
+	var zaiAg *agent.ZaiAgent
+	if zaiClient != nil {
+		zaiAg = agent.NewZaiAgent(zaiClient, db, cfg.PollInterval, logger)
+	}
+
 	handler := web.NewHandler(db, tr, logger, nil, cfg)
 	server := web.NewServer(cfg.Port, handler, logger, cfg.AdminUser, cfg.AdminPass)
 
@@ -301,17 +321,28 @@ func run() error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Start agent in goroutine (only if Synthetic is configured)
-	agentErr := make(chan error, 1)
+	// Start agents in goroutines
+	agentErr := make(chan error, 2)
 	if ag != nil {
 		go func() {
-			logger.Info("Starting agent", "interval", cfg.PollInterval)
+			logger.Info("Starting Synthetic agent", "interval", cfg.PollInterval)
 			if err := ag.Run(ctx); err != nil {
-				agentErr <- fmt.Errorf("agent error: %w", err)
+				agentErr <- fmt.Errorf("synthetic agent error: %w", err)
 			}
 		}()
-	} else {
-		logger.Info("No agent configured (Synthetic API not enabled)")
+	}
+
+	if zaiAg != nil {
+		go func() {
+			logger.Info("Starting Z.ai agent", "interval", cfg.PollInterval)
+			if err := zaiAg.Run(ctx); err != nil {
+				agentErr <- fmt.Errorf("zai agent error: %w", err)
+			}
+		}()
+	}
+
+	if ag == nil && zaiAg == nil {
+		logger.Info("No agents configured")
 	}
 
 	// Start web server in goroutine
@@ -363,6 +394,140 @@ func run() error {
 	return nil
 }
 
+// runStop stops any running syntrack instance.
+func runStop() error {
+	myPID := os.Getpid()
+	stopped := false
+
+	// Method 1: PID file
+	if data, err := os.ReadFile(pidFile); err == nil {
+		pidStr := strings.TrimSpace(string(data))
+		if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 && pid != myPID {
+			if proc, err := os.FindProcess(pid); err == nil {
+				if err := proc.Signal(syscall.SIGTERM); err == nil {
+					fmt.Printf("Stopped syntrack (PID %d)\n", pid)
+					stopped = true
+				} else {
+					fmt.Printf("Process %d not running (stale PID file)\n", pid)
+				}
+			}
+		}
+		os.Remove(pidFile)
+	}
+
+	// Method 2: Port-based fallback — check default and common ports
+	if !stopped {
+		for _, port := range []int{8932} {
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 500*time.Millisecond)
+			if err != nil {
+				continue
+			}
+			conn.Close()
+			if pids := findSyntrackOnPort(port); len(pids) > 0 {
+				for _, pid := range pids {
+					if pid == myPID {
+						continue
+					}
+					if proc, err := os.FindProcess(pid); err == nil {
+						if err := proc.Signal(syscall.SIGTERM); err == nil {
+							fmt.Printf("Stopped syntrack (PID %d) on port %d\n", pid, port)
+							stopped = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if !stopped {
+		fmt.Println("No running syntrack instance found")
+	}
+	return nil
+}
+
+// runStatus reports the status of any running syntrack instance.
+func runStatus() error {
+	myPID := os.Getpid()
+
+	// Check PID file
+	if data, err := os.ReadFile(pidFile); err == nil {
+		pidStr := strings.TrimSpace(string(data))
+		if pid, err := strconv.Atoi(pidStr); err == nil && pid > 0 && pid != myPID {
+			if proc, err := os.FindProcess(pid); err == nil {
+				// On Unix, signal 0 checks if process exists without killing it
+				if err := proc.Signal(syscall.Signal(0)); err == nil {
+					fmt.Printf("syntrack is running (PID %d)\n", pid)
+
+					// Check which port it's listening on
+					for _, port := range []int{8932, 8080, 9000} {
+						if pids := findSyntrackOnPort(port); len(pids) > 0 {
+							for _, p := range pids {
+								if p == pid {
+									fmt.Printf("  Dashboard: http://localhost:%d\n", port)
+									break
+								}
+							}
+						}
+					}
+
+					// Show PID file location
+					fmt.Printf("  PID file:  %s\n", pidFile)
+
+					// Show log file if it exists
+					logPath := ".syntrack.log"
+					if info, err := os.Stat(logPath); err == nil {
+						fmt.Printf("  Log file:  %s (%s)\n", logPath, humanSize(info.Size()))
+					}
+
+					// Show DB file if it exists
+					dbPath := "./syntrack.db"
+					if info, err := os.Stat(dbPath); err == nil {
+						fmt.Printf("  Database:  %s (%s)\n", dbPath, humanSize(info.Size()))
+					}
+
+					return nil
+				}
+			}
+			// Stale PID file
+			fmt.Printf("syntrack is not running (stale PID file for PID %d)\n", pid)
+			return nil
+		}
+	}
+
+	// No PID file — try port check
+	for _, port := range []int{8932} {
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 500*time.Millisecond)
+		if err != nil {
+			continue
+		}
+		conn.Close()
+		if pids := findSyntrackOnPort(port); len(pids) > 0 {
+			for _, pid := range pids {
+				if pid == myPID {
+					continue
+				}
+				fmt.Printf("syntrack is running (PID %d) on port %d\n", pid, port)
+				fmt.Printf("  Dashboard: http://localhost:%d\n", port)
+				return nil
+			}
+		}
+	}
+
+	fmt.Println("syntrack is not running")
+	return nil
+}
+
+// humanSize returns a human-readable file size.
+func humanSize(bytes int64) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%dB", bytes)
+	}
+	if bytes < 1024*1024 {
+		return fmt.Sprintf("%.1fKB", float64(bytes)/1024)
+	}
+	return fmt.Sprintf("%.1fMB", float64(bytes)/(1024*1024))
+}
+
 func printBanner(cfg *config.Config, version string) {
 	fmt.Println()
 	fmt.Println("╔══════════════════════════════════════╗")
@@ -402,7 +567,11 @@ func printBanner(cfg *config.Config, version string) {
 func printHelp() {
 	fmt.Println("SynTrack - Multi-Provider API Usage Tracker")
 	fmt.Println()
-	fmt.Println("Usage: syntrack [OPTIONS]")
+	fmt.Println("Usage: syntrack [COMMAND] [OPTIONS]")
+	fmt.Println()
+	fmt.Println("Commands:")
+	fmt.Println("  stop               Stop the running syntrack instance")
+	fmt.Println("  status             Show status of the running instance")
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --version          Print version and exit")
@@ -427,6 +596,8 @@ func printHelp() {
 	fmt.Println("  syntrack                           # Run in background mode")
 	fmt.Println("  syntrack --debug                   # Run in foreground mode")
 	fmt.Println("  syntrack --interval 30 --port 8080 # Custom interval and port")
+	fmt.Println("  syntrack stop                      # Stop running instance")
+	fmt.Println("  syntrack status                    # Check if running")
 	fmt.Println()
 	fmt.Println("Configure providers in .env file or environment variables.")
 	fmt.Println("At least one provider (Synthetic or Z.ai) must be configured.")
