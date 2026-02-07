@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -41,9 +43,9 @@ func testResponse() api.QuotaResponse {
 
 // setupTest creates a mock server, store, and agent for testing
 func setupTest(t *testing.T) (*Agent, *store.Store, *httptest.Server, *bytes.Buffer) {
-	callCount := 0
+	var callCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
+		callCount.Add(1)
 		resp := testResponse()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -79,9 +81,9 @@ func setupTest(t *testing.T) (*Agent, *store.Store, *httptest.Server, *bytes.Buf
 
 // TestAgent_PollsAtInterval verifies the API is called N times in N*interval duration
 func TestAgent_PollsAtInterval(t *testing.T) {
-	callCount := 0
+	var callCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
+		callCount.Add(1)
 		resp := testResponse()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -113,11 +115,12 @@ func TestAgent_PollsAtInterval(t *testing.T) {
 	time.Sleep(10 * time.Millisecond) // Give time for cleanup
 
 	// Should have at least 4-5 polls (1 immediate + ~4 interval polls)
-	if callCount < 4 {
-		t.Errorf("Expected at least 4 API calls in 230ms with 50ms interval, got %d", callCount)
+	count := callCount.Load()
+	if count < 4 {
+		t.Errorf("Expected at least 4 API calls in 230ms with 50ms interval, got %d", count)
 	}
-	if callCount > 6 {
-		t.Errorf("Expected at most 6 API calls, got %d (too many polls)", callCount)
+	if count > 6 {
+		t.Errorf("Expected at most 6 API calls, got %d (too many polls)", count)
 	}
 
 	select {
@@ -132,9 +135,9 @@ func TestAgent_PollsAtInterval(t *testing.T) {
 
 // TestAgent_StoresEverySnapshot verifies DB has N rows after N polls
 func TestAgent_StoresEverySnapshot(t *testing.T) {
-	pollCount := 0
+	var pollCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pollCount++
+		pollCount.Add(1)
 		resp := testResponse()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -160,8 +163,8 @@ func TestAgent_StoresEverySnapshot(t *testing.T) {
 
 	// Should have 4 snapshots (1 immediate + 3 at 50ms intervals)
 	// Or 5 depending on timing, so check range
-	if pollCount < 3 {
-		t.Errorf("Expected at least 3 polls, got %d", pollCount)
+	if count := pollCount.Load(); count < 3 {
+		t.Errorf("Expected at least 3 polls, got %d", count)
 	}
 }
 
@@ -205,10 +208,10 @@ func TestAgent_ProcessesWithTracker(t *testing.T) {
 
 // TestAgent_APIError_Continues verifies agent logs and continues on API error
 func TestAgent_APIError_Continues(t *testing.T) {
-	callCount := 0
+	var callCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
-		if callCount == 1 {
+		n := callCount.Add(1)
+		if n == 1 {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -236,16 +239,16 @@ func TestAgent_APIError_Continues(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Should have continued polling despite first error
-	if callCount < 2 {
-		t.Errorf("Expected at least 2 API calls (including error), got %d", callCount)
+	if count := callCount.Load(); count < 2 {
+		t.Errorf("Expected at least 2 API calls (including error), got %d", count)
 	}
 }
 
 // TestAgent_StoreError_Continues verifies agent logs and continues on store error
 func TestAgent_StoreError_Continues(t *testing.T) {
-	callCount := 0
+	var callCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
+		callCount.Add(1)
 		resp := testResponse()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -270,16 +273,16 @@ func TestAgent_StoreError_Continues(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Agent should have polled at least once successfully
-	if callCount < 1 {
-		t.Errorf("Expected at least 1 API call, got %d", callCount)
+	if count := callCount.Load(); count < 1 {
+		t.Errorf("Expected at least 1 API call, got %d", count)
 	}
 }
 
 // TestAgent_TrackerError_StillStoresSnapshot verifies snapshot is saved even if tracker fails
 func TestAgent_TrackerError_StillStoresSnapshot(t *testing.T) {
-	pollCount := 0
+	var pollCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pollCount++
+		pollCount.Add(1)
 		resp := testResponse()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -417,11 +420,14 @@ func TestAgent_GracefulShutdown_MidPoll(t *testing.T) {
 
 // TestAgent_FirstPollImmediate verifies first poll happens immediately, not after interval
 func TestAgent_FirstPollImmediate(t *testing.T) {
-	callCount := 0
+	var callCount atomic.Int32
+	var mu sync.Mutex
 	callTimes := make([]time.Time, 0)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
+		callCount.Add(1)
+		mu.Lock()
 		callTimes = append(callTimes, time.Now())
+		mu.Unlock()
 		resp := testResponse()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp)
@@ -447,13 +453,17 @@ func TestAgent_FirstPollImmediate(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Should have at least 1 call immediately
-	if callCount < 1 {
+	if count := callCount.Load(); count < 1 {
 		t.Fatal("Expected at least 1 immediate API call")
 	}
 
 	// First call should be within 50ms of start (immediate)
-	if len(callTimes) > 0 {
-		timeToFirstCall := callTimes[0].Sub(startTime)
+	mu.Lock()
+	times := make([]time.Time, len(callTimes))
+	copy(times, callTimes)
+	mu.Unlock()
+	if len(times) > 0 {
+		timeToFirstCall := times[0].Sub(startTime)
 		if timeToFirstCall > 50*time.Millisecond {
 			t.Errorf("First poll should be immediate (<50ms), took %v", timeToFirstCall)
 		}

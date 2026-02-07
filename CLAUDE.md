@@ -318,6 +318,7 @@ cp .env.example .env               # Create local config
 8. Prefer real SQLite (`:memory:`) and `httptest.NewServer` over mocks
 9. Test names describe behavior: `TestTracker_DetectsQuotaReset_WhenRenewsAtChanges`
 10. Run with `-race` before every commit
+11. **Concurrency safety in tests:** Any variable shared between a `httptest.Server` handler goroutine and the test goroutine MUST use `sync/atomic` (for counters) or `sync.Mutex` (for slices/maps). Never use bare `int`/`[]T` — the `-race` detector WILL catch these intermittently in CI.
 
 ### Security Rules (NON-NEGOTIABLE)
 
@@ -338,6 +339,15 @@ cp .env.example .env               # Create local config
 - Structured logging: `slog.Info("poll complete", "requests", resp.Subscription.Requests)`
 - Constants over magic numbers
 
+### Pre-Commit Validation (MANDATORY)
+
+Before EVERY commit, run and verify these pass:
+```bash
+go test -race -cover ./...    # All tests pass, zero races, zero failures
+go vet ./...                  # No static analysis issues
+```
+**Do NOT commit if any test fails or any race is detected.** Fix the issue first, then commit.
+
 ### Git Hygiene
 
 - Conventional commits: `feat:`, `fix:`, `test:`, `docs:`, `refactor:`, `perf:`
@@ -357,7 +367,7 @@ When creating a new release, always follow these steps in order:
    - `onwatch-linux-amd64`
    - `onwatch-linux-arm64`
    - `onwatch-windows-amd64.exe`
-4. **Capture screenshots** — All 4 providers × light/dark (8 total), cropped to top half, saved in `screenshots/`
+4. **Capture screenshots** — Run `node tools/capture-screenshots.mjs` to auto-capture all 4 providers × light/dark (8 total) showing the top of the dashboard, saved in `screenshots/`
 5. **Sync static files** — `cp internal/web/static/{app.js,style.css} static/`
 6. **Commit and tag** — `git commit`, then `git tag -a vX.Y.Z -m "..."`
 7. **Push commit + tag** — `git push origin main && git push origin vX.Y.Z`
