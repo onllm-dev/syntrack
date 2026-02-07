@@ -458,7 +458,11 @@
                             <th data-sort-key="start" role="button" tabindex="0">Started <span class="sort-arrow"></span></th>
                             <th data-sort-key="end" role="button" tabindex="0">Ended <span class="sort-arrow"></span></th>
                             <th data-sort-key="duration" role="button" tabindex="0">Duration <span class="sort-arrow"></span></th>
-                            {{if eq .CurrentProvider "zai"}}
+                            {{if eq .CurrentProvider "anthropic"}}
+                            <th data-sort-key="sub" role="button" tabindex="0">5-Hour % <span class="sort-arrow"></span></th>
+                            <th data-sort-key="search" role="button" tabindex="0">Weekly % <span class="sort-arrow"></span></th>
+                            <th data-sort-key="tool" role="button" tabindex="0">Weekly Sonnet % <span class="sort-arrow"></span></th>
+                            {{else if eq .CurrentProvider "zai"}}
                             <th data-sort-key="snapshots" role="button" tabindex="0">Snapshots <span class="sort-arrow"></span></th>
                             {{else}}
                             <th data-sort-key="sub" role="button" tabindex="0">Sub Usage <span class="sort-arrow"></span></th>

@@ -12,7 +12,7 @@
       gtag('config', 'G-DL6C40HTGQ');
     </script>
     <title>onWatch — Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic</title>
-    <meta name="description" content="onWatch is the intelligence layer for multi-provider AI API management. Track usage across Synthetic, Z.ai, and Anthropic with cross-provider insights, pattern detection, rate projections, and reset cycle intelligence — all in a single 25 MB Go binary with zero telemetry.">
+    <meta name="description" content="onWatch is the intelligence layer for multi-provider AI API management. Track usage across Synthetic, Z.ai, and Anthropic with cross-provider insights, pattern detection, rate projections, and reset cycle intelligence — all in a single ~30 MB Go binary with zero telemetry.">
     <meta name="keywords" content="onWatch, AI API intelligence, multi-provider API tracking, Synthetic API monitor, Z.ai API tracker, Anthropic API monitoring, cross-provider insights, AI coding API usage, quota monitoring tool, open source API monitor, Cline quota tracker, Claude Code API usage, intelligent provider switching, API budget tracker, self-hosted API monitoring, reset cycle detection, rate projection, Go CLI tool, API quota dashboard">
     <link rel="canonical" href="https://onwatch.onllm.dev">
 
@@ -22,7 +22,7 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://onwatch.onllm.dev">
     <meta property="og:site_name" content="onWatch">
-    <meta property="og:image" content="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/dashboard-dark.png">
+    <meta property="og:image" content="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/anthropic-dark.png">
     <meta property="og:image:alt" content="onWatch dashboard showing Synthetic API quota cards with usage trends and live countdown timers">
     <meta property="og:image:width" content="1920">
     <meta property="og:image:height" content="1080">
@@ -30,8 +30,8 @@
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="onWatch — Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic">
-    <meta name="twitter:description" content="The intelligence layer for multi-provider AI API management. Cross-provider insights, pattern detection, and rate projections. Single 25 MB binary, zero telemetry.">
-    <meta name="twitter:image" content="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/dashboard-dark.png">
+    <meta name="twitter:description" content="The intelligence layer for multi-provider AI API management. Cross-provider insights, pattern detection, and rate projections. Single ~30 MB binary, zero telemetry.">
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/anthropic-dark.png">
 
     <!-- Additional SEO -->
     <meta name="author" content="onllm.dev">
@@ -44,7 +44,7 @@
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "onWatch",
-      "description": "The intelligence layer for multi-provider AI API management. Tracks usage across Synthetic, Z.ai, and Anthropic with cross-provider insights, pattern detection, consumption rate projections, reset cycle intelligence, and a Material Design 3 web dashboard. Single Go binary, ~25 MB RAM, zero telemetry.",
+      "description": "The intelligence layer for multi-provider AI API management. Tracks usage across Synthetic, Z.ai, and Anthropic with cross-provider insights, pattern detection, consumption rate projections, reset cycle intelligence, and a Material Design 3 web dashboard. Single Go binary, ~30 MB RAM, zero telemetry.",
       "url": "https://onwatch.onllm.dev",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "macOS, Linux, Windows",
@@ -64,7 +64,7 @@
       "codeRepository": "https://github.com/onllm-dev/onwatch",
       "programmingLanguage": "Go",
       "downloadUrl": "https://github.com/onllm-dev/onwatch/releases",
-      "screenshot": "https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/dashboard-dark.png",
+      "screenshot": "https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/anthropic-dark.png",
       "featureList": [
         "Cross-provider usage intelligence",
         "Anthropic API monitoring",
@@ -79,7 +79,7 @@
         "Material Design 3 dashboard with dark and light mode",
         "Single Go binary with zero runtime dependencies",
         "Local SQLite storage with zero telemetry",
-        "Background daemon mode with ~25 MB RAM footprint",
+        "Background daemon mode with ~30 MB RAM footprint",
         "Cross-platform: macOS, Linux, Windows",
         "REST API with JSON endpoints",
         "Session-based auth with password management"
@@ -107,7 +107,7 @@
           "name": "What is the best open-source tool to track AI coding API usage?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "onWatch is the only open-source tool designed to track historical quota usage across Anthropic, Synthetic, and Z.ai in a single dashboard. It provides features that provider dashboards lack: historical usage trends, automatic reset cycle detection, consumption rate projections, per-session tracking, and a multi-provider unified view. It runs as a single 25 MB Go binary with zero telemetry and local SQLite storage."
+            "text": "onWatch is the only open-source tool designed to track historical quota usage across Anthropic, Synthetic, and Z.ai in a single dashboard. It provides features that provider dashboards lack: historical usage trends, automatic reset cycle detection, consumption rate projections, per-session tracking, and a multi-provider unified view. It runs as a single ~30 MB Go binary with zero telemetry and local SQLite storage."
           }
         },
         {
@@ -139,7 +139,7 @@
           "name": "How much memory does onWatch use?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "onWatch idles at approximately 25-30 MB RAM and peaks at around 50 MB during active dashboard rendering. It's designed to run as a background daemon with minimal resource usage: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), and polling buffer (1 MB). This is lighter than a single browser tab."
+            "text": "onWatch idles at ~28 MB RAM and peaks at ~29 MB under continuous dashboard load, measured with all three agents (Synthetic, Z.ai, Anthropic) polling in parallel. It's designed to run as a background daemon with minimal resource usage: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), and polling buffer (1 MB). This is lighter than a single browser tab."
           }
         },
         {
@@ -2158,7 +2158,7 @@ a:hover { text-decoration: underline; }
                 <code><span class="install-prefix">$</span> curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>
                 <span class="copy-hint">Copy</span>
             </div>
-            <p class="hero-meta">v1.8.0 &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; ~25 MB</p>
+            <p class="hero-meta">v1.8.0 &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; ~30 MB</p>
         </div>
 
         <!-- Dashboard Mockup -->
@@ -2693,7 +2693,7 @@ a:hover { text-decoration: underline; }
         </div>
         <div class="arch-stats fade-in">
             <div class="arch-stat">
-                <div class="arch-stat-value">~25 MB</div>
+                <div class="arch-stat-value">~30 MB</div>
                 <div class="arch-stat-label">RAM Idle</div>
             </div>
             <div class="arch-stat">
@@ -2747,7 +2747,7 @@ a:hover { text-decoration: underline; }
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                 </div>
                 <h3 class="feature-title">DevOps &amp; Platform Engineers</h3>
-                <p class="feature-desc">Deploy as a ~25 MB sidecar with zero SaaS dependencies. Use the SQLite database as a Grafana data source or pipe the REST API into your existing monitoring stack.</p>
+                <p class="feature-desc">Deploy as a ~30 MB sidecar with zero SaaS dependencies. Use the SQLite database as a Grafana data source or pipe the REST API into your existing monitoring stack.</p>
             </div>
         </div>
     </div>
@@ -2885,7 +2885,7 @@ a:hover { text-decoration: underline; }
             <details class="faq-item">
                 <summary class="faq-question">How much memory does onWatch use?</summary>
                 <div class="faq-answer">
-                    <p>onWatch idles at ~25-30 MB RAM and peaks at ~50 MB during dashboard rendering. Breakdown: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), polling buffer (1 MB). This is lighter than a single browser tab and designed to run as a background daemon indefinitely.</p>
+                    <p>onWatch idles at ~28 MB RAM and peaks at ~29 MB under continuous dashboard load, measured with all three agents (Synthetic, Z.ai, Anthropic) polling in parallel. Breakdown: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), polling buffer (1 MB). This is lighter than a single browser tab and designed to run as a background daemon indefinitely.</p>
                 </div>
             </details>
             <details class="faq-item">
@@ -2908,10 +2908,10 @@ a:hover { text-decoration: underline; }
         <div class="gallery-filters fade-in">
             <div class="filter-group">
                 <span class="filter-label">Provider</span>
-                <button class="filter-btn active" data-filter="provider" data-value="synthetic">Synthetic</button>
+                <button class="filter-btn active" data-filter="provider" data-value="anthropic">Anthropic</button>
+                <button class="filter-btn" data-filter="provider" data-value="synthetic">Synthetic</button>
                 <button class="filter-btn" data-filter="provider" data-value="zai">Z.ai</button>
-                <button class="filter-btn" data-filter="provider" data-value="both">Both</button>
-                <button class="filter-btn" data-filter="provider" data-value="general">Login</button>
+                <button class="filter-btn" data-filter="provider" data-value="both">All Providers</button>
                 <button class="filter-btn" data-filter="provider" data-value="all">All</button>
             </div>
             <div class="filter-group" id="theme-filter" style="display:none;">
@@ -2922,39 +2922,60 @@ a:hover { text-decoration: underline; }
             </div>
         </div>
         <div class="gallery-grid" id="gallery-grid">
-            <div class="gallery-item fade-in visible" data-theme="light" data-provider="synthetic" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/dashboard-light.png" alt="onWatch dashboard in light mode — Synthetic provider" loading="lazy">
+            <div class="gallery-item fade-in visible" data-theme="light" data-provider="anthropic" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/anthropic-light.png" alt="onWatch Anthropic dashboard in light mode — quota cards, usage graphs, cycle history" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">Dashboard — Light Mode</span>
+                    <span class="gallery-caption-text">Anthropic — Light Mode</span>
+                    <span class="gallery-caption-badge">Anthropic</span>
+                </div>
+            </div>
+            <div class="gallery-item fade-in visible" data-theme="dark" data-provider="anthropic" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/anthropic-dark.png" alt="onWatch Anthropic dashboard in dark mode — quota cards, usage graphs, cycle history" loading="lazy">
+                <div class="gallery-caption">
+                    <span class="gallery-caption-text">Anthropic — Dark Mode</span>
+                    <span class="gallery-caption-badge">Anthropic</span>
+                </div>
+            </div>
+            <div class="gallery-item fade-in visible hidden" data-theme="light" data-provider="synthetic" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/synthetic-light.png" alt="onWatch Synthetic provider dashboard in light mode" loading="lazy">
+                <div class="gallery-caption">
+                    <span class="gallery-caption-text">Synthetic — Light Mode</span>
                     <span class="gallery-caption-badge">Synthetic</span>
                 </div>
             </div>
-            <div class="gallery-item fade-in visible" data-theme="dark" data-provider="synthetic" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/dashboard-dark.png" alt="onWatch dashboard in dark mode — Synthetic provider" loading="lazy">
+            <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="synthetic" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/synthetic-dark.png" alt="onWatch Synthetic provider dashboard in dark mode" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">Dashboard — Dark Mode</span>
+                    <span class="gallery-caption-text">Synthetic — Dark Mode</span>
                     <span class="gallery-caption-badge">Synthetic</span>
                 </div>
             </div>
-            <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="zai" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/dashboard-zai.png" alt="onWatch Z.ai provider dashboard with tokens, time, and tool call quotas" loading="lazy">
+            <div class="gallery-item fade-in visible hidden" data-theme="light" data-provider="zai" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/zai-light.png" alt="onWatch Z.ai provider dashboard in light mode — tokens and time quotas" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">Z.ai Provider View</span>
+                    <span class="gallery-caption-text">Z.ai — Light Mode</span>
                     <span class="gallery-caption-badge">Z.ai</span>
                 </div>
             </div>
-            <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="both" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/dashboard-both.png" alt="onWatch Both view — Synthetic and Z.ai quotas side-by-side" loading="lazy">
+            <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="zai" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/zai-dark.png" alt="onWatch Z.ai provider dashboard in dark mode — tokens and time quotas" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">Both Providers — Side by Side</span>
-                    <span class="gallery-caption-badge">Both</span>
+                    <span class="gallery-caption-text">Z.ai — Dark Mode</span>
+                    <span class="gallery-caption-badge">Z.ai</span>
                 </div>
             </div>
-            <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="general" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/login.png" alt="onWatch login page with dark mode" loading="lazy">
+            <div class="gallery-item fade-in visible hidden" data-theme="light" data-provider="both" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/all-light.png" alt="onWatch All Providers view in light mode — Anthropic, Synthetic, Z.ai side-by-side" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">Login Page</span>
-                    <span class="gallery-caption-badge">Login</span>
+                    <span class="gallery-caption-text">All Providers — Light Mode</span>
+                    <span class="gallery-caption-badge">All</span>
+                </div>
+            </div>
+            <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="both" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/all-dark.png" alt="onWatch All Providers view in dark mode — Anthropic, Synthetic, Z.ai side-by-side" loading="lazy">
+                <div class="gallery-caption">
+                    <span class="gallery-caption-text">All Providers — Dark Mode</span>
+                    <span class="gallery-caption-badge">All</span>
                 </div>
             </div>
             <p class="gallery-empty" id="gallery-empty" style="display:none;">No screenshots match the selected filters.</p>
@@ -3203,7 +3224,7 @@ function copyInstallCmd(el) {
 /* Gallery Filters */
 (function() {
     var activeTheme = 'all';
-    var activeProvider = 'synthetic';
+    var activeProvider = 'anthropic';
 
     // Map of available themes per provider
     function getThemesForProvider(provider) {

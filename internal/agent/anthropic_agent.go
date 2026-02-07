@@ -3,11 +3,9 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/onllm-dev/onwatch/internal/api"
 	"github.com/onllm-dev/onwatch/internal/store"
 	"github.com/onllm-dev/onwatch/internal/tracker"
@@ -15,18 +13,16 @@ import (
 
 // AnthropicAgent manages the background polling loop for Anthropic quota tracking.
 type AnthropicAgent struct {
-	client            *api.AnthropicClient
-	store             *store.Store
-	tracker           *tracker.AnthropicTracker
-	interval          time.Duration
-	logger            *slog.Logger
-	sessionID         string
-	sessionStartUtils map[string]float64 // per-quota starting utilization
-	totalSessionDelta float64            // cumulative utilization change across all quotas
+	client   *api.AnthropicClient
+	store    *store.Store
+	tracker  *tracker.AnthropicTracker
+	interval time.Duration
+	logger   *slog.Logger
+	sm       *SessionManager
 }
 
 // NewAnthropicAgent creates a new AnthropicAgent with the given dependencies.
-func NewAnthropicAgent(client *api.AnthropicClient, store *store.Store, tr *tracker.AnthropicTracker, interval time.Duration, logger *slog.Logger) *AnthropicAgent {
+func NewAnthropicAgent(client *api.AnthropicClient, store *store.Store, tr *tracker.AnthropicTracker, interval time.Duration, logger *slog.Logger, sm *SessionManager) *AnthropicAgent {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -36,32 +32,21 @@ func NewAnthropicAgent(client *api.AnthropicClient, store *store.Store, tr *trac
 		tracker:  tr,
 		interval: interval,
 		logger:   logger,
+		sm:       sm,
 	}
 }
 
-// Run starts the Anthropic agent's polling loop. It creates a session, polls immediately,
+// Run starts the Anthropic agent's polling loop. It polls immediately,
 // then continues at the configured interval until the context is cancelled.
 func (a *AnthropicAgent) Run(ctx context.Context) error {
-	// Generate session ID
-	a.sessionID = uuid.New().String()
+	a.logger.Info("Anthropic agent started", "interval", a.interval)
 
-	// Create session in database
-	if err := a.store.CreateSession(a.sessionID, time.Now().UTC(), int(a.interval.Milliseconds()), "anthropic"); err != nil {
-		return fmt.Errorf("anthropic agent: failed to create session: %w", err)
-	}
-
-	a.logger.Info("Anthropic agent started",
-		"session_id", a.sessionID,
-		"interval", a.interval,
-	)
-
-	// Ensure session is closed on exit
+	// Ensure any active session is closed on exit
 	defer func() {
-		if err := a.store.CloseSession(a.sessionID, time.Now().UTC()); err != nil {
-			a.logger.Error("Failed to close Anthropic session", "error", err)
-		} else {
-			a.logger.Info("Anthropic agent stopped", "session_id", a.sessionID)
+		if a.sm != nil {
+			a.sm.Close()
 		}
+		a.logger.Info("Anthropic agent stopped")
 	}()
 
 	// Poll immediately on start
@@ -102,11 +87,6 @@ func (a *AnthropicAgent) poll(ctx context.Context) {
 		return
 	}
 
-	// Increment snapshot count for successful storage
-	if err := a.store.IncrementSnapshotCount(a.sessionID); err != nil {
-		a.logger.Error("Failed to increment Anthropic snapshot count", "error", err)
-	}
-
 	// Process with tracker (log error but don't stop)
 	if a.tracker != nil {
 		if err := a.tracker.Process(snapshot); err != nil {
@@ -114,54 +94,26 @@ func (a *AnthropicAgent) poll(ctx context.Context) {
 		}
 	}
 
-	// Track session deltas
-	var maxUtil float64
+	// Report to session manager — extract utilization values for change detection
+	if a.sm != nil {
+		values := make([]float64, len(snapshot.Quotas))
+		for i, q := range snapshot.Quotas {
+			values[i] = q.Utilization
+		}
+		a.sm.ReportPoll(values)
+	}
+
+	// Log poll completion
 	quotaCount := len(snapshot.Quotas)
+	var maxUtil float64
 	for _, q := range snapshot.Quotas {
 		if q.Utilization > maxUtil {
 			maxUtil = q.Utilization
 		}
 	}
 
-	if a.sessionStartUtils == nil {
-		// First poll: record starting baselines
-		a.sessionStartUtils = make(map[string]float64)
-		for _, q := range snapshot.Quotas {
-			a.sessionStartUtils[q.Name] = q.Utilization
-		}
-	} else {
-		// Subsequent polls: accumulate positive deltas
-		for _, q := range snapshot.Quotas {
-			if startUtil, ok := a.sessionStartUtils[q.Name]; ok {
-				delta := q.Utilization - startUtil
-				if delta > 0 {
-					a.totalSessionDelta += delta
-				}
-			}
-			// Update baseline for next delta
-			a.sessionStartUtils[q.Name] = q.Utilization
-		}
-	}
-
-	if err := a.store.UpdateSessionMaxRequests(
-		a.sessionID,
-		maxUtil,
-		a.totalSessionDelta,
-		float64(quotaCount),
-	); err != nil {
-		a.logger.Error("Failed to update Anthropic session max", "error", err)
-	}
-
-	// Log poll completion
 	a.logger.Info("Anthropic poll complete",
-		"session_id", a.sessionID,
 		"quota_count", quotaCount,
 		"max_utilization", maxUtil,
-		"session_delta", a.totalSessionDelta,
 	)
-}
-
-// SessionID returns the current session ID. Returns empty string if Run() hasn't been called.
-func (a *AnthropicAgent) SessionID() string {
-	return a.sessionID
 }

@@ -7,7 +7,7 @@
 **This is an open-source project.** No secrets, no waste, clean repo.
 
 **Core Design Principles:**
-- **Ultra-lightweight:** Minimal RAM footprint (~25-30 MB idle). This app runs as a background agent -- memory efficiency is paramount.
+- **Ultra-lightweight:** Measured RAM footprint of ~28 MB idle with all three agents (Synthetic, Z.ai, Anthropic) polling in parallel. This app runs as a background agent -- memory efficiency is paramount.
 - **Single binary:** No external dependencies at runtime. All templates and static assets embedded via `embed.FS`.
 - **TDD-first:** Every feature is built test-first. Red -> Green -> Refactor. No exceptions.
 - **Efficient polling:** The `/v2/quotas` endpoint does NOT count against quota, but we still poll responsibly (default 60s).
@@ -40,6 +40,19 @@ Since onWatch runs as a background daemon, RAM is our primary constraint:
 | Template rendering | 1 MB |
 | **Total idle** | **~30 MB max** |
 | **During dashboard render** | **~50 MB max** |
+
+**Measured RAM (2026-02-08, all three agents polling in parallel):**
+
+| Metric | Measured | Budget |
+|--------|----------|--------|
+| Idle RSS (avg) | 27.5 MB | 30 MB |
+| Idle RSS (P95) | 27.5 MB | 30 MB |
+| Load RSS (avg) | 28.5 MB | 50 MB |
+| Load RSS (P95) | 29.0 MB | 50 MB |
+| Load delta | +0.9 MB (+3.4%) | <5 MB |
+| Avg API response | 0.28 ms | <5 ms |
+| Avg dashboard response | 0.69 ms | <10 ms |
+| Load test throughput | 1,160 reqs / 15s | -- |
 
 ## Tech Stack
 
@@ -429,13 +442,35 @@ See `design-system/onwatch/pages/dashboard.md` for dashboard-specific layout.
 - Three quota cards per provider (Synthetic/Z.ai), dynamic cards for Anthropic
 - Anthropic cards rendered dynamically from API response (variable quota count)
 - Color-coded thresholds: green (0-49%), yellow (50-79%), red (80-94%), critical (95%+)
-- Provider accent colors: Synthetic (primary), Z.ai (teal), Anthropic (amber/orange #D97706)
+- Provider accent colors: Synthetic (primary), Z.ai (teal), Anthropic (coral #D97757)
 - Accessibility: color + icon + text for all status indicators
 - Live countdown updating every second
 - Provider-specific usage insights
 - Chart.js area chart with time range selector
 - Footer with version display and "Change Password" button
 - Password change modal with current/new/confirm fields
+
+**Provider tab order:** Anthropic (default), Synthetic, Z.ai, All. Controlled by `AvailableProviders()` in `config.go`.
+
+**Anthropic display names** (must match in both Go `anthropic_types.go` and JS `app.js`):
+
+| API Key | Display Name |
+|---------|-------------|
+| `five_hour` | 5-Hour Limit |
+| `seven_day` | Weekly All-Model |
+| `seven_day_sonnet` | Weekly Sonnet |
+| `monthly_limit` | Monthly Limit |
+| `extra_usage` | Extra Usage |
+
+**Anthropic chart colors** (key-based map in `anthropicChartColorMap`, not index-based):
+
+| Quota | Color | Hex |
+|-------|-------|-----|
+| `five_hour` | Coral | `#D97757` |
+| `seven_day` | Emerald | `#10B981` |
+| `seven_day_sonnet` | Blue | `#3B82F6` |
+| `monthly_limit` | Violet | `#A855F7` |
+| `extra_usage` | Amber | `#F59E0B` |
 
 ## Quota Reset Tracking Logic
 

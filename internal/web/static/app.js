@@ -200,8 +200,8 @@ function updateChartVisibility() {
   if (!State.chart) return;
   
   const provider = getCurrentProvider();
-  const quotaMap = provider === 'zai' 
-    ? { 0: 'tokensLimit', 1: 'timeLimit' }
+  const quotaMap = provider === 'zai'
+    ? { 0: 'tokensLimit', 1: 'timeLimit', 2: 'toolCalls' }
     : { 0: 'subscription', 1: 'search', 2: 'toolCalls' };
   
   State.chart.data.datasets.forEach((ds, index) => {
@@ -232,10 +232,10 @@ const quotaNames = {
 
 // Anthropic display names (mirrors backend anthropicDisplayNames)
 const anthropicDisplayNames = {
-  five_hour: '5-Hour',
-  seven_day: '7-Day',
-  seven_day_sonnet: '7-Day Sonnet',
-  monthly_limit: 'Monthly',
+  five_hour: '5-Hour Limit',
+  seven_day: 'Weekly All-Model',
+  seven_day_sonnet: 'Weekly Sonnet',
+  monthly_limit: 'Monthly Limit',
   extra_usage: 'Extra Usage'
 };
 
@@ -248,13 +248,17 @@ const anthropicQuotaIcons = {
   extra_usage: '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/>' // pie-chart
 };
 
-// Anthropic chart colors (coral / amber / indigo — visually distinct per quota)
-const anthropicChartColors = [
-  { border: '#D97757', bg: 'rgba(217, 119, 87, 0.08)' },   // five_hour — coral
-  { border: '#F59E0B', bg: 'rgba(245, 158, 11, 0.08)' },   // seven_day — amber
-  { border: '#6366F1', bg: 'rgba(99, 102, 241, 0.08)' },   // seven_day_sonnet — indigo
-  { border: '#A855F7', bg: 'rgba(168, 85, 247, 0.08)' },   // monthly_limit — violet
-  { border: '#14B8A6', bg: 'rgba(20, 184, 166, 0.08)' }    // extra_usage — teal
+// Anthropic chart colors keyed by quota name (stable regardless of which quotas exist)
+const anthropicChartColorMap = {
+  five_hour:        { border: '#D97757', bg: 'rgba(217, 119, 87, 0.08)' },   // coral
+  seven_day:        { border: '#10B981', bg: 'rgba(16, 185, 129, 0.08)' },   // emerald
+  seven_day_sonnet: { border: '#3B82F6', bg: 'rgba(59, 130, 246, 0.08)' },   // blue
+  monthly_limit:    { border: '#A855F7', bg: 'rgba(168, 85, 247, 0.08)' },   // violet
+  extra_usage:      { border: '#F59E0B', bg: 'rgba(245, 158, 11, 0.08)' }    // amber
+};
+const anthropicChartColorFallback = [
+  { border: '#14B8A6', bg: 'rgba(20, 184, 166, 0.08)' },
+  { border: '#EC4899', bg: 'rgba(236, 72, 153, 0.08)' }
 ];
 
 // ── Anthropic Dynamic Card Rendering ──
@@ -448,13 +452,13 @@ async function loadAnthropicModalChart(quotaName) {
       type: 'line',
       data: {
         labels: data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
-        datasets: [{
+        datasets: [(() => { const c = anthropicChartColorMap[quotaName] || { border: '#D97706', bg: 'rgba(217, 119, 6, 0.08)' }; return {
           label: anthropicDisplayNames[quotaName] || quotaName,
           data: chartData,
-          borderColor: '#D97706',
-          backgroundColor: 'rgba(217, 119, 6, 0.08)',
+          borderColor: c.border,
+          backgroundColor: c.bg,
           fill: true, tension: 0.3, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 5
-        }]
+        }; })()]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
@@ -1310,11 +1314,11 @@ function computeYMax(datasets, chart) {
   if (maxVal <= 0) return 10;
   if (maxVal < 5) return 10;
   
-  // Add 20% padding above the max value for better visualization
+  // Add 30% headroom above the max value for better visualization
   // Round up to nearest 5 for cleaner axis labels
-  const paddedMax = maxVal * 1.2;
+  const paddedMax = maxVal * 1.3;
   const yMax = Math.min(Math.max(Math.ceil(paddedMax / 5) * 5, 10), 100);
-  
+
   return yMax;
 }
 
@@ -1329,10 +1333,10 @@ function initChart() {
 
   // Map dataset indices to quota types for visibility toggle
   const provider = getCurrentProvider();
-  const quotaMap = provider === 'zai' 
-    ? ['tokensLimit', 'timeLimit']
+  const quotaMap = provider === 'zai'
+    ? ['tokensLimit', 'timeLimit', 'toolCalls']
     : ['subscription', 'search', 'toolCalls'];
-  
+
   State.chart = new Chart(ctx, {
     type: 'line',
     data: {
@@ -1453,8 +1457,9 @@ async function fetchHistory(range) {
         Object.keys(d).forEach(k => { if (k !== 'capturedAt') quotaKeys.add(k); });
       });
       const sortedKeys = [...quotaKeys].sort();
-      State.chart.data.datasets = sortedKeys.map((key, i) => {
-        const color = anthropicChartColors[i % anthropicChartColors.length];
+      let fallbackIdx = 0;
+      State.chart.data.datasets = sortedKeys.map((key) => {
+        const color = anthropicChartColorMap[key] || anthropicChartColorFallback[fallbackIdx++ % anthropicChartColorFallback.length];
         return {
           label: anthropicDisplayNames[key] || key,
           data: data.map(d => d[key] || 0),
@@ -1472,11 +1477,12 @@ async function fetchHistory(range) {
     }
 
     if (provider === 'zai') {
-      while (State.chart.data.datasets.length > 2) State.chart.data.datasets.pop();
-      if (State.chart.data.datasets.length < 2) {
+      while (State.chart.data.datasets.length > 3) State.chart.data.datasets.pop();
+      if (State.chart.data.datasets.length < 3) {
         State.chart.data.datasets = [
           { label: 'Tokens', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-subscription').trim() || '#0D9488', backgroundColor: 'rgba(13, 148, 136, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, hidden: State.hiddenQuotas.has('tokensLimit') },
           { label: 'Time', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-search').trim() || '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, hidden: State.hiddenQuotas.has('timeLimit') },
+          { label: 'Tool Calls', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-toolcalls').trim() || '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, hidden: State.hiddenQuotas.has('toolCalls') },
         ];
       }
       State.chart.data.datasets[0].label = 'Tokens';
@@ -1485,6 +1491,9 @@ async function fetchHistory(range) {
       State.chart.data.datasets[1].label = 'Time';
       State.chart.data.datasets[1].data = data.map(d => d.timePercent);
       State.chart.data.datasets[1].hidden = State.hiddenQuotas.has('timeLimit');
+      State.chart.data.datasets[2].label = 'Tool Calls';
+      State.chart.data.datasets[2].data = data.map(d => d.toolCallsPercent);
+      State.chart.data.datasets[2].hidden = State.hiddenQuotas.has('toolCalls');
     } else {
       while (State.chart.data.datasets.length < 3) {
         State.chart.data.datasets.push({ label: '', data: [], borderColor: '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 });
@@ -1537,44 +1546,47 @@ function updateBothCharts(data) {
   const style = getComputedStyle(document.documentElement);
   const colors = getThemeColors();
 
-  // Synthetic chart
+  // Synthetic chart (3 datasets)
   const synCanvas = document.getElementById('usage-chart-syn');
   if (synCanvas && data.synthetic) {
     if (State.chartSyn) State.chartSyn.destroy();
     const synData = data.synthetic;
+    const synDatasets = [
+      { label: 'Subscription', data: synData.map(d => d.subscriptionPercent), borderColor: style.getPropertyValue('--chart-subscription').trim() || '#0D9488', backgroundColor: 'rgba(13,148,136,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
+      { label: 'Search', data: synData.map(d => d.searchPercent), borderColor: style.getPropertyValue('--chart-search').trim() || '#F59E0B', backgroundColor: 'rgba(245,158,11,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
+      { label: 'Tool Calls', data: synData.map(d => d.toolCallsPercent), borderColor: style.getPropertyValue('--chart-toolcalls').trim() || '#3B82F6', backgroundColor: 'rgba(59,130,246,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 }
+    ];
     State.chartSyn = new Chart(synCanvas, {
       type: 'line',
       data: {
         labels: synData.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
-        datasets: [
-          { label: 'Subscription', data: synData.map(d => d.subscriptionPercent), borderColor: style.getPropertyValue('--chart-subscription').trim() || '#0D9488', backgroundColor: 'rgba(13,148,136,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
-          { label: 'Search', data: synData.map(d => d.searchPercent), borderColor: style.getPropertyValue('--chart-search').trim() || '#F59E0B', backgroundColor: 'rgba(245,158,11,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
-          { label: 'Tool Calls', data: synData.map(d => d.toolCallsPercent), borderColor: style.getPropertyValue('--chart-toolcalls').trim() || '#3B82F6', backgroundColor: 'rgba(59,130,246,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 }
-        ]
+        datasets: synDatasets
       },
-      options: buildChartOptions(colors)
+      options: buildChartOptions(colors, computeYMax(synDatasets))
     });
   }
 
-  // Z.ai chart
+  // Z.ai chart (3 datasets)
   const zaiCanvas = document.getElementById('usage-chart-zai');
   if (zaiCanvas && data.zai) {
     if (State.chartZai) State.chartZai.destroy();
     const zaiData = data.zai;
+    const zaiDatasets = [
+      { label: 'Tokens', data: zaiData.map(d => d.tokensPercent), borderColor: style.getPropertyValue('--chart-subscription').trim() || '#0D9488', backgroundColor: 'rgba(13,148,136,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
+      { label: 'Time', data: zaiData.map(d => d.timePercent), borderColor: style.getPropertyValue('--chart-search').trim() || '#F59E0B', backgroundColor: 'rgba(245,158,11,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
+      { label: 'Tool Calls', data: zaiData.map(d => d.toolCallsPercent), borderColor: style.getPropertyValue('--chart-toolcalls').trim() || '#3B82F6', backgroundColor: 'rgba(59,130,246,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 }
+    ];
     State.chartZai = new Chart(zaiCanvas, {
       type: 'line',
       data: {
         labels: zaiData.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
-        datasets: [
-          { label: 'Tokens', data: zaiData.map(d => d.tokensPercent), borderColor: style.getPropertyValue('--chart-subscription').trim() || '#0D9488', backgroundColor: 'rgba(13,148,136,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
-          { label: 'Time', data: zaiData.map(d => d.timePercent), borderColor: style.getPropertyValue('--chart-search').trim() || '#F59E0B', backgroundColor: 'rgba(245,158,11,0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 }
-        ]
+        datasets: zaiDatasets
       },
-      options: buildChartOptions(colors)
+      options: buildChartOptions(colors, computeYMax(zaiDatasets))
     });
   }
 
-  // Anthropic chart
+  // Anthropic chart (dynamic dataset count)
   const anthCanvas = document.getElementById('usage-chart-anth');
   if (anthCanvas && hasAnthData) {
     if (State.chartAnth) State.chartAnth.destroy();
@@ -1585,26 +1597,27 @@ function updateBothCharts(data) {
       Object.keys(d).forEach(k => { if (k !== 'capturedAt') quotaKeys.add(k); });
     });
     const sortedKeys = [...quotaKeys].sort();
+    const anthDatasets = (() => { let fi = 0; return sortedKeys.map((key) => {
+      const color = anthropicChartColorMap[key] || anthropicChartColorFallback[fi++ % anthropicChartColorFallback.length];
+      return {
+        label: anthropicDisplayNames[key] || key,
+        data: anthData.map(d => d[key] || 0),
+        borderColor: color.border, backgroundColor: color.bg,
+        fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4
+      };
+    }); })();
     State.chartAnth = new Chart(anthCanvas, {
       type: 'line',
       data: {
         labels: anthData.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
-        datasets: sortedKeys.map((key, i) => {
-          const color = anthropicChartColors[i % anthropicChartColors.length];
-          return {
-            label: anthropicDisplayNames[key] || key,
-            data: anthData.map(d => d[key] || 0),
-            borderColor: color.border, backgroundColor: color.bg,
-            fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4
-          };
-        })
+        datasets: anthDatasets
       },
-      options: buildChartOptions(colors)
+      options: buildChartOptions(colors, computeYMax(anthDatasets))
     });
   }
 }
 
-function buildChartOptions(colors) {
+function buildChartOptions(colors, yMax) {
   return {
     responsive: true,
     maintainAspectRatio: false,
@@ -1623,7 +1636,7 @@ function buildChartOptions(colors) {
     },
     scales: {
       x: { grid: { color: colors.grid, drawBorder: false }, ticks: { color: colors.text, maxTicksLimit: 4 } },
-      y: { grid: { color: colors.grid, drawBorder: false }, ticks: { color: colors.text, callback: v => v + '%' }, min: 0, max: 100 }
+      y: { grid: { color: colors.grid, drawBorder: false }, ticks: { color: colors.text, callback: v => v + '%' }, min: 0, max: yMax || 100 }
     }
   };
 }
@@ -1891,6 +1904,7 @@ function renderSessionsTable() {
   const provider = getCurrentProvider();
   const isBoth = provider === 'both';
   const isZai = provider === 'zai';
+  const isAnthropic = provider === 'anthropic';
   const colSpan = isBoth ? 6 : isZai ? 5 : 7;
 
   let data = State.allSessionsData.map((s, i) => ({ ...s, _computed: getSessionComputedFields(s), _index: i }));
@@ -1966,6 +1980,59 @@ function renderSessionsTable() {
               <div class="detail-item">
                 <span class="detail-label">Poll Interval</span>
                 <span class="detail-value">${session.pollInterval ? Math.round(session.pollInterval / 1000) : '-'}s</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Snapshots</span>
+                <span class="detail-value">${session.snapshotCount || 0}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Snapshots/min</span>
+                <span class="detail-value">${c.snapshotsPerMin.toFixed(2)}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Duration</span>
+                <span class="detail-value">${c.durationStr}</span>
+              </div>
+            </div>
+          </div>
+        </td>
+      </tr>`;
+      return mainRow + detailRow;
+    }).join('');
+  } else if (isAnthropic) {
+    // Anthropic: show Session, Start, End, Duration, 5-Hour %, Weekly %, Weekly Sonnet %
+    tbody.innerHTML = pageData.map(session => {
+      const c = session._computed;
+      const isExpanded = State.expandedSessionId === session.id;
+      const fmtPct = (v) => v != null ? v.toFixed(1) + '%' : '-';
+      const fmtDelta = (start, end) => {
+        const d = (end || 0) - (start || 0);
+        return d >= 0 ? `+${d.toFixed(1)}%` : `${d.toFixed(1)}%`;
+      };
+      const mainRow = `<tr class="session-row" role="button" tabindex="0" data-session-id="${session.id}">
+        <td>${session.id.slice(0, 8)}${c.isActive ? ' <span class="badge">Active</span>' : ''}</td>
+        <td>${c.start.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+        <td>${session.endedAt ? new Date(session.endedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Active'}</td>
+        <td>${c.durationStr}</td>
+        <td>${fmtPct(session.maxSubRequests)}</td>
+        <td>${fmtPct(session.maxSearchRequests)}</td>
+        <td>${fmtPct(session.maxToolRequests)}</td>
+      </tr>`;
+      const detailRow = `<tr class="session-detail-row ${isExpanded ? 'expanded' : ''}" data-detail-for="${session.id}">
+        <td colspan="${colSpan}">
+          <div class="session-detail-content">
+            <div class="session-detail-grid">
+              <div class="detail-item">
+                <span class="detail-label">5-Hour</span>
+                <span class="detail-value">${fmtPct(session.startSubRequests)} &rarr; ${fmtPct(session.maxSubRequests)} (${fmtDelta(session.startSubRequests, session.maxSubRequests)})</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Weekly</span>
+                <span class="detail-value">${fmtPct(session.startSearchRequests)} &rarr; ${fmtPct(session.maxSearchRequests)} (${fmtDelta(session.startSearchRequests, session.maxSearchRequests)})</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Weekly Sonnet</span>
+                <span class="detail-value">${fmtPct(session.startToolRequests)} &rarr; ${fmtPct(session.maxToolRequests)} (${fmtDelta(session.startToolRequests, session.maxToolRequests)})</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">Snapshots</span>
@@ -2196,7 +2263,7 @@ async function loadModalChart(quotaType, effectiveProvider) {
     if (!Array.isArray(data) || data.length === 0) return;
     let datasetKey;
     if (provider === 'zai') {
-      datasetKey = quotaType === 'tokensLimit' ? 'tokensPercent' : 'timePercent';
+      datasetKey = quotaType === 'tokensLimit' ? 'tokensPercent' : quotaType === 'toolCalls' ? 'toolCallsPercent' : 'timePercent';
     } else {
       datasetKey = quotaType === 'subscription' ? 'subscriptionPercent' : quotaType === 'search' ? 'searchPercent' : 'toolCallsPercent';
     }

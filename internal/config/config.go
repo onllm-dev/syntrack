@@ -36,9 +36,10 @@ type Config struct {
 	AdminPassHash string // SHA-256 hash of password (set after DB check)
 	DBPath        string // ONWATCH_DB_PATH
 	DBPathExplicit bool  // true if user explicitly set --db or ONWATCH_DB_PATH
-	LogLevel     string        // ONWATCH_LOG_LEVEL
-	DebugMode    bool          // --debug flag (foreground mode)
-	TestMode     bool          // --test flag (test mode isolation)
+	LogLevel           string        // ONWATCH_LOG_LEVEL
+	SessionIdleTimeout time.Duration // ONWATCH_SESSION_IDLE_TIMEOUT (seconds → Duration)
+	DebugMode          bool          // --debug flag (foreground mode)
+	TestMode           bool          // --test flag (test mode isolation)
 }
 
 // envWithFallback reads the primary env var, falling back to the legacy name.
@@ -165,6 +166,13 @@ func loadFromEnvAndFlags(flags *flagValues) (*Config, error) {
 	// Log Level
 	cfg.LogLevel = envWithFallback("ONWATCH_LOG_LEVEL", "SYNTRACK_LOG_LEVEL")
 
+	// Session Idle Timeout (seconds)
+	if env := envWithFallback("ONWATCH_SESSION_IDLE_TIMEOUT", "SYNTRACK_SESSION_IDLE_TIMEOUT"); env != "" {
+		if v, err := strconv.Atoi(env); err == nil {
+			cfg.SessionIdleTimeout = time.Duration(v) * time.Second
+		}
+	}
+
 	// Debug mode (CLI flag only)
 	cfg.DebugMode = flags.debug
 
@@ -210,6 +218,9 @@ func (c *Config) applyDefaults() {
 	if c.ZaiBaseURL == "" {
 		c.ZaiBaseURL = "https://api.z.ai/api"
 	}
+	if c.SessionIdleTimeout == 0 {
+		c.SessionIdleTimeout = 600 * time.Second
+	}
 }
 
 // Validate checks the configuration for errors.
@@ -250,14 +261,14 @@ func (c *Config) Validate() error {
 // AvailableProviders returns which providers are configured.
 func (c *Config) AvailableProviders() []string {
 	var providers []string
+	if c.AnthropicToken != "" {
+		providers = append(providers, "anthropic")
+	}
 	if c.SyntheticAPIKey != "" {
 		providers = append(providers, "synthetic")
 	}
 	if c.ZaiAPIKey != "" {
 		providers = append(providers, "zai")
-	}
-	if c.AnthropicToken != "" {
-		providers = append(providers, "anthropic")
 	}
 	return providers
 }
@@ -320,6 +331,7 @@ func (c *Config) String() string {
 	}
 
 	fmt.Fprintf(&sb, "  PollInterval: %v,\n", c.PollInterval)
+	fmt.Fprintf(&sb, "  SessionIdleTimeout: %v,\n", c.SessionIdleTimeout)
 	fmt.Fprintf(&sb, "  Port: %d,\n", c.Port)
 	fmt.Fprintf(&sb, "  AdminUser: %s,\n", c.AdminUser)
 	fmt.Fprintf(&sb, "  AdminPass: ****,\n")

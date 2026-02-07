@@ -511,6 +511,22 @@ func buildZaiToolCallsResponse(snapshot *api.ZaiSnapshot) map[string]interface{}
 	return result
 }
 
+// zaiToolCallsPercent computes the tool calls utilization from a Z.ai snapshot's time_usage_details.
+func zaiToolCallsPercent(snapshot *api.ZaiSnapshot) float64 {
+	if snapshot.TimeUsageDetails == "" || snapshot.TimeUsage <= 0 {
+		return 0
+	}
+	var details []api.ZaiUsageDetail
+	if err := json.Unmarshal([]byte(snapshot.TimeUsageDetails), &details); err != nil {
+		return 0
+	}
+	var totalCalls float64
+	for _, d := range details {
+		totalCalls += d.Usage
+	}
+	return (totalCalls / snapshot.TimeUsage) * 100
+}
+
 func buildQuotaResponse(name, description string, info api.QuotaInfo, tr *tracker.Tracker, quotaType string) map[string]interface{} {
 	timeUntilReset := time.Until(info.RenewsAt)
 
@@ -651,13 +667,14 @@ func (h *Handler) historyBoth(w http.ResponseWriter, r *http.Request) {
 			zaiData := make([]map[string]interface{}, 0, len(snapshots))
 			for _, s := range snapshots {
 				zaiData = append(zaiData, map[string]interface{}{
-					"capturedAt":    s.CapturedAt.Format(time.RFC3339),
-					"tokensLimit":   s.TokensUsage,
-					"tokensUsage":   s.TokensCurrentValue,
-					"tokensPercent": float64(s.TokensPercentage),
-					"timeLimit":     s.TimeUsage,
-					"timeUsage":     s.TimeCurrentValue,
-					"timePercent":   float64(s.TimePercentage),
+					"capturedAt":       s.CapturedAt.Format(time.RFC3339),
+					"tokensLimit":      s.TokensUsage,
+					"tokensUsage":      s.TokensCurrentValue,
+					"tokensPercent":    float64(s.TokensPercentage),
+					"timeLimit":        s.TimeUsage,
+					"timeUsage":        s.TimeCurrentValue,
+					"timePercent":      float64(s.TimePercentage),
+					"toolCallsPercent": zaiToolCallsPercent(s),
 				})
 			}
 			response["zai"] = zaiData
@@ -772,13 +789,14 @@ func (h *Handler) historyZai(w http.ResponseWriter, r *http.Request) {
 	for _, snapshot := range snapshots {
 		// Z.ai API: "usage" = budget, "currentValue" = actual usage, "percentage" = server %
 		response = append(response, map[string]interface{}{
-			"capturedAt":    snapshot.CapturedAt.Format(time.RFC3339),
-			"tokensLimit":   snapshot.TokensUsage,        // budget
-			"tokensUsage":   snapshot.TokensCurrentValue,  // actual usage
-			"tokensPercent": float64(snapshot.TokensPercentage),
-			"timeLimit":     snapshot.TimeUsage,           // budget
-			"timeUsage":     snapshot.TimeCurrentValue,    // actual usage
-			"timePercent":   float64(snapshot.TimePercentage),
+			"capturedAt":        snapshot.CapturedAt.Format(time.RFC3339),
+			"tokensLimit":       snapshot.TokensUsage,        // budget
+			"tokensUsage":       snapshot.TokensCurrentValue,  // actual usage
+			"tokensPercent":     float64(snapshot.TokensPercentage),
+			"timeLimit":         snapshot.TimeUsage,           // budget
+			"timeUsage":         snapshot.TimeCurrentValue,    // actual usage
+			"timePercent":       float64(snapshot.TimePercentage),
+			"toolCallsPercent":  zaiToolCallsPercent(snapshot),
 		})
 	}
 
@@ -1295,14 +1313,17 @@ func (h *Handler) Sessions(w http.ResponseWriter, r *http.Request) {
 	response := []map[string]interface{}{}
 	for _, session := range sessions {
 		sessionMap := map[string]interface{}{
-			"id":                session.ID,
-			"startedAt":         session.StartedAt.Format(time.RFC3339),
-			"endedAt":           nil,
-			"pollInterval":      session.PollInterval,
-			"maxSubRequests":    session.MaxSubRequests,
-			"maxSearchRequests": session.MaxSearchRequests,
-			"maxToolRequests":   session.MaxToolRequests,
-			"snapshotCount":     session.SnapshotCount,
+			"id":                  session.ID,
+			"startedAt":           session.StartedAt.Format(time.RFC3339),
+			"endedAt":             nil,
+			"pollInterval":        session.PollInterval,
+			"maxSubRequests":      session.MaxSubRequests,
+			"maxSearchRequests":   session.MaxSearchRequests,
+			"maxToolRequests":     session.MaxToolRequests,
+			"startSubRequests":    session.StartSubRequests,
+			"startSearchRequests": session.StartSearchRequests,
+			"startToolRequests":   session.StartToolRequests,
+			"snapshotCount":       session.SnapshotCount,
 		}
 
 		if session.EndedAt != nil {
@@ -1327,14 +1348,17 @@ func (h *Handler) sessionsBoth(w http.ResponseWriter, r *http.Request) {
 		var list []map[string]interface{}
 		for _, s := range sessions {
 			m := map[string]interface{}{
-				"id":                s.ID,
-				"startedAt":         s.StartedAt.Format(time.RFC3339),
-				"endedAt":           nil,
-				"pollInterval":      s.PollInterval,
-				"maxSubRequests":    s.MaxSubRequests,
-				"maxSearchRequests": s.MaxSearchRequests,
-				"maxToolRequests":   s.MaxToolRequests,
-				"snapshotCount":     s.SnapshotCount,
+				"id":                  s.ID,
+				"startedAt":           s.StartedAt.Format(time.RFC3339),
+				"endedAt":             nil,
+				"pollInterval":        s.PollInterval,
+				"maxSubRequests":      s.MaxSubRequests,
+				"maxSearchRequests":   s.MaxSearchRequests,
+				"maxToolRequests":     s.MaxToolRequests,
+				"startSubRequests":    s.StartSubRequests,
+				"startSearchRequests": s.StartSearchRequests,
+				"startToolRequests":   s.StartToolRequests,
+				"snapshotCount":       s.SnapshotCount,
 			}
 			if s.EndedAt != nil {
 				m["endedAt"] = s.EndedAt.Format(time.RFC3339)

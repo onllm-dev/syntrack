@@ -17,14 +17,17 @@ type Store struct {
 
 // Session represents an agent session
 type Session struct {
-	ID                string
-	StartedAt         time.Time
-	EndedAt           *time.Time
-	PollInterval      int
-	MaxSubRequests    float64
-	MaxSearchRequests float64
-	MaxToolRequests   float64
-	SnapshotCount     int
+	ID                  string
+	StartedAt           time.Time
+	EndedAt             *time.Time
+	PollInterval        int
+	MaxSubRequests      float64
+	MaxSearchRequests   float64
+	MaxToolRequests     float64
+	StartSubRequests    float64
+	StartSearchRequests float64
+	StartToolRequests   float64
+	SnapshotCount       int
 }
 
 // ResetCycle represents a quota reset cycle
@@ -110,6 +113,9 @@ func (s *Store) createTables() error {
 			max_sub_requests REAL NOT NULL DEFAULT 0,
 			max_search_requests REAL NOT NULL DEFAULT 0,
 			max_tool_requests REAL NOT NULL DEFAULT 0,
+			start_sub_requests REAL NOT NULL DEFAULT 0,
+			start_search_requests REAL NOT NULL DEFAULT 0,
+			start_tool_requests REAL NOT NULL DEFAULT 0,
 			snapshot_count INTEGER NOT NULL DEFAULT 0
 		);
 
@@ -265,6 +271,17 @@ func (s *Store) migrateSchema() error {
 		}
 	}
 
+	// Add start_* columns to sessions if not exists
+	for _, col := range []string{"start_sub_requests", "start_search_requests", "start_tool_requests"} {
+		if _, err := s.db.Exec(fmt.Sprintf(
+			`ALTER TABLE sessions ADD COLUMN %s REAL NOT NULL DEFAULT 0`, col,
+		)); err != nil {
+			if !strings.Contains(err.Error(), "duplicate column name") {
+				return fmt.Errorf("failed to add %s to sessions: %w", col, err)
+			}
+		}
+	}
+
 	// Add time_usage_details column to zai_snapshots if not exists
 	if _, err := s.db.Exec(`
 		ALTER TABLE zai_snapshots ADD COLUMN time_usage_details TEXT NOT NULL DEFAULT ''
@@ -386,14 +403,24 @@ func (s *Store) QueryRange(start, end time.Time, limit ...int) ([]*api.Snapshot,
 	return snapshots, rows.Err()
 }
 
-// CreateSession creates a new session with the given provider
-func (s *Store) CreateSession(sessionID string, startedAt time.Time, pollInterval int, provider string) error {
+// CreateSession creates a new session with the given provider and start values.
+func (s *Store) CreateSession(sessionID string, startedAt time.Time, pollInterval int, provider string, startValues ...float64) error {
 	if provider == "" {
 		provider = "synthetic"
 	}
+	var startSub, startSearch, startTool float64
+	if len(startValues) > 0 {
+		startSub = startValues[0]
+	}
+	if len(startValues) > 1 {
+		startSearch = startValues[1]
+	}
+	if len(startValues) > 2 {
+		startTool = startValues[2]
+	}
 	_, err := s.db.Exec(
-		`INSERT INTO sessions (id, started_at, poll_interval, provider) VALUES (?, ?, ?, ?)`,
-		sessionID, startedAt.Format(time.RFC3339Nano), pollInterval, provider,
+		`INSERT INTO sessions (id, started_at, poll_interval, provider, start_sub_requests, start_search_requests, start_tool_requests) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		sessionID, startedAt.Format(time.RFC3339Nano), pollInterval, provider, startSub, startSearch, startTool,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create session: %w", err)
@@ -464,12 +491,14 @@ func (s *Store) QueryActiveSession() (*Session, error) {
 	var endedAt sql.NullString
 
 	err := s.db.QueryRow(
-		`SELECT id, started_at, ended_at, poll_interval, 
-		 max_sub_requests, max_search_requests, max_tool_requests, snapshot_count
+		`SELECT id, started_at, ended_at, poll_interval,
+		 max_sub_requests, max_search_requests, max_tool_requests,
+		 start_sub_requests, start_search_requests, start_tool_requests, snapshot_count
 		FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1`,
 	).Scan(
 		&session.ID, &startedAt, &endedAt, &session.PollInterval,
-		&session.MaxSubRequests, &session.MaxSearchRequests, &session.MaxToolRequests, &session.SnapshotCount,
+		&session.MaxSubRequests, &session.MaxSearchRequests, &session.MaxToolRequests,
+		&session.StartSubRequests, &session.StartSearchRequests, &session.StartToolRequests, &session.SnapshotCount,
 	)
 
 	if err == sql.ErrNoRows {
@@ -492,7 +521,8 @@ func (s *Store) QueryActiveSession() (*Session, error) {
 // If provider is empty, all sessions are returned. Second variadic param is limit.
 func (s *Store) QuerySessionHistory(provider ...string) ([]*Session, error) {
 	query := `SELECT id, started_at, ended_at, poll_interval,
-		 max_sub_requests, max_search_requests, max_tool_requests, snapshot_count
+		 max_sub_requests, max_search_requests, max_tool_requests,
+		 start_sub_requests, start_search_requests, start_tool_requests, snapshot_count
 		FROM sessions`
 	var args []interface{}
 	if len(provider) > 0 && provider[0] != "" {
@@ -515,7 +545,8 @@ func (s *Store) QuerySessionHistory(provider ...string) ([]*Session, error) {
 
 		err := rows.Scan(
 			&session.ID, &startedAt, &endedAt, &session.PollInterval,
-			&session.MaxSubRequests, &session.MaxSearchRequests, &session.MaxToolRequests, &session.SnapshotCount,
+			&session.MaxSubRequests, &session.MaxSearchRequests, &session.MaxToolRequests,
+			&session.StartSubRequests, &session.StartSearchRequests, &session.StartToolRequests, &session.SnapshotCount,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan session: %w", err)
@@ -768,6 +799,318 @@ func (s *Store) UpsertUser(username, passwordHash string) error {
 		return fmt.Errorf("store.UpsertUser: %w", err)
 	}
 	return nil
+}
+
+// MigrateSessionsToUsageBased recomputes sessions from historical snapshot data
+// using usage-based idle detection. It deletes all existing sessions (which represent
+// agent runs, not actual usage) and creates new ones based on when API values changed.
+// This runs once on first upgrade, controlled by a settings flag.
+func (s *Store) MigrateSessionsToUsageBased(idleTimeout time.Duration) error {
+	// Check if migration already done
+	done, err := s.GetSetting("session_migration_v2")
+	if err != nil {
+		return fmt.Errorf("store.MigrateSessionsToUsageBased: check flag: %w", err)
+	}
+	if done == "done" {
+		return nil
+	}
+
+	// Delete all existing sessions
+	if _, err := s.db.Exec("DELETE FROM sessions"); err != nil {
+		return fmt.Errorf("store.MigrateSessionsToUsageBased: delete sessions: %w", err)
+	}
+
+	// Migrate each provider
+	if err := s.migrateSyntheticSessions(idleTimeout); err != nil {
+		return fmt.Errorf("store.MigrateSessionsToUsageBased: synthetic: %w", err)
+	}
+	if err := s.migrateZaiSessions(idleTimeout); err != nil {
+		return fmt.Errorf("store.MigrateSessionsToUsageBased: zai: %w", err)
+	}
+	if err := s.migrateAnthropicSessions(idleTimeout); err != nil {
+		return fmt.Errorf("store.MigrateSessionsToUsageBased: anthropic: %w", err)
+	}
+
+	// Mark migration as complete
+	if err := s.SetSetting("session_migration_v2", "done"); err != nil {
+		return fmt.Errorf("store.MigrateSessionsToUsageBased: set flag: %w", err)
+	}
+
+	return nil
+}
+
+// migrateSyntheticSessions walks through synthetic snapshots and creates usage-based sessions.
+func (s *Store) migrateSyntheticSessions(idleTimeout time.Duration) error {
+	rows, err := s.db.Query(
+		`SELECT captured_at, sub_requests, search_requests, tool_requests
+		FROM quota_snapshots ORDER BY captured_at ASC`,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	return s.walkSnapshots(rows, "synthetic", idleTimeout, 3)
+}
+
+// migrateZaiSessions walks through Z.ai snapshots and creates usage-based sessions.
+func (s *Store) migrateZaiSessions(idleTimeout time.Duration) error {
+	rows, err := s.db.Query(
+		`SELECT captured_at, tokens_current_value, time_current_value
+		FROM zai_snapshots ORDER BY captured_at ASC`,
+	)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	return s.walkSnapshots(rows, "zai", idleTimeout, 2)
+}
+
+// migrateAnthropicSessions walks through Anthropic snapshots and creates usage-based sessions.
+func (s *Store) migrateAnthropicSessions(idleTimeout time.Duration) error {
+	// Anthropic has normalized data — we need to pivot per-snapshot quota values into a flat slice.
+	// Walk snapshot by snapshot.
+	snapRows, err := s.db.Query(
+		`SELECT id, captured_at FROM anthropic_snapshots ORDER BY captured_at ASC`,
+	)
+	if err != nil {
+		return err
+	}
+	defer snapRows.Close()
+
+	type snapshotRow struct {
+		id         int64
+		capturedAt time.Time
+	}
+	var snapshots []snapshotRow
+	for snapRows.Next() {
+		var sr snapshotRow
+		var capturedAtStr string
+		if err := snapRows.Scan(&sr.id, &capturedAtStr); err != nil {
+			return err
+		}
+		sr.capturedAt, _ = time.Parse(time.RFC3339Nano, capturedAtStr)
+		snapshots = append(snapshots, sr)
+	}
+	if err := snapRows.Err(); err != nil {
+		return err
+	}
+
+	if len(snapshots) == 0 {
+		return nil
+	}
+
+	var (
+		sessionID        string
+		sessionStart     time.Time
+		lastActivityTime time.Time
+		prevValues       map[string]float64
+		snapshotCount    int
+		maxVals          [3]float64 // sub, search, tool mapped from utilization
+	)
+
+	closeSession := func(endTime time.Time) error {
+		if sessionID == "" {
+			return nil
+		}
+		_, err := s.db.Exec(
+			`UPDATE sessions SET ended_at = ?, snapshot_count = ?,
+			 max_sub_requests = ?, max_search_requests = ?, max_tool_requests = ?
+			 WHERE id = ?`,
+			endTime.Format(time.RFC3339Nano), snapshotCount,
+			maxVals[0], maxVals[1], maxVals[2],
+			sessionID,
+		)
+		sessionID = ""
+		snapshotCount = 0
+		maxVals = [3]float64{}
+		return err
+	}
+
+	for _, snap := range snapshots {
+		// Load quota values for this snapshot
+		qRows, err := s.db.Query(
+			`SELECT quota_name, utilization FROM anthropic_quota_values WHERE snapshot_id = ? ORDER BY quota_name`,
+			snap.id,
+		)
+		if err != nil {
+			return err
+		}
+
+		currentValues := make(map[string]float64)
+		for qRows.Next() {
+			var name string
+			var util float64
+			if err := qRows.Scan(&name, &util); err != nil {
+				qRows.Close()
+				return err
+			}
+			currentValues[name] = util
+		}
+		qRows.Close()
+
+		// Determine if values changed
+		changed := false
+		if prevValues == nil {
+			// First snapshot — baseline
+			prevValues = currentValues
+			continue
+		}
+
+		if len(currentValues) != len(prevValues) {
+			changed = true
+		} else {
+			for k, v := range currentValues {
+				if pv, ok := prevValues[k]; !ok || pv != v {
+					changed = true
+					break
+				}
+			}
+		}
+		prevValues = currentValues
+
+		if changed {
+			if sessionID == "" {
+				// Start new session
+				sessionID = fmt.Sprintf("migrated-anthropic-%d", snap.id)
+				sessionStart = snap.capturedAt
+				lastActivityTime = snap.capturedAt
+				if _, err := s.db.Exec(
+					`INSERT INTO sessions (id, started_at, poll_interval, provider) VALUES (?, ?, 0, 'anthropic')`,
+					sessionID, sessionStart.Format(time.RFC3339Nano),
+				); err != nil {
+					return err
+				}
+			}
+			lastActivityTime = snap.capturedAt
+			snapshotCount++
+
+			// Track max utilization values
+			i := 0
+			for _, v := range currentValues {
+				if i < 3 && v > maxVals[i] {
+					maxVals[i] = v
+				}
+				i++
+			}
+		} else {
+			// No change
+			if sessionID != "" {
+				if snap.capturedAt.Sub(lastActivityTime) > idleTimeout {
+					if err := closeSession(lastActivityTime.Add(idleTimeout)); err != nil {
+						return err
+					}
+				} else {
+					snapshotCount++
+				}
+			}
+		}
+	}
+
+	// Close any remaining open session
+	return closeSession(lastActivityTime.Add(idleTimeout))
+}
+
+// walkSnapshots is a generic helper that walks DB rows (captured_at + N float64 values)
+// and creates usage-based sessions.
+func (s *Store) walkSnapshots(rows *sql.Rows, provider string, idleTimeout time.Duration, valueCount int) error {
+	var (
+		sessionID        string
+		sessionStart     time.Time
+		lastActivityTime time.Time
+		prevValues       []float64
+		snapshotCount    int
+		maxVals          [3]float64
+		rowIndex         int
+	)
+
+	closeSession := func(endTime time.Time) error {
+		if sessionID == "" {
+			return nil
+		}
+		_, err := s.db.Exec(
+			`UPDATE sessions SET ended_at = ?, snapshot_count = ?,
+			 max_sub_requests = ?, max_search_requests = ?, max_tool_requests = ?
+			 WHERE id = ?`,
+			endTime.Format(time.RFC3339Nano), snapshotCount,
+			maxVals[0], maxVals[1], maxVals[2],
+			sessionID,
+		)
+		sessionID = ""
+		snapshotCount = 0
+		maxVals = [3]float64{}
+		return err
+	}
+
+	for rows.Next() {
+		rowIndex++
+		var capturedAtStr string
+		values := make([]float64, valueCount)
+		scanArgs := make([]interface{}, 1+valueCount)
+		scanArgs[0] = &capturedAtStr
+		for i := range values {
+			scanArgs[i+1] = &values[i]
+		}
+		if err := rows.Scan(scanArgs...); err != nil {
+			return err
+		}
+		capturedAt, _ := time.Parse(time.RFC3339Nano, capturedAtStr)
+
+		// Determine if values changed
+		changed := false
+		if prevValues == nil {
+			prevValues = values
+			continue
+		}
+		for i, v := range values {
+			if v != prevValues[i] {
+				changed = true
+				break
+			}
+		}
+		prevValues = make([]float64, valueCount)
+		copy(prevValues, values)
+
+		if changed {
+			if sessionID == "" {
+				sessionID = fmt.Sprintf("migrated-%s-%d", provider, rowIndex)
+				sessionStart = capturedAt
+				lastActivityTime = capturedAt
+				if _, err := s.db.Exec(
+					`INSERT INTO sessions (id, started_at, poll_interval, provider) VALUES (?, ?, 0, ?)`,
+					sessionID, sessionStart.Format(time.RFC3339Nano), provider,
+				); err != nil {
+					return err
+				}
+			}
+			lastActivityTime = capturedAt
+			snapshotCount++
+
+			for i := 0; i < 3 && i < len(values); i++ {
+				if values[i] > maxVals[i] {
+					maxVals[i] = values[i]
+				}
+			}
+		} else {
+			if sessionID != "" {
+				if capturedAt.Sub(lastActivityTime) > idleTimeout {
+					if err := closeSession(lastActivityTime.Add(idleTimeout)); err != nil {
+						return err
+					}
+				} else {
+					snapshotCount++
+				}
+			}
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	// Close any remaining open session
+	return closeSession(lastActivityTime.Add(idleTimeout))
 }
 
 // DeleteAllAuthTokens removes all session tokens (used after password change).

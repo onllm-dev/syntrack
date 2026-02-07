@@ -517,8 +517,8 @@ button, input, select { font-family: inherit; }
   height: auto;
 }
 .chart-half {
-  height: 260px;
   position: relative;
+  height: 260px;
 }
 .chart-half canvas {
   width: 100% !important;

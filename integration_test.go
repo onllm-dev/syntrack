@@ -103,7 +103,7 @@ func TestIntegration_FullCycle(t *testing.T) {
 	tr := tracker.New(db, discardLogger())
 
 	// Create agent with short interval for testing
-	ag := agent.New(client, db, tr, 100*time.Millisecond, discardLogger())
+	ag := agent.New(client, db, tr, 100*time.Millisecond, discardLogger(), nil)
 
 	// Run agent for a short time
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
@@ -249,7 +249,7 @@ func TestIntegration_ResetDetection(t *testing.T) {
 
 	// First poll
 	ctx1, cancel1 := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	ag1 := agent.New(client, db, tr, 1*time.Hour, discardLogger()) // Long interval, we'll cancel immediately
+	ag1 := agent.New(client, db, tr, 1*time.Hour, discardLogger(), nil) // Long interval, we'll cancel immediately
 	go ag1.Run(ctx1)
 	time.Sleep(150 * time.Millisecond)
 	cancel1()
@@ -257,7 +257,7 @@ func TestIntegration_ResetDetection(t *testing.T) {
 
 	// Second poll - should detect reset
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 100*time.Millisecond)
-	ag2 := agent.New(client, db, tr, 1*time.Hour, discardLogger())
+	ag2 := agent.New(client, db, tr, 1*time.Hour, discardLogger(), nil)
 	go ag2.Run(ctx2)
 	time.Sleep(150 * time.Millisecond)
 	cancel2()
@@ -339,7 +339,7 @@ func TestIntegration_DashboardRendersData(t *testing.T) {
 	tr := tracker.New(db, discardLogger())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
-	ag := agent.New(client, db, tr, 1*time.Hour, discardLogger())
+	ag := agent.New(client, db, tr, 1*time.Hour, discardLogger(), nil)
 	go ag.Run(ctx)
 	time.Sleep(250 * time.Millisecond)
 	cancel()
@@ -415,7 +415,7 @@ func TestIntegration_GracefulShutdown(t *testing.T) {
 
 	client := api.NewClient("syn_test_key", discardLogger(), api.WithBaseURL(server.URL+"/v2/quotas"))
 	tr := tracker.New(db, discardLogger())
-	ag := agent.New(client, db, tr, 1*time.Second, discardLogger())
+	ag := agent.New(client, db, tr, 1*time.Second, discardLogger(), nil)
 
 	// Create web server
 	handler := web.NewHandler(db, tr, discardLogger())

@@ -169,9 +169,9 @@ make coverage              # Generate HTML coverage report → coverage.html
 
 ## Multi-Provider Architecture
 
-onWatch supports two providers: Synthetic and Z.ai. When both API keys are set, both agents run in parallel goroutines, each polling its respective API and storing snapshots in the shared SQLite database.
+onWatch supports three providers: Synthetic, Z.ai, and Anthropic. When multiple API keys are set, all agents run in parallel goroutines, each polling its respective API and storing snapshots in the shared SQLite database.
 
-The dashboard switches between providers via the `?provider=` query parameter. Each provider renders its own quota cards, insight cards, and stat summaries. Synthetic insights focus on cycle utilization and billing periods; Z.ai insights show plan capacity (daily/monthly token budgets), tokens-per-call efficiency, and top tool analysis.
+The dashboard switches between providers via the `?provider=` query parameter. Each provider renders its own quota cards, insight cards, and stat summaries. Synthetic insights focus on cycle utilization and billing periods; Z.ai insights show plan capacity (daily/monthly token budgets), tokens-per-call efficiency, and top tool analysis; Anthropic insights show burn rate forecasting, window averages, and projected exhaustion.
 
 Key source files:
 
@@ -179,10 +179,13 @@ Key source files:
 |------|---------|
 | `internal/api/client.go` | Synthetic API client |
 | `internal/api/zai_client.go` | Z.ai API client |
+| `internal/api/anthropic_client.go` | Anthropic OAuth API client |
 | `internal/agent/agent.go` | Synthetic polling agent |
 | `internal/agent/zai_agent.go` | Z.ai polling agent |
+| `internal/agent/anthropic_agent.go` | Anthropic polling agent |
 | `internal/store/store.go` | Shared SQLite store |
 | `internal/store/zai_store.go` | Z.ai-specific queries |
+| `internal/store/anthropic_store.go` | Anthropic-specific queries |
 | `internal/web/handlers.go` | Provider-aware route handlers |
 
 ---
@@ -311,24 +314,45 @@ The tool generates:
 - Console summary with RAM statistics and HTTP performance
 - JSON report: `perf-report-YYYYMMDD-HHMMSS.json`
 
-Example results:
+Example results (all three agents -- Synthetic, Z.ai, Anthropic -- polling in parallel):
 ```
-IDLE STATE:
-  Avg RSS: 26.3 MB
-  
-LOAD STATE:
-  Avg RSS: 28.3 MB
-  Delta: +2.0 MB (+7.7%)
-  
+IDLE STATE (3 agents polling concurrently):
+  Avg RSS: 27.5 MB
+  P95 RSS: 27.5 MB
+
+LOAD STATE (1,160 requests in 15s while agents poll):
+  Avg RSS: 28.5 MB
+  P95 RSS: 29.0 MB
+  Delta:   +0.9 MB (+3.4%)
+
 HTTP PERFORMANCE:
-  /api/current: 290 reqs, avg 0.29ms
-  /api/insights: 290 reqs, avg 0.26ms
+  /                    145 reqs  avg: 0.69ms
+  /api/current         145 reqs  avg: 0.29ms
+  /api/history         145 reqs  avg: 0.29ms
+  /api/cycles          145 reqs  avg: 0.28ms
+  /api/insights        145 reqs  avg: 0.28ms
+  /api/summary         145 reqs  avg: 0.27ms
+  /api/sessions        145 reqs  avg: 0.27ms
+  /api/providers       145 reqs  avg: 0.32ms
 ```
+
+### Latest Benchmark (2026-02-08)
+
+Measured with the built-in `tools/perf-monitor` while all three provider agents (Synthetic, Z.ai, Anthropic) ran in parallel, each polling its respective API every 60 seconds and writing snapshots to the shared SQLite database:
+
+| Metric | Idle | Under Load | Budget |
+|--------|------|------------|--------|
+| Avg RSS | 27.5 MB | 28.5 MB | 30 MB (idle) / 50 MB (load) |
+| P95 RSS | 27.5 MB | 29.0 MB | -- |
+| Load delta | -- | +0.9 MB (+3.4%) | <5 MB |
+| Total requests | -- | 1,160 in 15s | -- |
+| Avg API response | -- | 0.28ms | <5 ms |
+| Avg dashboard response | -- | 0.69ms | <10 ms |
 
 ### Interpreting Results
 
 **Healthy metrics:**
-- Idle RAM: 25-30 MB
+- Idle RAM: <30 MB (with all three agents)
 - Load overhead: <5 MB
 - API response: <5 ms
 - Dashboard response: <10 ms

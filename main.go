@@ -482,6 +482,11 @@ func run() error {
 		logger.Info("Closed orphaned sessions", "count", closed)
 	}
 
+	// Migrate existing sessions to usage-based detection (runs once)
+	if err := db.MigrateSessionsToUsageBased(cfg.SessionIdleTimeout); err != nil {
+		logger.Error("Session migration failed", "error", err)
+	}
+
 	// Auto-detect Anthropic token if not explicitly configured
 	if cfg.AnthropicToken == "" {
 		if token := api.DetectAnthropicToken(logger); token != "" {
@@ -514,10 +519,13 @@ func run() error {
 	// Create components
 	tr := tracker.New(db, logger)
 
-	// Create agents
+	// Create agents with usage-based session managers
+	idleTimeout := cfg.SessionIdleTimeout
+
 	var ag *agent.Agent
 	if syntheticClient != nil {
-		ag = agent.New(syntheticClient, db, tr, cfg.PollInterval, logger)
+		sm := agent.NewSessionManager(db, "synthetic", idleTimeout, logger)
+		ag = agent.New(syntheticClient, db, tr, cfg.PollInterval, logger, sm)
 	}
 
 	// Create Z.ai tracker
@@ -528,7 +536,8 @@ func run() error {
 
 	var zaiAg *agent.ZaiAgent
 	if zaiClient != nil {
-		zaiAg = agent.NewZaiAgent(zaiClient, db, zaiTr, cfg.PollInterval, logger)
+		zaiSm := agent.NewSessionManager(db, "zai", idleTimeout, logger)
+		zaiAg = agent.NewZaiAgent(zaiClient, db, zaiTr, cfg.PollInterval, logger, zaiSm)
 	}
 
 	// Create Anthropic tracker
@@ -539,7 +548,8 @@ func run() error {
 
 	var anthropicAg *agent.AnthropicAgent
 	if anthropicClient != nil {
-		anthropicAg = agent.NewAnthropicAgent(anthropicClient, db, anthropicTr, cfg.PollInterval, logger)
+		anthropicSm := agent.NewSessionManager(db, "anthropic", idleTimeout, logger)
+		anthropicAg = agent.NewAnthropicAgent(anthropicClient, db, anthropicTr, cfg.PollInterval, logger, anthropicSm)
 	}
 
 	handler := web.NewHandler(db, tr, logger, nil, cfg, zaiTr)

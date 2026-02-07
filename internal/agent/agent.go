@@ -3,11 +3,9 @@ package agent
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/onllm-dev/onwatch/internal/api"
 	"github.com/onllm-dev/onwatch/internal/store"
 	"github.com/onllm-dev/onwatch/internal/tracker"
@@ -15,16 +13,16 @@ import (
 
 // Agent manages the background polling loop for quota tracking.
 type Agent struct {
-	client    *api.Client
-	store     *store.Store
-	tracker   *tracker.Tracker
-	interval  time.Duration
-	logger    *slog.Logger
-	sessionID string
+	client   *api.Client
+	store    *store.Store
+	tracker  *tracker.Tracker
+	interval time.Duration
+	logger   *slog.Logger
+	sm       *SessionManager
 }
 
 // New creates a new Agent with the given dependencies.
-func New(client *api.Client, store *store.Store, tracker *tracker.Tracker, interval time.Duration, logger *slog.Logger) *Agent {
+func New(client *api.Client, store *store.Store, tracker *tracker.Tracker, interval time.Duration, logger *slog.Logger, sm *SessionManager) *Agent {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -34,33 +32,22 @@ func New(client *api.Client, store *store.Store, tracker *tracker.Tracker, inter
 		tracker:  tracker,
 		interval: interval,
 		logger:   logger,
+		sm:       sm,
 	}
 }
 
-// Run starts the agent's polling loop. It creates a session, polls immediately,
+// Run starts the agent's polling loop. It polls immediately,
 // then continues at the configured interval until the context is cancelled.
-// On context cancellation, it gracefully shuts down and closes the session.
+// Sessions are managed by the SessionManager based on usage changes.
 func (a *Agent) Run(ctx context.Context) error {
-	// Generate session ID
-	a.sessionID = uuid.New().String()
+	a.logger.Info("Agent started", "interval", a.interval)
 
-	// Create session in database
-	if err := a.store.CreateSession(a.sessionID, time.Now().UTC(), int(a.interval.Milliseconds()), "synthetic"); err != nil {
-		return fmt.Errorf("agent: failed to create session: %w", err)
-	}
-
-	a.logger.Info("Agent started",
-		"session_id", a.sessionID,
-		"interval", a.interval,
-	)
-
-	// Ensure session is closed on exit
+	// Ensure any active session is closed on exit
 	defer func() {
-		if err := a.store.CloseSession(a.sessionID, time.Now().UTC()); err != nil {
-			a.logger.Error("Failed to close session", "error", err)
-		} else {
-			a.logger.Info("Agent stopped", "session_id", a.sessionID)
+		if a.sm != nil {
+			a.sm.Close()
 		}
+		a.logger.Info("Agent stopped")
 	}()
 
 	// Poll immediately on start
@@ -79,11 +66,6 @@ func (a *Agent) Run(ctx context.Context) error {
 			return nil
 		}
 	}
-}
-
-// SessionID returns the current session ID. Returns empty string if Run() hasn't been called.
-func (a *Agent) SessionID() string {
-	return a.sessionID
 }
 
 // poll performs a single poll cycle: fetch quotas, store snapshot, update tracker.
@@ -110,12 +92,6 @@ func (a *Agent) poll(ctx context.Context) {
 	// Store snapshot (always do this, even if tracker fails)
 	if _, err := a.store.InsertSnapshot(snapshot); err != nil {
 		a.logger.Error("Failed to insert snapshot", "error", err)
-		// Continue to try updating tracker and session even if storage failed
-	} else {
-		// Increment snapshot count for successful storage
-		if err := a.store.IncrementSnapshotCount(a.sessionID); err != nil {
-			a.logger.Error("Failed to increment snapshot count", "error", err)
-		}
 	}
 
 	// Process with tracker (log error but don't stop)
@@ -123,19 +99,17 @@ func (a *Agent) poll(ctx context.Context) {
 		a.logger.Error("Tracker processing failed", "error", err)
 	}
 
-	// Update session max values
-	if err := a.store.UpdateSessionMaxRequests(
-		a.sessionID,
-		snapshot.Sub.Requests,
-		snapshot.Search.Requests,
-		snapshot.ToolCall.Requests,
-	); err != nil {
-		a.logger.Error("Failed to update session max", "error", err)
+	// Report to session manager for usage-based session detection
+	if a.sm != nil {
+		a.sm.ReportPoll([]float64{
+			snapshot.Sub.Requests,
+			snapshot.Search.Requests,
+			snapshot.ToolCall.Requests,
+		})
 	}
 
 	// Log poll completion with key metrics
 	a.logger.Info("Poll complete",
-		"session_id", a.sessionID,
 		"sub_requests", resp.Subscription.Requests,
 		"sub_limit", resp.Subscription.Limit,
 		"search_requests", resp.Search.Hourly.Requests,
