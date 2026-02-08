@@ -2588,10 +2588,14 @@ function renderOverviewTable() {
       <th data-sort-key="duration" role="button" tabindex="0">Duration <span class="sort-arrow"></span></th>
       <th data-sort-key="totalDelta" role="button" tabindex="0">Total Delta <span class="sort-arrow"></span></th>`;
 
+  const overviewProv = getOverviewProvider();
+  const usePercent = overviewProv === 'anthropic';
+
   quotaNames.forEach(qn => {
     const isPrimary = qn === State.overviewGroupBy;
     const displayName = overviewQuotaDisplayNames[qn] || qn;
-    headerHtml += `<th data-sort-key="cq_${qn}" role="button" tabindex="0" ${isPrimary ? 'class="overview-primary-col"' : ''}>${displayName} % <span class="sort-arrow"></span></th>`;
+    const suffix = usePercent ? ' %' : '';
+    headerHtml += `<th data-sort-key="cq_${qn}" role="button" tabindex="0" ${isPrimary ? 'class="overview-primary-col"' : ''}>${displayName}${suffix} <span class="sort-arrow"></span></th>`;
   });
   headerHtml += '</tr>';
   thead.innerHTML = headerHtml;
@@ -2660,7 +2664,16 @@ function renderOverviewTable() {
         const pct = getCrossQuotaPercent(row, qn);
         const isPrimary = qn === State.overviewGroupBy;
         const cls = getThresholdClass(pct);
-        html += `<td class="${cls}${isPrimary ? ' overview-primary-val' : ''}">${pct >= 0 ? pct.toFixed(1) + '%' : '--'}</td>`;
+        let cellVal = '--';
+        if (pct >= 0) {
+          if (usePercent) {
+            cellVal = pct.toFixed(1) + '%';
+          } else {
+            const cq = getCrossQuotaValue(row, qn);
+            cellVal = cq ? formatNumber(cq.value) : pct.toFixed(1) + '%';
+          }
+        }
+        html += `<td class="${cls}${isPrimary ? ' overview-primary-val' : ''}">${cellVal}</td>`;
       });
 
       html += '</tr>';
@@ -2685,6 +2698,20 @@ function getCrossQuotaPercent(row, quotaName) {
   if (!row.crossQuotas || row.crossQuotas.length === 0) return -1;
   const entry = row.crossQuotas.find(cq => cq.name === quotaName);
   return entry ? entry.percent : -1;
+}
+
+function getCrossQuotaValue(row, quotaName) {
+  if (!row.crossQuotas || row.crossQuotas.length === 0) return null;
+  return row.crossQuotas.find(cq => cq.name === quotaName) || null;
+}
+
+function getOverviewProvider() {
+  const gb = State.overviewGroupBy;
+  if (!gb) return getCurrentProvider();
+  for (const [prov, cats] of Object.entries(renewalCategories)) {
+    if (cats.some(c => c.groupBy === gb)) return prov;
+  }
+  return getCurrentProvider();
 }
 
 function getThresholdClass(pct) {

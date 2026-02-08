@@ -565,18 +565,6 @@ button, input, select { font-family: inherit; }
 .quota-card:active { transform: translateY(0); }
 .quota-card.anthropic-card:hover { border-color: var(--accent-anthropic); }
 
-/* Anthropic grid: 2 columns for taller, narrower cards */
-#quota-grid-anthropic {
-  grid-template-columns: repeat(2, 1fr);
-}
-#quota-grid-anthropic .quota-card {
-  padding: 24px 22px 20px;
-}
-/* Animation delays for up to 6 Anthropic cards */
-#quota-grid-anthropic .quota-card:nth-child(4) { animation-delay: 180ms; }
-#quota-grid-anthropic .quota-card:nth-child(5) { animation-delay: 240ms; }
-#quota-grid-anthropic .quota-card:nth-child(6) { animation-delay: 300ms; }
-
 @keyframes cardEntrance {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -842,8 +830,8 @@ button, input, select { font-family: inherit; }
 /* Insight Cards Grid */
 .insights-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
 }
 .insights-cards:empty { display: none; }
 
@@ -877,12 +865,14 @@ button, input, select { font-family: inherit; }
 .insight-card {
   border-radius: var(--radius-md);
   border: 1px solid var(--border-light);
-  padding: 10px 14px;
+  padding: 16px;
   cursor: pointer;
   transition: all var(--transition-base);
   position: relative;
   overflow: hidden;
   background: var(--surface-card-alt);
+  display: flex;
+  flex-direction: column;
 }
 .insight-card:hover {
   transform: translateY(-1px);
@@ -907,15 +897,20 @@ button, input, select { font-family: inherit; }
 }
 
 .insight-card-header {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  grid-template-rows: auto 1fr auto;
+  gap: 4px 6px;
   align-items: center;
-  gap: 8px;
+  flex: 1;
 }
 
 .insight-card-icon {
   flex-shrink: 0;
   width: 16px;
   height: 16px;
+  grid-row: 1;
+  grid-column: 1;
 }
 .insight-card.severity-positive .insight-card-icon { color: var(--status-healthy); }
 .insight-card.severity-warning .insight-card-icon { color: var(--status-warning); }
@@ -923,18 +918,25 @@ button, input, select { font-family: inherit; }
 .insight-card.severity-info .insight-card-icon { color: var(--status-info); }
 
 .insight-card-title {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   line-height: 1.3;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  grid-row: 1;
+  grid-column: 2;
 }
 .insight-card-values {
   display: flex;
-  align-items: baseline;
-  gap: 5px;
-  margin-left: auto;
-  white-space: nowrap;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  grid-row: 2;
+  grid-column: 1 / -1;
+  align-self: center;
+  padding: 8px 0;
 }
 
 .insight-card-chevron {
@@ -943,22 +945,26 @@ button, input, select { font-family: inherit; }
   color: var(--text-muted);
   transition: transform var(--transition-base);
   flex-shrink: 0;
+  grid-row: 1;
+  grid-column: 4;
 }
 .insight-card.expanded .insight-card-chevron { transform: rotate(180deg); }
 
 .insight-card-metric {
-  font-size: 15px;
+  font-size: 22px;
   font-weight: 700;
   font-family: var(--font-mono);
   color: var(--text-primary);
   line-height: 1;
+  text-align: center;
 }
 
 .insight-card-sublabel {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--text-muted);
   letter-spacing: 0.03em;
   font-weight: 500;
+  text-align: center;
 }
 
 .insight-card-detail {
@@ -994,6 +1000,8 @@ button, input, select { font-family: inherit; }
   color: var(--text-muted);
   cursor: pointer;
   border-radius: 4px;
+  grid-row: 1;
+  grid-column: 3;
   opacity: 0;
   transition: opacity var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
   flex-shrink: 0;
@@ -1779,7 +1787,7 @@ button, input, select { font-family: inherit; }
   .app-header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
   .brand-text { font-size: 18px; }
   .main-content { padding: 16px; }
-  .quota-grid, #quota-grid-anthropic { grid-template-columns: 1fr; gap: 14px; }
+  .quota-grid { grid-template-columns: 1fr; gap: 14px; }
   .quota-card { padding: 18px; }
   .range-selector { width: 100%; }
   .range-btn { flex: 1; padding: 8px; font-size: 12px; }
@@ -1793,7 +1801,7 @@ button, input, select { font-family: inherit; }
   .cycles-filters-inline .filter-pills { flex: 1; }
   .filter-pill { flex: 1; text-align: center; padding: 5px 6px; font-size: 11px; }
   .insights-stats { grid-template-columns: repeat(2, 1fr); }
-  .insights-cards { grid-template-columns: 1fr; }
+  .insights-cards { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .welcome-title { font-size: 22px; }
   .both-view { grid-template-columns: 1fr; gap: 16px; }
   .chart-container.both-charts { grid-template-columns: 1fr; }
