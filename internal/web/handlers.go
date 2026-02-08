@@ -142,16 +142,22 @@ func parseInsightsRange(rangeStr string) time.Duration {
 	}
 }
 
-// formatDuration formats a duration as a human-readable string (e.g., "4h 16m")
+// formatDuration formats a duration as a human-readable string (e.g., "4d 11h" or "3h 16m")
 func formatDuration(d time.Duration) string {
 	if d < 0 {
 		return "Resetting..."
 	}
 
-	hours := int(d.Hours())
+	totalHours := int(d.Hours())
+	days := totalHours / 24
+	hours := totalHours % 24
 	minutes := int(d.Minutes()) % 60
 
-	if hours > 0 && minutes > 0 {
+	if days > 0 && hours > 0 {
+		return fmt.Sprintf("%dd %dh", days, hours)
+	} else if days > 0 {
+		return fmt.Sprintf("%dd %dm", days, minutes)
+	} else if hours > 0 && minutes > 0 {
 		return fmt.Sprintf("%dh %dm", hours, minutes)
 	} else if hours > 0 {
 		return fmt.Sprintf("%dh", hours)

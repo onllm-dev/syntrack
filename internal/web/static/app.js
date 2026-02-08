@@ -548,12 +548,10 @@ async function loadAnthropicModalCycles(quotaName) {
       const start = new Date(cycle.cycleStart);
       const end = cycle.cycleEnd ? new Date(cycle.cycleEnd) : new Date();
       const durationMins = Math.round((end - start) / 60000);
-      const hours = Math.floor(durationMins / 60);
-      const mins = durationMins % 60;
       const isActive = !cycle.cycleEnd;
       return `<tr>
         <td>#${cycle.id}${isActive ? ' <span class="badge">Active</span>' : ''}</td>
-        <td>${hours}h ${mins}m</td>
+        <td>${formatDurationMins(durationMins)}</td>
         <td>${formatNumber(cycle.peakUtilization || 0)}</td>
         <td>${formatNumber(cycle.totalDelta || 0)}</td>
       </tr>`;
@@ -565,12 +563,25 @@ async function loadAnthropicModalCycles(quotaName) {
 
 function formatDuration(seconds) {
   if (seconds < 0) return 'Resetting...';
-  const h = Math.floor(seconds / 3600);
+  const totalHours = Math.floor(seconds / 3600);
+  const d = Math.floor(totalHours / 24);
+  const h = totalHours % 24;
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
+  if (d > 0 && h > 0) return `${d}d ${h}h`;
+  if (d > 0) return `${d}d ${m}m`;
   if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${s}s`;
   return '< 1m';
+}
+
+function formatDurationMins(durationMins) {
+  const days = Math.floor(durationMins / 1440);
+  const hours = Math.floor((durationMins % 1440) / 60);
+  const mins = durationMins % 60;
+  if (days > 0 && hours > 0) return `${days}d ${hours}h`;
+  if (days > 0) return `${days}d ${mins}m`;
+  return `${hours}h ${mins}m`;
 }
 
 function formatNumber(num) {
@@ -1750,10 +1761,8 @@ function getCycleComputedFields(cycle) {
   const start = new Date(cycle.cycleStart);
   const end = cycle.cycleEnd ? new Date(cycle.cycleEnd) : new Date();
   const durationMins = Math.round((end - start) / 60000);
-  const hours = Math.floor(durationMins / 60);
-  const mins = durationMins % 60;
   const rate = durationMins > 0 ? cycle.totalDelta / (durationMins / 60) : 0;
-  return { start, end, durationMins, durationStr: `${hours}h ${mins}m`, rate, isActive: !cycle.cycleEnd };
+  return { start, end, durationMins, durationStr: formatDurationMins(durationMins), rate, isActive: !cycle.cycleEnd };
 }
 
 function groupCyclesData(cycles, groupMs) {
@@ -1816,8 +1825,6 @@ function renderCyclesTable() {
     const start = new Date(bucket.earliestStart);
     const end = bucket.latestEnd ? new Date(bucket.latestEnd) : new Date();
     const durationMins = Math.round((end - start) / 60000);
-    const hours = Math.floor(durationMins / 60);
-    const mins = durationMins % 60;
     const rate = durationMins > 0 ? bucket.totalDelta / (durationMins / 60) : 0;
     const isActive = !bucket.latestEnd;
     return {
@@ -1827,7 +1834,7 @@ function renderCyclesTable() {
         start,
         end,
         durationMins,
-        durationStr: `${hours}h ${mins}m`,
+        durationStr: formatDurationMins(durationMins),
         rate,
         isActive
       }
@@ -1929,15 +1936,13 @@ function getSessionComputedFields(session) {
   const start = new Date(session.startedAt);
   const end = session.endedAt ? new Date(session.endedAt) : new Date();
   const durationMins = Math.round((end - start) / 60000);
-  const hours = Math.floor(durationMins / 60);
-  const mins = durationMins % 60;
   const totalConsumption = (session.maxSubRequests || 0) + (session.maxSearchRequests || 0) + (session.maxToolRequests || 0);
   const durationHours = durationMins / 60;
   const consumptionRate = durationHours > 0 ? totalConsumption / durationHours : 0;
   const snapshotsPerMin = durationMins > 0 ? (session.snapshotCount || 0) / durationMins : 0;
   return {
     start, end, durationMins,
-    durationStr: `${hours}h ${mins}m`,
+    durationStr: formatDurationMins(durationMins),
     isActive: !session.endedAt,
     totalConsumption, consumptionRate, snapshotsPerMin, durationHours
   };

@@ -565,6 +565,18 @@ button, input, select { font-family: inherit; }
 .quota-card:active { transform: translateY(0); }
 .quota-card.anthropic-card:hover { border-color: var(--accent-anthropic); }
 
+/* Anthropic grid: 2 columns for taller, narrower cards */
+#quota-grid-anthropic {
+  grid-template-columns: repeat(2, 1fr);
+}
+#quota-grid-anthropic .quota-card {
+  padding: 24px 22px 20px;
+}
+/* Animation delays for up to 6 Anthropic cards */
+#quota-grid-anthropic .quota-card:nth-child(4) { animation-delay: 180ms; }
+#quota-grid-anthropic .quota-card:nth-child(5) { animation-delay: 240ms; }
+#quota-grid-anthropic .quota-card:nth-child(6) { animation-delay: 300ms; }
+
 @keyframes cardEntrance {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1767,7 +1779,7 @@ button, input, select { font-family: inherit; }
   .app-header { padding: 12px 16px; flex-wrap: wrap; gap: 8px; }
   .brand-text { font-size: 18px; }
   .main-content { padding: 16px; }
-  .quota-grid { grid-template-columns: 1fr; gap: 14px; }
+  .quota-grid, #quota-grid-anthropic { grid-template-columns: 1fr; gap: 14px; }
   .quota-card { padding: 18px; }
   .range-selector { width: 100%; }
   .range-btn { flex: 1; padding: 8px; font-size: 12px; }
