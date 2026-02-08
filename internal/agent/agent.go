@@ -14,13 +14,20 @@ import (
 
 // Agent manages the background polling loop for quota tracking.
 type Agent struct {
-	client   *api.Client
-	store    *store.Store
-	tracker  *tracker.Tracker
-	interval time.Duration
-	logger   *slog.Logger
-	sm       *SessionManager
-	notifier *notify.NotificationEngine
+	client       *api.Client
+	store        *store.Store
+	tracker      *tracker.Tracker
+	interval     time.Duration
+	logger       *slog.Logger
+	sm           *SessionManager
+	notifier     *notify.NotificationEngine
+	pollingCheck func() bool
+}
+
+// SetPollingCheck sets a function that is called before each poll.
+// If it returns false, the poll is skipped (provider polling disabled).
+func (a *Agent) SetPollingCheck(fn func() bool) {
+	a.pollingCheck = fn
 }
 
 // SetNotifier sets the notification engine for sending alerts.
@@ -77,6 +84,10 @@ func (a *Agent) Run(ctx context.Context) error {
 
 // poll performs a single poll cycle: fetch quotas, store snapshot, update tracker.
 func (a *Agent) poll(ctx context.Context) {
+	if a.pollingCheck != nil && !a.pollingCheck() {
+		return // polling disabled for this provider
+	}
+
 	// Fetch quotas from API
 	resp, err := a.client.FetchQuotas(ctx)
 	if err != nil {

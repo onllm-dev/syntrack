@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -602,6 +603,33 @@ func run() error {
 	}
 	if anthropicAg != nil {
 		anthropicAg.SetNotifier(notifier)
+	}
+
+	// Wire polling checks — agents skip poll when telemetry disabled
+	isPollingEnabled := func(providerKey string) bool {
+		v, err := db.GetSetting("provider_visibility")
+		if err != nil || v == "" {
+			return true // default: polling enabled
+		}
+		var vis map[string]map[string]bool
+		if json.Unmarshal([]byte(v), &vis) != nil {
+			return true
+		}
+		if pv, ok := vis[providerKey]; ok {
+			if polling, exists := pv["polling"]; exists {
+				return polling
+			}
+		}
+		return true
+	}
+	if ag != nil {
+		ag.SetPollingCheck(func() bool { return isPollingEnabled("synthetic") })
+	}
+	if zaiAg != nil {
+		zaiAg.SetPollingCheck(func() bool { return isPollingEnabled("zai") })
+	}
+	if anthropicAg != nil {
+		anthropicAg.SetPollingCheck(func() bool { return isPollingEnabled("anthropic") })
 	}
 
 	// Wire reset callbacks to trackers

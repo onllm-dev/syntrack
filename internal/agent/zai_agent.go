@@ -14,13 +14,20 @@ import (
 
 // ZaiAgent manages the background polling loop for Z.ai quota tracking.
 type ZaiAgent struct {
-	client   *api.ZaiClient
-	store    *store.Store
-	tracker  *tracker.ZaiTracker
-	interval time.Duration
-	logger   *slog.Logger
-	sm       *SessionManager
-	notifier *notify.NotificationEngine
+	client       *api.ZaiClient
+	store        *store.Store
+	tracker      *tracker.ZaiTracker
+	interval     time.Duration
+	logger       *slog.Logger
+	sm           *SessionManager
+	notifier     *notify.NotificationEngine
+	pollingCheck func() bool
+}
+
+// SetPollingCheck sets a function that is called before each poll.
+// If it returns false, the poll is skipped (provider polling disabled).
+func (a *ZaiAgent) SetPollingCheck(fn func() bool) {
+	a.pollingCheck = fn
 }
 
 // SetNotifier sets the notification engine for sending alerts.
@@ -76,6 +83,10 @@ func (a *ZaiAgent) Run(ctx context.Context) error {
 
 // poll performs a single Z.ai poll cycle: fetch quotas, store snapshot.
 func (a *ZaiAgent) poll(ctx context.Context) {
+	if a.pollingCheck != nil && !a.pollingCheck() {
+		return // polling disabled for this provider
+	}
+
 	resp, err := a.client.FetchQuotas(ctx)
 	if err != nil {
 		if ctx.Err() != nil {

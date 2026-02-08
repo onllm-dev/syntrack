@@ -32,8 +32,9 @@ type NotificationConfig struct {
 
 // ThresholdOverride allows per-quota threshold customization.
 type ThresholdOverride struct {
-	Warning  float64 `json:"warning"`
-	Critical float64 `json:"critical"`
+	Warning    float64 `json:"warning"`
+	Critical   float64 `json:"critical"`
+	IsAbsolute bool    `json:"is_absolute"`
 }
 
 // NotificationTypes controls which notification types are enabled.
@@ -98,10 +99,11 @@ type notificationSettingsJSON struct {
 	NotifyReset       bool    `json:"notify_reset"`
 	CooldownMinutes   int     `json:"cooldown_minutes"`
 	Overrides         []struct {
-		QuotaKey string  `json:"quota_key"`
-		Provider string  `json:"provider"`
-		Warning  float64 `json:"warning"`
-		Critical float64 `json:"critical"`
+		QuotaKey   string  `json:"quota_key"`
+		Provider   string  `json:"provider"`
+		Warning    float64 `json:"warning"`
+		Critical   float64 `json:"critical"`
+		IsAbsolute bool    `json:"is_absolute"`
 	} `json:"overrides"`
 }
 
@@ -138,7 +140,7 @@ func (e *NotificationEngine) Reload() error {
 
 	overrides := make(map[string]ThresholdOverride, len(notif.Overrides))
 	for _, o := range notif.Overrides {
-		overrides[o.QuotaKey] = ThresholdOverride{Warning: o.Warning, Critical: o.Critical}
+		overrides[o.QuotaKey] = ThresholdOverride{Warning: o.Warning, Critical: o.Critical, IsAbsolute: o.IsAbsolute}
 	}
 	e.cfg.Overrides = overrides
 
@@ -255,11 +257,21 @@ func (e *NotificationEngine) Check(status QuotaStatus) {
 	warningThreshold := cfg.Warning
 	criticalThreshold := cfg.Critical
 	if override, ok := cfg.Overrides[status.QuotaKey]; ok {
-		if override.Warning > 0 {
-			warningThreshold = override.Warning
-		}
-		if override.Critical > 0 {
-			criticalThreshold = override.Critical
+		if override.IsAbsolute && status.Limit > 0 {
+			// Convert absolute values to percentage for comparison
+			if override.Warning > 0 {
+				warningThreshold = (override.Warning / status.Limit) * 100
+			}
+			if override.Critical > 0 {
+				criticalThreshold = (override.Critical / status.Limit) * 100
+			}
+		} else {
+			if override.Warning > 0 {
+				warningThreshold = override.Warning
+			}
+			if override.Critical > 0 {
+				criticalThreshold = override.Critical
+			}
 		}
 	}
 

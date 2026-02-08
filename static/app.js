@@ -3072,7 +3072,7 @@ async function loadSettings() {
       setVal('notify-cooldown', n.cooldown_minutes || 30);
       // Load overrides
       if (n.overrides && n.overrides.length > 0) {
-        n.overrides.forEach(o => addOverrideRow(o.quota_key, o.provider, o.warning, o.critical));
+        n.overrides.forEach(o => addOverrideRow(o.quota_key, o.provider, o.warning, o.critical, o.is_absolute));
       }
     }
 
@@ -3122,17 +3122,29 @@ function populateProviderToggles(visibility) {
   providers.forEach(p => {
     const vis = visibility[p.key] || { dashboard: true, polling: true };
     const row = document.createElement('div');
-    row.className = 'settings-toggle-row';
+    row.className = 'settings-toggle-row settings-toggle-row-dual';
     row.innerHTML = `
-      <div>
+      <div class="settings-toggle-info">
         <div class="settings-toggle-label">${p.name}</div>
         <div class="settings-toggle-sublabel">${p.desc}</div>
       </div>
-      <div class="settings-toggle-actions">
-        <label class="settings-toggle" title="Show on dashboard">
-          <input type="checkbox" data-provider="${p.key}" data-role="dashboard" ${vis.dashboard !== false ? 'checked' : ''}>
-          <span class="settings-toggle-track"></span>
-        </label>
+      <div class="settings-toggle-group">
+        <div class="settings-toggle-item">
+          <div class="settings-toggle-item-label">Telemetry</div>
+          <div class="settings-toggle-item-hint">Track usage data in background</div>
+          <label class="settings-toggle" title="Telemetry">
+            <input type="checkbox" data-provider="${p.key}" data-role="polling" ${vis.polling !== false ? 'checked' : ''}>
+            <span class="settings-toggle-track"></span>
+          </label>
+        </div>
+        <div class="settings-toggle-item">
+          <div class="settings-toggle-item-label">Dashboard</div>
+          <div class="settings-toggle-item-hint">Show as individual tab</div>
+          <label class="settings-toggle" title="Dashboard">
+            <input type="checkbox" data-provider="${p.key}" data-role="dashboard" ${vis.dashboard !== false ? 'checked' : ''}>
+            <span class="settings-toggle-track"></span>
+          </label>
+        </div>
       </div>
     `;
     container.appendChild(row);
@@ -3166,8 +3178,9 @@ function gatherSettings() {
       const provider = row.querySelector('.override-provider')?.value;
       const w = parseFloat(row.querySelector('.override-warning')?.value);
       const c = parseFloat(row.querySelector('.override-critical')?.value);
+      const isAbs = row.querySelector('.override-is-absolute')?.value === 'true';
       if (quota && !isNaN(w) && !isNaN(c)) {
-        overrides.push({ quota_key: quota, provider: provider || '', warning: w, critical: c });
+        overrides.push({ quota_key: quota, provider: provider || '', warning: w, critical: c, is_absolute: isAbs });
       }
     });
 
@@ -3336,34 +3349,119 @@ function setupSettingsPassword() {
 function setupOverrides() {
   const addBtn = document.getElementById('add-override-btn');
   if (addBtn) {
-    addBtn.addEventListener('click', () => addOverrideRow('', '', 80, 95));
+    addBtn.addEventListener('click', () => addOverrideRow('', 'anthropic', 80, 95, false));
   }
 }
 
-function addOverrideRow(quotaKey, provider, warning, critical) {
+const _overrideQuotasByProvider = {
+  anthropic: [
+    { key: 'five_hour', label: '5-Hour Limit' },
+    { key: 'seven_day', label: 'Weekly All-Model' },
+    { key: 'seven_day_sonnet', label: 'Weekly Sonnet' },
+    { key: 'monthly_limit', label: 'Monthly Limit' },
+  ],
+  synthetic: [
+    { key: 'subscription', label: 'Subscription' },
+    { key: 'search', label: 'Search Queries' },
+    { key: 'toolcall', label: 'Tool Calls' },
+  ],
+  zai: [
+    { key: 'tokens', label: 'Tokens Limit' },
+    { key: 'time', label: 'Time Limit' },
+  ],
+};
+
+function _isAbsoluteProvider(provider) {
+  return provider === 'synthetic' || provider === 'zai';
+}
+
+function _updateOverrideQuotas(row) {
+  const provSelect = row.querySelector('.override-provider-select');
+  const quotaSelect = row.querySelector('.override-quota');
+  const warnInput = row.querySelector('.override-warning');
+  const critInput = row.querySelector('.override-critical');
+  const absInput = row.querySelector('.override-is-absolute');
+  const provider = provSelect.value;
+  const quotas = _overrideQuotasByProvider[provider] || [];
+  const prevQuota = quotaSelect.value;
+
+  quotaSelect.innerHTML = '<option value="">Select quota...</option>';
+  quotas.forEach(q => {
+    const opt = document.createElement('option');
+    opt.value = q.key;
+    opt.textContent = q.label;
+    if (q.key === prevQuota) opt.selected = true;
+    quotaSelect.appendChild(opt);
+  });
+
+  const isAbs = _isAbsoluteProvider(provider);
+  absInput.value = isAbs ? 'true' : 'false';
+  if (isAbs) {
+    warnInput.removeAttribute('max');
+    warnInput.placeholder = 'Warn';
+    warnInput.title = 'Warning threshold (absolute value)';
+    critInput.removeAttribute('max');
+    critInput.placeholder = 'Crit';
+    critInput.title = 'Critical threshold (absolute value)';
+  } else {
+    warnInput.setAttribute('max', '100');
+    warnInput.placeholder = 'Warn%';
+    warnInput.title = 'Warning threshold (%)';
+    critInput.setAttribute('max', '100');
+    critInput.placeholder = 'Crit%';
+    critInput.title = 'Critical threshold (%)';
+  }
+}
+
+function addOverrideRow(quotaKey, provider, warning, critical, isAbsolute) {
   const list = document.getElementById('override-list');
   if (!list) return;
+
+  // Determine provider from quota key if not provided
+  if (!provider && quotaKey) {
+    for (const [prov, quotas] of Object.entries(_overrideQuotasByProvider)) {
+      if (quotas.some(q => q.key === quotaKey)) { provider = prov; break; }
+    }
+  }
+
   const row = document.createElement('div');
   row.className = 'settings-override-row';
   row.innerHTML = `
+    <select class="settings-input override-provider-select" style="flex:1">
+      <option value="anthropic" ${provider === 'anthropic' ? 'selected' : ''}>Anthropic</option>
+      <option value="synthetic" ${provider === 'synthetic' ? 'selected' : ''}>Synthetic</option>
+      <option value="zai" ${provider === 'zai' ? 'selected' : ''}>Z.ai</option>
+    </select>
     <select class="settings-input override-quota" style="flex:2">
       <option value="">Select quota...</option>
-      <option value="five_hour" ${quotaKey === 'five_hour' ? 'selected' : ''}>5-Hour Limit</option>
-      <option value="seven_day" ${quotaKey === 'seven_day' ? 'selected' : ''}>Weekly All-Model</option>
-      <option value="seven_day_sonnet" ${quotaKey === 'seven_day_sonnet' ? 'selected' : ''}>Weekly Sonnet</option>
-      <option value="monthly_limit" ${quotaKey === 'monthly_limit' ? 'selected' : ''}>Monthly Limit</option>
-      <option value="subscription" ${quotaKey === 'subscription' ? 'selected' : ''}>Subscription</option>
-      <option value="tokens" ${quotaKey === 'tokens' ? 'selected' : ''}>Tokens Limit</option>
     </select>
-    <input type="number" class="settings-input settings-input-sm override-warning" value="${warning}" min="0" max="100" placeholder="Warn%" title="Warning threshold">
-    <input type="number" class="settings-input settings-input-sm override-critical" value="${critical}" min="0" max="100" placeholder="Crit%" title="Critical threshold">
-    <input type="hidden" class="override-provider" value="${provider || ''}">
+    <input type="number" class="settings-input settings-input-sm override-warning" value="${warning}" min="0" placeholder="Warn%">
+    <input type="number" class="settings-input settings-input-sm override-critical" value="${critical}" min="0" placeholder="Crit%">
+    <input type="hidden" class="override-provider" value="${provider || 'anthropic'}">
+    <input type="hidden" class="override-is-absolute" value="${isAbsolute ? 'true' : 'false'}">
     <button class="override-remove" title="Remove override" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
     </button>
   `;
+
+  const provSelect = row.querySelector('.override-provider-select');
+  const hiddenProv = row.querySelector('.override-provider');
+  provSelect.addEventListener('change', () => {
+    hiddenProv.value = provSelect.value;
+    _updateOverrideQuotas(row);
+  });
+
   row.querySelector('.override-remove').addEventListener('click', () => row.remove());
   list.appendChild(row);
+
+  // Populate quota options for the selected provider
+  _updateOverrideQuotas(row);
+
+  // Re-select the quota key if restoring
+  if (quotaKey) {
+    const quotaSelect = row.querySelector('.override-quota');
+    quotaSelect.value = quotaKey;
+  }
 }
 
 // ── Init ──

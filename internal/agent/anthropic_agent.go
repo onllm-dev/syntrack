@@ -28,6 +28,13 @@ type AnthropicAgent struct {
 	tokenRefresh TokenRefreshFunc
 	lastToken    string
 	notifier     *notify.NotificationEngine
+	pollingCheck func() bool
+}
+
+// SetPollingCheck sets a function that is called before each poll.
+// If it returns false, the poll is skipped (provider polling disabled).
+func (a *AnthropicAgent) SetPollingCheck(fn func() bool) {
+	a.pollingCheck = fn
 }
 
 // SetNotifier sets the notification engine for sending alerts.
@@ -90,6 +97,10 @@ func (a *AnthropicAgent) Run(ctx context.Context) error {
 
 // poll performs a single Anthropic poll cycle: fetch quotas, store snapshot, process with tracker.
 func (a *AnthropicAgent) poll(ctx context.Context) {
+	if a.pollingCheck != nil && !a.pollingCheck() {
+		return // polling disabled for this provider
+	}
+
 	// Refresh token before each poll (picks up rotated credentials)
 	if a.tokenRefresh != nil {
 		if newToken := a.tokenRefresh(); newToken != "" && newToken != a.lastToken {

@@ -272,7 +272,7 @@ func (h *Handler) Providers(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if h.config.HasMultipleProviders() && len(providers) > 1 {
+	if h.config.HasMultipleProviders() {
 		providers = append(providers, "both")
 	}
 	current := ""
@@ -308,7 +308,25 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	currentProvider := ""
 	if h.config != nil {
 		providers = h.config.AvailableProviders()
-		// Add "both" option when multiple providers are available
+
+		// Filter by provider_visibility dashboard flag
+		if h.store != nil {
+			if visJSON, _ := h.store.GetSetting("provider_visibility"); visJSON != "" {
+				var vis map[string]map[string]bool
+				if json.Unmarshal([]byte(visJSON), &vis) == nil {
+					filtered := make([]string, 0, len(providers))
+					for _, p := range providers {
+						if pv, ok := vis[p]; ok && !pv["dashboard"] {
+							continue
+						}
+						filtered = append(filtered, p)
+					}
+					providers = filtered
+				}
+			}
+		}
+
+		// Always add "both" (All tab) when multiple providers configured
 		if h.config.HasMultipleProviders() {
 			providers = append(providers, "both")
 		}
@@ -318,8 +336,11 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		// Allow overriding via query param
 		if reqProvider := r.URL.Query().Get("provider"); reqProvider != "" {
 			reqProvider = strings.ToLower(reqProvider)
-			if h.config.HasProvider(reqProvider) || (reqProvider == "both" && h.config.HasMultipleProviders()) {
-				currentProvider = reqProvider
+			for _, p := range providers {
+				if p == reqProvider {
+					currentProvider = reqProvider
+					break
+				}
 			}
 		}
 	}
@@ -3107,10 +3128,11 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 			NotifyReset       bool    `json:"notify_reset"`
 			CooldownMinutes   int     `json:"cooldown_minutes"`
 			Overrides         []struct {
-				QuotaKey string  `json:"quota_key"`
-				Provider string  `json:"provider"`
-				Warning  float64 `json:"warning"`
-				Critical float64 `json:"critical"`
+				QuotaKey   string  `json:"quota_key"`
+				Provider   string  `json:"provider"`
+				Warning    float64 `json:"warning"`
+				Critical   float64 `json:"critical"`
+				IsAbsolute bool    `json:"is_absolute"`
 			} `json:"overrides"`
 		}
 		if err := json.Unmarshal(raw, &notif); err != nil {
@@ -3132,6 +3154,20 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if notif.CooldownMinutes < 1 {
 			notif.CooldownMinutes = 1
+		}
+		// Validate per-quota overrides
+		for _, o := range notif.Overrides {
+			if o.IsAbsolute {
+				if o.Warning < 0 || o.Critical < 0 {
+					respondError(w, http.StatusBadRequest, "absolute threshold values must be >= 0")
+					return
+				}
+			} else {
+				if o.Warning < 0 || o.Warning > 100 || o.Critical < 0 || o.Critical > 100 {
+					respondError(w, http.StatusBadRequest, "percentage threshold values must be between 0 and 100")
+					return
+				}
+			}
 		}
 
 		notifJSON, _ := json.Marshal(notif)
