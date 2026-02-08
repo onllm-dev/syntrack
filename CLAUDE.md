@@ -98,7 +98,7 @@ onwatch/
 │   │   ├── zai_types.go               # Z.ai response types + snapshot conversion
 │   │   ├── zai_client.go              # HTTP client for Z.ai API
 │   │   ├── anthropic_types.go         # Anthropic: dynamic quota response types
-│   │   ├── anthropic_client.go        # HTTP client for Anthropic OAuth usage API
+│   │   ├── anthropic_client.go        # HTTP client for Anthropic OAuth usage API + SetToken() + ErrAnthropicUnauthorized
 │   │   ├── anthropic_token.go         # Shared token detection entry point
 │   │   ├── anthropic_token_unix.go    # macOS Keychain + Linux keyring/file detection
 │   │   └── anthropic_token_windows.go # Windows file-based detection
@@ -118,9 +118,11 @@ onwatch/
 │   │   ├── agent.go                    # Synthetic background polling loop
 │   │   ├── agent_test.go
 │   │   ├── zai_agent.go               # Z.ai background polling loop
-│   │   └── anthropic_agent.go         # Anthropic background polling loop
+│   │   └── anthropic_agent.go         # Anthropic background polling loop + token refresh + 401 retry
+│   ├── update/
+│   │   └── update.go                  # Self-update: check, download, apply, systemd migration
 │   └── web/
-│       ├── server.go                   # HTTP server setup + route registration
+│       ├── server.go                   # HTTP server setup + route registration + gzip middleware + cache headers
 │       ├── server_test.go
 │       ├── handlers.go                 # Route handlers (HTML + JSON API + password change)
 │       ├── handlers_test.go
@@ -281,6 +283,7 @@ cp .env.example .env               # Create local config
 | `onwatch` | Start agent (background mode) |
 | `onwatch stop` or `--stop` | Stop running instance (PID file + port fallback) |
 | `onwatch status` or `--status` | Show status of running instance |
+| `onwatch update` or `--update` | Check for updates and self-update |
 
 ### Flags
 
@@ -293,6 +296,39 @@ cp .env.example .env               # Create local config
 | `--test` | Test mode: isolated PID/log, won't kill production | `false` |
 | `--version` | Print version and exit | - |
 | `--help` | Print help and exit | - |
+
+## Self-Update System
+
+The `internal/update/` package implements a self-updating mechanism via GitHub releases.
+
+**Lifecycle:**
+1. **Check** — `Updater.Check()` queries the GitHub releases API (`/repos/onllm-dev/onwatch/releases/latest`), caches the result for 1 hour (mutex-protected), and compares semver against the running version. Dev builds (`"dev"` or `""`) cannot update.
+2. **Apply** — `Updater.Apply()` downloads the platform-specific binary, validates magic bytes (ELF/Mach-O/PE), and replaces the running binary. On Unix: remove + rename (safe since the kernel keeps the inode alive). On Windows: backup-rename fallback.
+3. **MigrateSystemdUnit** — Auto-fixes the systemd unit file (`Restart=on-failure` → `Restart=always`, `RestartSec=10` → `RestartSec=5`), then runs `daemon-reload`. Called inside `Apply()` before `Restart()` so systemd sees the updated policy before the old process exits. Safe to call on every startup (no-op if already up to date or not under systemd).
+4. **Restart** — Under systemd: `systemctl restart <service>`. Standalone: spawns the new binary (which stops the old instance via PID file). Falls back to `systemctl restart` if spawn fails.
+
+**Three-layer reliability:**
+
+| Layer | Mechanism | Fallback |
+|-------|-----------|----------|
+| Apply | remove+rename (Unix) | backup-rename (Windows) |
+| Restart | systemctl restart (systemd) / spawn (standalone) | `fallbackSystemctlRestart()` tries detected + default service names, both system and `--user` |
+| Startup | New binary stops old via PID file | Port-based lsof detection |
+
+**Key functions:** `Updater.Check()`, `Updater.Apply()`, `MigrateSystemdUnit()`, `Updater.Restart()`, `fallbackSystemctlRestart()`
+
+**systemd detection:** `IsSystemd()` checks `INVOCATION_ID` env var. `DetectServiceName()` reads `/proc/self/cgroup` for the `.service` unit name, falls back to `"onwatch.service"`.
+
+**Dashboard integration:** `GET /api/update/check` returns update info. `POST /api/update/apply` triggers download + apply + restart.
+
+## Anthropic Token Auto-Refresh
+
+The Anthropic agent automatically picks up rotated OAuth tokens without restart:
+
+- **`TokenRefreshFunc`** in `anthropic_agent.go` — called before each poll to re-read credentials from disk (macOS Keychain, Linux keyring, `~/.claude/.credentials.json`).
+- **`SetToken()`** on `AnthropicClient` — updates the token used for API requests at runtime.
+- **401 retry** — on `ErrAnthropicUnauthorized`, clears the cached token (`lastToken = ""`), forces credential re-read, and retries the poll once.
+- **Wiring in `main.go`:** `anthropicAg.SetTokenRefresh(func() string { return api.DetectAnthropicToken(logger) })`
 
 ## Authentication & Password Management
 
@@ -505,6 +541,18 @@ See `design-system/onwatch/pages/dashboard.md` for dashboard-specific layout.
 | `seven_day_sonnet` | Blue | `#3B82F6` |
 | `monthly_limit` | Violet | `#A855F7` |
 | `extra_usage` | Amber | `#F59E0B` |
+
+## Dashboard Performance
+
+Optimizations for fast initial load and efficient resource usage:
+
+- **Gzip middleware** — `compress/gzip` with `sync.Pool` at `gzip.BestSpeed` in `server.go`. Applied as outermost middleware to compress all responses.
+- **Cache headers** — `Cache-Control: public, max-age=31536000, immutable` on static assets, with `?v={{.Version}}` query param for cache busting on version bumps.
+- **Google Fonts** — Reduced from 11 to 5 weights: Inter (400, 500, 600) + JetBrains Mono (400, 500).
+- **Resource preloading** — `<link rel="preload">` for CSS/JS, `<link rel="preconnect">` for Google Fonts and jsDelivr CDN.
+- **Parallel API calls** — `Promise.all()` for above-fold data (current quotas + providers) on initial load.
+- **Lazy loading** — `IntersectionObserver` with 200px `rootMargin` for below-fold sections (cycles, sessions, cycle overview). Only fetched when scrolled into view.
+- **Deferred scripts** — Chart.js and app.js loaded with `defer` at end of `<body>`.
 
 ## Quota Reset Tracking Logic
 
