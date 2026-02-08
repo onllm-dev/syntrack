@@ -291,14 +291,47 @@ func IsSystemd() bool {
 	return os.Getenv("INVOCATION_ID") != ""
 }
 
+// detectServiceName reads /proc/self/cgroup to find the systemd service name.
+// Falls back to "onwatch.service" if detection fails.
+func detectServiceName() string {
+	data, err := os.ReadFile("/proc/self/cgroup")
+	if err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			// cgroup v2 line: "0::/system.slice/onwatch.service"
+			if idx := strings.LastIndex(line, "/"); idx >= 0 {
+				unit := strings.TrimSpace(line[idx+1:])
+				if strings.HasSuffix(unit, ".service") {
+					return unit
+				}
+			}
+		}
+	}
+	return "onwatch.service"
+}
+
 // Restart handles restarting after an update.
-// Under systemd: exits cleanly so systemd restarts the service with the new binary.
+// Under systemd: triggers `systemctl restart` so systemd manages the full lifecycle.
 // Standalone: spawns the new binary which will stop the old instance via PID file.
 func (u *Updater) Restart() error {
 	if IsSystemd() {
-		u.logger.Info("Running under systemd — exiting to trigger automatic restart")
+		serviceName := detectServiceName()
+		u.logger.Info("Running under systemd — triggering service restart", "service", serviceName)
+
+		// Run systemctl restart in a detached process.
+		// systemctl will SIGTERM us, then start the new binary.
+		cmd := exec.Command("systemctl", "restart", serviceName)
+		if err := cmd.Start(); err != nil {
+			u.logger.Warn("systemctl restart failed, falling back to exit", "error", err)
+			os.Exit(0)
+		}
+
+		// Wait for systemd to kill us (it sends SIGTERM which our signal handler catches)
+		u.logger.Info("Waiting for systemd to restart us...")
+		time.Sleep(30 * time.Second)
+
+		// Fallback: if systemd didn't kill us within 30s, exit anyway
 		os.Exit(0)
-		return nil // unreachable, but satisfies compiler
+		return nil // unreachable
 	}
 
 	// Standalone mode: spawn new process

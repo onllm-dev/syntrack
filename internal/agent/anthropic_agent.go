@@ -3,6 +3,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
@@ -96,8 +97,31 @@ func (a *AnthropicAgent) poll(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		a.logger.Error("Failed to fetch Anthropic quotas", "error", err)
-		return
+		// On 401, force token re-read and retry once
+		if errors.Is(err, api.ErrAnthropicUnauthorized) && a.tokenRefresh != nil {
+			a.logger.Warn("Anthropic token rejected (401), forcing credential re-read")
+			a.lastToken = "" // force re-read even if token hasn't changed on disk
+			if newToken := a.tokenRefresh(); newToken != "" {
+				a.client.SetToken(newToken)
+				a.lastToken = newToken
+				a.logger.Info("Retrying with refreshed token")
+				resp, err = a.client.FetchQuotas(ctx)
+				if err != nil {
+					if ctx.Err() != nil {
+						return
+					}
+					a.logger.Error("Anthropic retry also failed", "error", err)
+					return
+				}
+				// Retry succeeded — fall through to process the response
+			} else {
+				a.logger.Error("No Anthropic token available after re-read")
+				return
+			}
+		} else {
+			a.logger.Error("Failed to fetch Anthropic quotas", "error", err)
+			return
+		}
 	}
 
 	// Convert to snapshot and store
