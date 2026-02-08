@@ -914,7 +914,7 @@ func runUpdate() error {
 
 	fmt.Printf("Updated successfully to v%s\n", info.LatestVersion)
 
-	// If a daemon is running, restart it
+	// If a daemon is running, stop it and start a fresh one
 	if data, err := os.ReadFile(pidFile); err == nil {
 		content := strings.TrimSpace(string(data))
 		var pid int
@@ -928,9 +928,23 @@ func runUpdate() error {
 		}
 		if pid > 0 && pid != os.Getpid() {
 			fmt.Println("Restarting daemon...")
-			if err := u.Restart(); err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: restart failed: %v\n", err)
-				fmt.Println("Please restart onwatch manually.")
+			// Stop old daemon
+			if proc, err := os.FindProcess(pid); err == nil {
+				_ = proc.Signal(syscall.SIGTERM)
+				time.Sleep(1 * time.Second)
+			}
+			// Start new daemon with the updated binary (no args = daemonize with .env config)
+			exePath, err := os.Executable()
+			if err == nil {
+				exePath, _ = filepath.EvalSymlinks(exePath)
+				cmd := exec.Command(exePath)
+				cmd.Env = os.Environ()
+				if err := cmd.Start(); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: restart failed: %v\n", err)
+					fmt.Println("Please restart onwatch manually.")
+				} else {
+					fmt.Printf("New daemon started (PID %d)\n", cmd.Process.Pid)
+				}
 			}
 		}
 	}
