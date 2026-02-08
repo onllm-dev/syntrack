@@ -285,17 +285,28 @@ func replaceBinary(exePath, tmpPath string, logger *slog.Logger) error {
 	return nil
 }
 
-// Restart spawns the new binary and returns. The new process will call
-// stopPreviousInstance on startup, which sends SIGTERM to us.
+// IsSystemd returns true if the process is managed by systemd.
+// Detected via INVOCATION_ID environment variable which systemd sets for all services.
+func IsSystemd() bool {
+	return os.Getenv("INVOCATION_ID") != ""
+}
+
+// Restart handles restarting after an update.
+// Under systemd: exits cleanly so systemd restarts the service with the new binary.
+// Standalone: spawns the new binary which will stop the old instance via PID file.
 func (u *Updater) Restart() error {
-	// Use the path stored by Apply() — after binary replacement,
-	// /proc/self/exe on Linux may point to "(deleted)" inode.
+	if IsSystemd() {
+		u.logger.Info("Running under systemd — exiting to trigger automatic restart")
+		os.Exit(0)
+		return nil // unreachable, but satisfies compiler
+	}
+
+	// Standalone mode: spawn new process
 	u.mu.Lock()
 	exePath := u.lastAppliedPath
 	u.mu.Unlock()
 
 	if exePath == "" {
-		// Fallback: resolve from os.Executable, strip " (deleted)" suffix
 		var err error
 		exePath, err = os.Executable()
 		if err != nil {
@@ -304,7 +315,6 @@ func (u *Updater) Restart() error {
 		exePath = strings.TrimSuffix(exePath, " (deleted)")
 	}
 
-	// Pass through the same args the server was started with
 	args := filterArgs(os.Args[1:])
 	cmd := exec.Command(exePath, args...)
 	cmd.Stdout = os.Stdout

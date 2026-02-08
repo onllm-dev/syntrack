@@ -69,6 +69,11 @@ func NewAnthropicClient(token string, logger *slog.Logger, opts ...AnthropicOpti
 	return client
 }
 
+// SetToken updates the token used for API requests (for token refresh).
+func (c *AnthropicClient) SetToken(token string) {
+	c.token = token
+}
+
 // FetchQuotas retrieves the current quota information from the Anthropic API.
 func (c *AnthropicClient) FetchQuotas(ctx context.Context) (*AnthropicQuotaResponse, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)

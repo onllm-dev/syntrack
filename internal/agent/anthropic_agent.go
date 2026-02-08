@@ -11,14 +11,20 @@ import (
 	"github.com/onllm-dev/onwatch/internal/tracker"
 )
 
+// TokenRefreshFunc is called before each poll to get a fresh token.
+// Returns the new token, or empty string if refresh is not needed/available.
+type TokenRefreshFunc func() string
+
 // AnthropicAgent manages the background polling loop for Anthropic quota tracking.
 type AnthropicAgent struct {
-	client   *api.AnthropicClient
-	store    *store.Store
-	tracker  *tracker.AnthropicTracker
-	interval time.Duration
-	logger   *slog.Logger
-	sm       *SessionManager
+	client       *api.AnthropicClient
+	store        *store.Store
+	tracker      *tracker.AnthropicTracker
+	interval     time.Duration
+	logger       *slog.Logger
+	sm           *SessionManager
+	tokenRefresh TokenRefreshFunc
+	lastToken    string
 }
 
 // NewAnthropicAgent creates a new AnthropicAgent with the given dependencies.
@@ -34,6 +40,13 @@ func NewAnthropicAgent(client *api.AnthropicClient, store *store.Store, tr *trac
 		logger:   logger,
 		sm:       sm,
 	}
+}
+
+// SetTokenRefresh sets a function that will be called before each poll to
+// refresh the Anthropic OAuth token. This enables automatic token rotation
+// when Claude Code refreshes credentials on disk.
+func (a *AnthropicAgent) SetTokenRefresh(fn TokenRefreshFunc) {
+	a.tokenRefresh = fn
 }
 
 // Run starts the Anthropic agent's polling loop. It polls immediately,
@@ -69,6 +82,15 @@ func (a *AnthropicAgent) Run(ctx context.Context) error {
 
 // poll performs a single Anthropic poll cycle: fetch quotas, store snapshot, process with tracker.
 func (a *AnthropicAgent) poll(ctx context.Context) {
+	// Refresh token before each poll (picks up rotated credentials)
+	if a.tokenRefresh != nil {
+		if newToken := a.tokenRefresh(); newToken != "" && newToken != a.lastToken {
+			a.client.SetToken(newToken)
+			a.lastToken = newToken
+			a.logger.Info("Anthropic token refreshed from credentials")
+		}
+	}
+
 	resp, err := a.client.FetchQuotas(ctx)
 	if err != nil {
 		if ctx.Err() != nil {

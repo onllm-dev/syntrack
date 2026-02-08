@@ -554,6 +554,11 @@ func run() error {
 	if anthropicClient != nil {
 		anthropicSm := agent.NewSessionManager(db, "anthropic", idleTimeout, logger)
 		anthropicAg = agent.NewAnthropicAgent(anthropicClient, db, anthropicTr, cfg.PollInterval, logger, anthropicSm)
+		// Enable automatic token refresh — re-reads credentials before each poll
+		// so expired OAuth tokens get picked up when Claude Code rotates them.
+		anthropicAg.SetTokenRefresh(func() string {
+			return api.DetectAnthropicToken(logger)
+		})
 	}
 
 	handler := web.NewHandler(db, tr, logger, nil, cfg, zaiTr)
