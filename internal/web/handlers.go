@@ -251,6 +251,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	if err := h.dashboardTmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
 		h.logger.Error("failed to render dashboard template", "error", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)

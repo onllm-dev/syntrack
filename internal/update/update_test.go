@@ -29,6 +29,8 @@ func TestCompareVersions(t *testing.T) {
 		{"short version a", "2.3", "2.2.0", 1},
 		{"short version b", "2.2.0", "2.3", -1},
 		{"single digit", "3", "2.9.9", 1},
+		{"pre-release suffix", "2.2.6-test", "2.2.5-test", 1},
+		{"pre-release vs release", "2.2.6-beta", "2.2.5", 1},
 	}
 
 	for _, tt := range tests {
@@ -319,5 +321,103 @@ func TestNewUpdater_Defaults(t *testing.T) {
 	}
 	if u.apiURL != githubReleasesURL {
 		t.Errorf("got apiURL=%q, want default", u.apiURL)
+	}
+}
+
+func TestFilterArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{"empty", nil, nil},
+		{"no update", []string{"--debug", "--port", "9211"}, []string{"--debug", "--port", "9211"}},
+		{"update subcommand", []string{"update"}, nil},
+		{"--update flag", []string{"--update"}, nil},
+		{"mixed", []string{"--debug", "update", "--port", "9211"}, []string{"--debug", "--port", "9211"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := filterArgs(tt.args)
+			if len(got) != len(tt.want) {
+				t.Errorf("filterArgs(%v) = %v, want %v", tt.args, got, tt.want)
+				return
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("filterArgs(%v)[%d] = %q, want %q", tt.args, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestReplaceBinary(t *testing.T) {
+	dir := t.TempDir()
+	exePath := filepath.Join(dir, "onwatch")
+	tmpPath := filepath.Join(dir, "onwatch.tmp.123")
+
+	// Create "current" binary (Mach-O magic)
+	if err := os.WriteFile(exePath, []byte("old-binary-content"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	// Create "new" binary
+	if err := os.WriteFile(tmpPath, []byte("new-binary-content"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	logger := slog.Default()
+	if err := replaceBinary(exePath, tmpPath, logger); err != nil {
+		t.Fatalf("replaceBinary failed: %v", err)
+	}
+
+	// Verify new binary is in place
+	content, err := os.ReadFile(exePath)
+	if err != nil {
+		t.Fatalf("failed to read replaced binary: %v", err)
+	}
+	if string(content) != "new-binary-content" {
+		t.Errorf("got content=%q, want %q", string(content), "new-binary-content")
+	}
+
+	// Verify temp file was consumed (renamed away)
+	if _, err := os.Stat(tmpPath); err == nil {
+		t.Error("temp file should have been renamed away")
+	}
+
+	// Verify .old was cleaned up
+	if _, err := os.Stat(exePath + ".old"); err == nil {
+		t.Error(".old backup should have been cleaned up")
+	}
+}
+
+func TestReplaceBinary_LeftoverOldFile(t *testing.T) {
+	dir := t.TempDir()
+	exePath := filepath.Join(dir, "onwatch")
+	tmpPath := filepath.Join(dir, "onwatch.tmp.456")
+	oldPath := filepath.Join(dir, "onwatch.old")
+
+	// Create leftover .old from previous failed update
+	if err := os.WriteFile(oldPath, []byte("stale-old"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exePath, []byte("current"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tmpPath, []byte("new"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	logger := slog.Default()
+	if err := replaceBinary(exePath, tmpPath, logger); err != nil {
+		t.Fatalf("replaceBinary with leftover .old should succeed: %v", err)
+	}
+
+	content, err := os.ReadFile(exePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "new" {
+		t.Errorf("got %q, want %q", string(content), "new")
 	}
 }

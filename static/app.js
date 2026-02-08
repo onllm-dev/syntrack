@@ -2648,19 +2648,26 @@ async function applyUpdate() {
 }
 
 function pollForRestart() {
+  let serverWentDown = false;
   const interval = setInterval(async () => {
     try {
-      const res = await fetch('/api/update/check');
-      if (res.ok) {
+      await fetch('/api/update/check');
+      if (serverWentDown) {
+        // Server is back up after going down — force fresh page load (no cache)
         clearInterval(interval);
-        window.location.reload();
+        window.location.href = window.location.pathname + '?_=' + Date.now();
       }
+      // Server still responding (hasn't died yet) — keep waiting
     } catch (e) {
-      // Server still restarting
+      // Network error = server went down
+      serverWentDown = true;
     }
-  }, 2000);
-  // Give up after 30 seconds
-  setTimeout(() => clearInterval(interval), 30000);
+  }, 1000);
+  // Force reload after 30s even if we didn't detect restart
+  setTimeout(() => {
+    clearInterval(interval);
+    window.location.href = window.location.pathname + '?_=' + Date.now();
+  }, 30000);
 }
 
 // ── Init ──

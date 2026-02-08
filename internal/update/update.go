@@ -41,6 +41,9 @@ type Updater struct {
 	cachedAt      time.Time
 	cacheTTL      time.Duration
 
+	// Set by Apply() for Restart() to use (avoids /proc/self/exe issues)
+	lastAppliedPath string
+
 	// For testing: override the GitHub API URL and download base URL
 	apiURL      string
 	downloadURL string
@@ -140,7 +143,9 @@ func (u *Updater) Check() (UpdateInfo, error) {
 	return info, nil
 }
 
-// Apply downloads the latest binary and replaces the current one via atomic swap.
+// Apply downloads the latest binary and replaces the current one.
+// On Unix, uses remove+rename (safe for running binaries since the kernel
+// keeps the inode alive). Falls back to backup-rename on Windows.
 func (u *Updater) Apply() error {
 	if u.currentVersion == "dev" || u.currentVersion == "" {
 		return fmt.Errorf("update.Apply: cannot update dev build")
@@ -163,33 +168,35 @@ func (u *Updater) Apply() error {
 	// Get current binary path
 	exePath, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("update.Apply: %w", err)
+		return fmt.Errorf("update.Apply: os.Executable: %w", err)
 	}
 	exePath, err = filepath.EvalSymlinks(exePath)
 	if err != nil {
-		return fmt.Errorf("update.Apply: %w", err)
+		return fmt.Errorf("update.Apply: EvalSymlinks(%s): %w", exePath, err)
 	}
 
 	// Check write permission
 	exeDir := filepath.Dir(exePath)
 	if err := checkWritable(exeDir); err != nil {
-		return fmt.Errorf("update.Apply: binary directory not writable: %w", err)
+		return fmt.Errorf("update.Apply: directory %s not writable: %w", exeDir, err)
 	}
 
-	u.logger.Info("Downloading update",
-		"version", info.LatestVersion,
+	u.logger.Info("Applying update",
+		"from", u.currentVersion,
+		"to", info.LatestVersion,
+		"binary", exePath,
 		"url", info.DownloadURL)
 
 	// Download to temp file in same directory (required for atomic rename)
 	tmpFile, err := os.CreateTemp(exeDir, "onwatch.tmp.*")
 	if err != nil {
-		return fmt.Errorf("update.Apply: %w", err)
+		return fmt.Errorf("update.Apply: CreateTemp in %s: %w", exeDir, err)
 	}
 	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath) // cleanup on error
 
-	// Stream download
-	dlClient := &http.Client{Timeout: 30 * time.Second}
+	// Stream download (2 min timeout for large binaries on slow connections)
+	dlClient := &http.Client{Timeout: 2 * time.Minute}
 	resp, err := dlClient.Get(info.DownloadURL)
 	if err != nil {
 		tmpFile.Close()
@@ -199,7 +206,7 @@ func (u *Updater) Apply() error {
 
 	if resp.StatusCode != http.StatusOK {
 		tmpFile.Close()
-		return fmt.Errorf("update.Apply: download returned %d", resp.StatusCode)
+		return fmt.Errorf("update.Apply: download returned HTTP %d", resp.StatusCode)
 	}
 
 	written, err := io.Copy(tmpFile, resp.Body)
@@ -213,6 +220,8 @@ func (u *Updater) Apply() error {
 		return fmt.Errorf("update.Apply: downloaded file is empty")
 	}
 
+	u.logger.Info("Download complete", "bytes", written, "path", tmpPath)
+
 	// Validate: check magic bytes (ELF, Mach-O, or PE)
 	if err := validateBinary(tmpPath); err != nil {
 		return fmt.Errorf("update.Apply: %w", err)
@@ -220,22 +229,22 @@ func (u *Updater) Apply() error {
 
 	// Set executable permission
 	if err := os.Chmod(tmpPath, 0755); err != nil {
+		return fmt.Errorf("update.Apply: chmod: %w", err)
+	}
+
+	// Replace the binary.
+	// Strategy 1 (Unix): remove current binary then rename temp into place.
+	// On Unix, deleting a running binary is safe — the kernel keeps the inode
+	// alive until all file descriptors are closed (i.e., until this process exits).
+	// Strategy 2 (Windows fallback): rename current to .old, rename temp to current.
+	if err := replaceBinary(exePath, tmpPath, u.logger); err != nil {
 		return fmt.Errorf("update.Apply: %w", err)
 	}
 
-	// Atomic swap: backup current, move new in place
-	backupPath := exePath + ".old"
-	if err := os.Rename(exePath, backupPath); err != nil {
-		return fmt.Errorf("update.Apply: backup failed: %w", err)
-	}
-	if err := os.Rename(tmpPath, exePath); err != nil {
-		// Try to restore backup
-		os.Rename(backupPath, exePath)
-		return fmt.Errorf("update.Apply: swap failed: %w", err)
-	}
-
-	// Best-effort cleanup of backup
-	os.Remove(backupPath)
+	// Store path for Restart() — after Apply, /proc/self/exe may show "(deleted)"
+	u.mu.Lock()
+	u.lastAppliedPath = exePath
+	u.mu.Unlock()
 
 	u.logger.Info("Update applied successfully",
 		"from", u.currentVersion,
@@ -244,27 +253,80 @@ func (u *Updater) Apply() error {
 	return nil
 }
 
+// replaceBinary replaces the binary at exePath with the one at tmpPath.
+// Tries remove+rename first (works on Unix), falls back to backup-rename (Windows).
+func replaceBinary(exePath, tmpPath string, logger *slog.Logger) error {
+	// Clean up any leftover .old file from a previous failed update
+	backupPath := exePath + ".old"
+	os.Remove(backupPath)
+
+	// Strategy 1: Remove current, move new into place (Unix-safe)
+	if err := os.Remove(exePath); err == nil {
+		if err := os.Rename(tmpPath, exePath); err != nil {
+			logger.Error("CRITICAL: removed old binary but failed to place new one",
+				"exePath", exePath, "tmpPath", tmpPath, "error", err)
+			return fmt.Errorf("replace failed after remove: %w (binary may be missing, restore from %s)", err, tmpPath)
+		}
+		return nil
+	}
+
+	// Strategy 2: Backup rename (required on Windows where running binaries can't be deleted)
+	logger.Info("Remove failed, trying backup-rename strategy", "path", exePath)
+	if err := os.Rename(exePath, backupPath); err != nil {
+		return fmt.Errorf("backup rename %s → %s: %w", exePath, backupPath, err)
+	}
+	if err := os.Rename(tmpPath, exePath); err != nil {
+		// Try to restore backup
+		os.Rename(backupPath, exePath)
+		return fmt.Errorf("swap rename %s → %s: %w", tmpPath, exePath, err)
+	}
+	// Best-effort cleanup
+	os.Remove(backupPath)
+	return nil
+}
+
 // Restart spawns the new binary and returns. The new process will call
 // stopPreviousInstance on startup, which sends SIGTERM to us.
 func (u *Updater) Restart() error {
-	exePath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("update.Restart: %w", err)
-	}
-	exePath, err = filepath.EvalSymlinks(exePath)
-	if err != nil {
-		return fmt.Errorf("update.Restart: %w", err)
+	// Use the path stored by Apply() — after binary replacement,
+	// /proc/self/exe on Linux may point to "(deleted)" inode.
+	u.mu.Lock()
+	exePath := u.lastAppliedPath
+	u.mu.Unlock()
+
+	if exePath == "" {
+		// Fallback: resolve from os.Executable, strip " (deleted)" suffix
+		var err error
+		exePath, err = os.Executable()
+		if err != nil {
+			return fmt.Errorf("update.Restart: %w", err)
+		}
+		exePath = strings.TrimSuffix(exePath, " (deleted)")
 	}
 
-	cmd := exec.Command(exePath, os.Args[1:]...)
+	// Pass through the same args the server was started with
+	args := filterArgs(os.Args[1:])
+	cmd := exec.Command(exePath, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("update.Restart: %w", err)
+		return fmt.Errorf("update.Restart: spawn %s: %w", exePath, err)
 	}
 
-	u.logger.Info("Spawned new process", "pid", cmd.Process.Pid)
+	u.logger.Info("Spawned new process", "pid", cmd.Process.Pid, "path", exePath, "args", args)
 	return nil
+}
+
+// filterArgs removes "update" and "--update" from args so the new process
+// starts as a server, not as another update command.
+func filterArgs(args []string) []string {
+	var filtered []string
+	for _, a := range args {
+		if a != "update" && a != "--update" {
+			filtered = append(filtered, a)
+		}
+	}
+	return filtered
 }
 
 // binaryDownloadURL constructs the download URL for the current platform.
@@ -278,6 +340,7 @@ func (u *Updater) binaryDownloadURL(version string) string {
 
 // compareVersions compares two semver strings.
 // Returns: 1 if a > b, -1 if a < b, 0 if equal.
+// Handles pre-release suffixes like "2.2.5-test" by extracting numeric parts.
 func compareVersions(a, b string) int {
 	a = strings.TrimPrefix(a, "v")
 	b = strings.TrimPrefix(b, "v")
@@ -294,8 +357,8 @@ func compareVersions(a, b string) int {
 	}
 
 	for i := 0; i < 3; i++ {
-		numA, _ := strconv.Atoi(partsA[i])
-		numB, _ := strconv.Atoi(partsB[i])
+		numA := extractLeadingInt(partsA[i])
+		numB := extractLeadingInt(partsB[i])
 		if numA > numB {
 			return 1
 		}
@@ -304,6 +367,16 @@ func compareVersions(a, b string) int {
 		}
 	}
 	return 0
+}
+
+// extractLeadingInt parses the leading integer from a string like "5-test" → 5.
+func extractLeadingInt(s string) int {
+	// Split on hyphen first (pre-release suffix)
+	if idx := strings.IndexByte(s, '-'); idx >= 0 {
+		s = s[:idx]
+	}
+	n, _ := strconv.Atoi(s)
+	return n
 }
 
 // checkWritable tests if the directory is writable by creating a temp file.

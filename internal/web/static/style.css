@@ -1646,6 +1646,9 @@ button, input, select { font-family: inherit; }
   display: inline-flex;
   align-items: center;
 }
+.footer-update[hidden] {
+  display: none;
+}
 
 .footer-update-btn {
   background: var(--accent-coral, #D97757);
