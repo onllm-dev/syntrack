@@ -24,7 +24,7 @@ DIM=$'\033[2m'; NC=$'\033[0m'
 info()    { printf "  ${BLUE}info${NC}  %s\n" "$*"; }
 ok()      { printf "  ${GREEN} ok ${NC}  %s\n" "$*"; }
 warn()    { printf "  ${YELLOW}warn${NC}  %s\n" "$*"; }
-fail()    { printf "  ${RED}fail${NC}  %s\n" "$*" >&2; exit 1; }
+fail()    { printf "  ${RED}fail${NC}  %b\n" "$*" >&2; exit 1; }
 
 # ─── systemd Helpers ────────────────────────────────────────────────
 # Wrappers that use --user or system-wide mode based on SYSTEMD_MODE
@@ -300,40 +300,58 @@ stop_existing() {
 }
 
 # ─── Download Binary ─────────────────────────────────────────────────
-# Downloads to a temp file first, then atomically moves into place.
-# This avoids ETXTBSY errors on Linux when the binary is still running.
+# Downloads to /tmp first (avoids ETXTBSY and filesystem issues),
+# then moves into place.
 download() {
     local url="https://github.com/${REPO}/releases/latest/download/${ASSET_NAME}"
     local dest="${BIN_DIR}/onwatch"
-    local tmp_dest="${BIN_DIR}/onwatch.tmp.$$"
+    local tmp_dest="/tmp/onwatch-download-$$"
 
     info "Downloading onwatch for ${BOLD}${PLATFORM}${NC}..."
+    info "  URL:  $url"
+    info "  Dest: $dest"
 
+    local dl_exit=0
     if command -v curl &>/dev/null; then
-        if ! curl -fsSL -o "$tmp_dest" "$url"; then
+        curl -fSL --progress-bar -o "$tmp_dest" "$url" 2>&1 || dl_exit=$?
+        if [[ $dl_exit -ne 0 ]]; then
+            local msg="curl failed with exit code $dl_exit."
+            [[ $dl_exit -eq 23 ]] && msg="$msg (Write error — check disk space and permissions)"
+            [[ $dl_exit -eq 22 ]] && msg="$msg (HTTP error from server)"
+            [[ $dl_exit -eq 6 ]]  && msg="$msg (Could not resolve host)"
+            [[ $dl_exit -eq 7 ]]  && msg="$msg (Connection refused)"
             rm -f "$tmp_dest"
-            fail "Download failed. Check your internet connection.\n       URL: $url"
+            fail "Download failed: $msg\n       URL: $url\n       Tmp: $tmp_dest"
         fi
     elif command -v wget &>/dev/null; then
-        if ! wget -q -O "$tmp_dest" "$url"; then
+        wget -q -O "$tmp_dest" "$url" || dl_exit=$?
+        if [[ $dl_exit -ne 0 ]]; then
             rm -f "$tmp_dest"
-            fail "Download failed. Check your internet connection.\n       URL: $url"
+            fail "Download failed: wget exit code $dl_exit\n       URL: $url"
         fi
     else
         fail "curl or wget is required"
     fi
 
-    # Validate download is non-empty
+    # Validate download
     if [[ ! -s "$tmp_dest" ]]; then
         rm -f "$tmp_dest"
         fail "Downloaded file is empty"
     fi
 
+    local dl_size
+    dl_size=$(wc -c < "$tmp_dest" 2>/dev/null || echo 0)
+    info "Downloaded ${dl_size} bytes"
+
+    # Sanity check: binary should be at least 1MB
+    if [[ "$dl_size" -lt 1000000 ]]; then
+        rm -f "$tmp_dest"
+        fail "Downloaded file too small (${dl_size} bytes) — expected ~13MB binary"
+    fi
+
     chmod +x "$tmp_dest"
 
-    # Atomic swap: remove old binary (safe even if still running on Linux —
-    # unlink detaches the name, the running process keeps its inode), then
-    # move new binary into place.
+    # Move into place (rm old first to avoid ETXTBSY on Linux)
     rm -f "$dest"
     mv "$tmp_dest" "$dest"
 
