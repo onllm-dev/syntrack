@@ -51,6 +51,8 @@ func NewServer(port int, handler *Handler, logger *slog.Logger, username, passwo
 		}
 	})
 	mux.HandleFunc("/api/password", handler.ChangePassword)
+	mux.HandleFunc("/api/update/check", handler.CheckUpdate)
+	mux.HandleFunc("/api/update/apply", handler.ApplyUpdate)
 
 	// Static files from embedded filesystem
 	staticDir, _ := fs.Sub(staticFS, "static")

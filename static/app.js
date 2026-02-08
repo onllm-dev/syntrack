@@ -2579,6 +2579,69 @@ function startAutoRefresh() {
   }, REFRESH_INTERVAL);
 }
 
+// ── Self-Update ──
+
+async function checkForUpdate() {
+  try {
+    const res = await authFetch('/api/update/check');
+    const data = await res.json();
+    if (data.available) {
+      const badge = document.getElementById('update-badge');
+      const versionSpan = document.getElementById('update-version');
+      if (badge && versionSpan) {
+        versionSpan.textContent = data.latest_version;
+        badge.hidden = false;
+      }
+    }
+  } catch (e) {
+    // Silent fail — update check is best-effort
+  }
+}
+
+async function applyUpdate() {
+  const btn = document.getElementById('update-btn');
+  if (!btn) return;
+
+  const origText = btn.textContent;
+  btn.textContent = 'Updating...';
+  btn.disabled = true;
+
+  try {
+    const res = await authFetch('/api/update/apply', { method: 'POST' });
+    if (!res.ok) {
+      const data = await res.json();
+      btn.textContent = 'Update failed';
+      btn.disabled = false;
+      console.error('Update failed:', data.error);
+      setTimeout(() => { btn.textContent = origText; }, 3000);
+      return;
+    }
+    btn.textContent = 'Restarting...';
+    // Poll until server comes back with new version
+    setTimeout(() => pollForRestart(), 3000);
+  } catch (e) {
+    btn.textContent = 'Update failed';
+    btn.disabled = false;
+    setTimeout(() => { btn.textContent = origText; }, 3000);
+  }
+}
+
+function pollForRestart() {
+  const interval = setInterval(async () => {
+    try {
+      const res = await fetch('/api/update/check');
+      if (res.ok) {
+        clearInterval(interval);
+        window.location.reload();
+      }
+    } catch (e) {
+      // Server still restarting
+    }
+  }, 2000);
+  // Give up after 30 seconds
+  setTimeout(() => clearInterval(interval), 30000);
+}
+
 // ── Init ──
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -2624,6 +2687,16 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchSessions();
     startCountdowns();
     startAutoRefresh();
+
+    // Check for updates on load and every 60 minutes
+    checkForUpdate();
+    setInterval(checkForUpdate, 3600000);
+
+    // Update button click handler
+    const updateBtn = document.getElementById('update-btn');
+    if (updateBtn) {
+      updateBtn.addEventListener('click', applyUpdate);
+    }
 
     // Update sessions table header for "both" mode
     if (provider === 'both') {

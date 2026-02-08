@@ -13,6 +13,7 @@ import (
 	"github.com/onllm-dev/onwatch/internal/config"
 	"github.com/onllm-dev/onwatch/internal/store"
 	"github.com/onllm-dev/onwatch/internal/tracker"
+	"github.com/onllm-dev/onwatch/internal/update"
 )
 
 // Handler handles HTTP requests for the web dashboard
@@ -21,6 +22,7 @@ type Handler struct {
 	tracker            *tracker.Tracker
 	zaiTracker         *tracker.ZaiTracker
 	anthropicTracker   *tracker.AnthropicTracker
+	updater            *update.Updater
 	logger             *slog.Logger
 	dashboardTmpl      *template.Template
 	loginTmpl          *template.Template
@@ -72,6 +74,11 @@ func (h *Handler) SetVersion(v string) {
 // SetAnthropicTracker sets the Anthropic tracker for usage summary enrichment.
 func (h *Handler) SetAnthropicTracker(t *tracker.AnthropicTracker) {
 	h.anthropicTracker = t
+}
+
+// SetUpdater sets the updater for self-update functionality.
+func (h *Handler) SetUpdater(u *update.Updater) {
+	h.updater = u
 }
 
 // respondJSON sends a JSON response
@@ -2957,4 +2964,49 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	h.sessions.InvalidateAll()
 
 	respondJSON(w, http.StatusOK, map[string]string{"message": "password updated successfully"})
+}
+
+// CheckUpdate checks for available updates (GET /api/update/check).
+func (h *Handler) CheckUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if h.updater == nil {
+		respondError(w, http.StatusServiceUnavailable, "updater not configured")
+		return
+	}
+	info, err := h.updater.Check()
+	if err != nil {
+		h.logger.Error("update check failed", "error", err)
+		respondError(w, http.StatusInternalServerError, "update check failed")
+		return
+	}
+	respondJSON(w, http.StatusOK, info)
+}
+
+// ApplyUpdate downloads and applies an update (POST /api/update/apply).
+func (h *Handler) ApplyUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if h.updater == nil {
+		respondError(w, http.StatusServiceUnavailable, "updater not configured")
+		return
+	}
+	if err := h.updater.Apply(); err != nil {
+		h.logger.Error("update apply failed", "error", err)
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+
+	// Schedule restart after response is flushed
+	go func() {
+		time.Sleep(1 * time.Second)
+		if err := h.updater.Restart(); err != nil {
+			h.logger.Error("restart after update failed", "error", err)
+		}
+	}()
 }

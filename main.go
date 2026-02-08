@@ -22,6 +22,7 @@ import (
 	"github.com/onllm-dev/onwatch/internal/config"
 	"github.com/onllm-dev/onwatch/internal/store"
 	"github.com/onllm-dev/onwatch/internal/tracker"
+	"github.com/onllm-dev/onwatch/internal/update"
 	"github.com/onllm-dev/onwatch/internal/web"
 )
 
@@ -369,6 +370,9 @@ func run() error {
 		fmt.Println("Powered by onllm.dev")
 		return nil
 	}
+	if hasCommand("update", "--update") {
+		return runUpdate()
+	}
 	if hasCommand("--help", "-h") {
 		printHelp()
 		return nil
@@ -557,6 +561,8 @@ func run() error {
 	if anthropicTr != nil {
 		handler.SetAnthropicTracker(anthropicTr)
 	}
+	updater := update.NewUpdater(version, logger)
+	handler.SetUpdater(updater)
 	server := web.NewServer(cfg.Port, handler, logger, cfg.AdminUser, cfg.AdminPassHash)
 
 	// Setup signal handling
@@ -883,6 +889,55 @@ func humanSize(bytes int64) string {
 	return fmt.Sprintf("%.1fMB", float64(bytes)/(1024*1024))
 }
 
+func runUpdate() error {
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	u := update.NewUpdater(version, logger)
+
+	fmt.Printf("onWatch v%s — checking for updates...\n", version)
+
+	info, err := u.Check()
+	if err != nil {
+		return fmt.Errorf("update check failed: %w", err)
+	}
+
+	if !info.Available {
+		fmt.Printf("Already at the latest version (v%s)\n", version)
+		return nil
+	}
+
+	fmt.Printf("Update available: v%s → v%s\n", info.CurrentVersion, info.LatestVersion)
+	fmt.Printf("Downloading from %s\n", info.DownloadURL)
+
+	if err := u.Apply(); err != nil {
+		return fmt.Errorf("update failed: %w", err)
+	}
+
+	fmt.Printf("Updated successfully to v%s\n", info.LatestVersion)
+
+	// If a daemon is running, restart it
+	if data, err := os.ReadFile(pidFile); err == nil {
+		content := strings.TrimSpace(string(data))
+		var pid int
+		if strings.Contains(content, ":") {
+			parts := strings.Split(content, ":")
+			if len(parts) >= 1 {
+				pid, _ = strconv.Atoi(parts[0])
+			}
+		} else {
+			pid, _ = strconv.Atoi(content)
+		}
+		if pid > 0 && pid != os.Getpid() {
+			fmt.Println("Restarting daemon...")
+			if err := u.Restart(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: restart failed: %v\n", err)
+				fmt.Println("Please restart onwatch manually.")
+			}
+		}
+	}
+
+	return nil
+}
+
 func printBanner(cfg *config.Config, version string) {
 	fmt.Println()
 	fmt.Println("╔══════════════════════════════════════╗")
@@ -944,6 +999,7 @@ func printHelp() {
 	fmt.Println("Commands:")
 	fmt.Println("  stop, --stop       Stop the running onwatch instance")
 	fmt.Println("  status, --status   Show status of the running instance")
+	fmt.Println("  update, --update   Check for updates and self-update")
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  version, --version Print version and exit")
@@ -974,6 +1030,7 @@ func printHelp() {
 	fmt.Println("  onwatch --stop                    # Same as 'stop'")
 	fmt.Println("  onwatch status                    # Check if running")
 	fmt.Println("  onwatch --status                  # Same as 'status'")
+	fmt.Println("  onwatch update                    # Check for updates and self-update")
 	fmt.Println("  onwatch --test --debug            # Run test instance (isolated)")
 	fmt.Println("  onwatch --test stop               # Stop only test instance")
 	fmt.Println("  onwatch --test status             # Check test instance status")
