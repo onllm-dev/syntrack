@@ -66,13 +66,15 @@ func NewServer(port int, handler *Handler, logger *slog.Logger, username, passwo
 	staticHandler := http.FileServer(http.FS(staticDir))
 	mux.Handle("/static/", http.StripPrefix("/static/", contentTypeHandler(staticHandler)))
 
-	// Apply gzip compression (outermost middleware — compresses all responses)
-	var finalHandler http.Handler = gzipHandler(mux)
+	// Apply middleware chain: security headers -> gzip compression -> auth -> routes
+	var finalHandler http.Handler = mux
 	if username != "" && passwordHash != "" {
 		sessions := NewSessionStore(username, passwordHash, handler.store)
 		handler.sessions = sessions
-		finalHandler = gzipHandler(SessionAuthMiddleware(sessions, logger)(mux))
+		finalHandler = SessionAuthMiddleware(sessions, logger)(mux)
 	}
+	// Apply security headers and gzip compression (outermost)
+	finalHandler = securityHeadersMiddleware(gzipHandler(finalHandler))
 
 	return &Server{
 		httpServer: &http.Server{
@@ -142,6 +144,29 @@ func gzipHandler(next http.Handler) http.Handler {
 		w.Header().Del("Content-Length")
 
 		next.ServeHTTP(&gzipResponseWriter{Writer: gz, ResponseWriter: w}, r)
+	})
+}
+
+// securityHeadersMiddleware adds security headers to all responses
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Prevent MIME type sniffing
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		// Prevent clickjacking
+		w.Header().Set("X-Frame-Options", "DENY")
+		// Enable XSS filter (legacy browsers)
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		// Control referrer information
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		// Content Security Policy
+		w.Header().Set("Content-Security-Policy",
+			"default-src 'self'; "+
+				"script-src 'self' cdn.jsdelivr.net; "+
+				"style-src 'self' 'unsafe-inline' fonts.googleapis.com; "+
+				"font-src 'self' fonts.gstatic.com; "+
+				"img-src 'self' data:; "+
+				"connect-src 'self'")
+		next.ServeHTTP(w, r)
 	})
 }
 

@@ -200,6 +200,17 @@ func sha256hex(s string) string {
 	return fmt.Sprintf("%x", h)
 }
 
+// deriveEncryptionKey derives a 32-byte encryption key from the admin password hash.
+// The password hash is expected to be a SHA-256 hex string (64 characters).
+func deriveEncryptionKey(passwordHash string) string {
+	if len(passwordHash) == 64 {
+		return passwordHash
+	}
+	// Fallback: hash again if not already hex
+	h := sha256.Sum256([]byte(passwordHash))
+	return fmt.Sprintf("%x", h)
+}
+
 // migrateDBLocation moves the database from old default locations to the new one.
 // Only runs when no explicit --db or ONWATCH_DB_PATH was set.
 func migrateDBLocation(newPath string, logger *slog.Logger) {
@@ -384,7 +395,7 @@ func run() error {
 	// Without this, Go uses MADV_FREE on macOS — pages are reclaimable but still
 	// counted in RSS, causing a permanent ratchet effect.
 	debug.SetMemoryLimit(40 * 1024 * 1024) // 40 MiB soft limit
-	debug.SetGCPercent(50)                  // GC at 50% heap growth (default 100)
+	debug.SetGCPercent(50)                 // GC at 50% heap growth (default 100)
 
 	// Phase 3: Parse flags and load config
 	cfg, err := config.Load()
@@ -578,6 +589,7 @@ func run() error {
 
 	// Create notification engine
 	notifier := notify.New(db, logger)
+	notifier.SetEncryptionKey(deriveEncryptionKey(cfg.AdminPassHash))
 	notifier.Reload()
 	notifier.ConfigureSMTP()
 

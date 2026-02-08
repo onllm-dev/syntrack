@@ -13,11 +13,12 @@ import (
 
 // NotificationEngine evaluates quota statuses and sends alerts via email.
 type NotificationEngine struct {
-	store  *store.Store
-	logger *slog.Logger
-	mailer *SMTPMailer
-	mu     sync.RWMutex
-	cfg    NotificationConfig
+	store         *store.Store
+	logger        *slog.Logger
+	mailer        *SMTPMailer
+	mu            sync.RWMutex
+	cfg           NotificationConfig
+	encryptionKey string // hex-encoded key for decrypting SMTP passwords
 }
 
 // NotificationConfig holds threshold and delivery settings.
@@ -64,6 +65,14 @@ func New(s *store.Store, logger *slog.Logger) *NotificationEngine {
 			Types:     NotificationTypes{Warning: true, Critical: true, Reset: false},
 		},
 	}
+}
+
+// SetEncryptionKey sets the encryption key for decrypting sensitive data like SMTP passwords.
+// The key should be a hex-encoded 32-byte string suitable for AES-256-GCM.
+func (e *NotificationEngine) SetEncryptionKey(key string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.encryptionKey = key
 }
 
 // Config returns a copy of the current notification config.
@@ -188,11 +197,27 @@ func (e *NotificationEngine) ConfigureSMTP() error {
 		}
 	}
 
+	// Decrypt SMTP password if encrypted
+	password := s.Password
+	e.mu.RLock()
+	key := e.encryptionKey
+	e.mu.RUnlock()
+
+	if key != "" && password != "" && len(password) > 24 {
+		// Try to decrypt - assume encrypted if base64-like and long enough
+		if decrypted, err := Decrypt(password, key); err == nil {
+			password = decrypted
+		} else {
+			// Failed to decrypt - might be plaintext or wrong key
+			e.logger.Debug("SMTP password decryption failed (may be plaintext)", "error", err)
+		}
+	}
+
 	cfg := SMTPConfig{
 		Host:     s.Host,
 		Port:     port,
 		Username: s.Username,
-		Password: s.Password,
+		Password: password,
 		Protocol: s.Protocol,
 		FromAddr: s.FromAddress,
 		FromName: s.FromName,

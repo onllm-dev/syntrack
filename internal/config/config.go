@@ -28,14 +28,14 @@ type Config struct {
 	AnthropicAutoToken bool   // true if token was auto-detected
 
 	// Shared configuration
-	PollInterval time.Duration // ONWATCH_POLL_INTERVAL (seconds → Duration)
-	Port         int           // ONWATCH_PORT
-	Host         string        // ONWATCH_HOST (bind address, default: 0.0.0.0)
-	AdminUser     string // ONWATCH_ADMIN_USER
-	AdminPass     string // ONWATCH_ADMIN_PASS
-	AdminPassHash string // SHA-256 hash of password (set after DB check)
-	DBPath        string // ONWATCH_DB_PATH
-	DBPathExplicit bool  // true if user explicitly set --db or ONWATCH_DB_PATH
+	PollInterval       time.Duration // ONWATCH_POLL_INTERVAL (seconds → Duration)
+	Port               int           // ONWATCH_PORT
+	Host               string        // ONWATCH_HOST (bind address, default: 0.0.0.0)
+	AdminUser          string        // ONWATCH_ADMIN_USER
+	AdminPass          string        // ONWATCH_ADMIN_PASS
+	AdminPassHash      string        // SHA-256 hash of password (set after DB check)
+	DBPath             string        // ONWATCH_DB_PATH
+	DBPathExplicit     bool          // true if user explicitly set --db or ONWATCH_DB_PATH
 	LogLevel           string        // ONWATCH_LOG_LEVEL
 	SessionIdleTimeout time.Duration // ONWATCH_SESSION_IDLE_TIMEOUT (seconds → Duration)
 	DebugMode          bool          // --debug flag (foreground mode)

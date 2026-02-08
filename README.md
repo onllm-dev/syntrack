@@ -8,6 +8,8 @@ onWatch fills the gap between "current usage snapshot" and the historical, per-c
 
 **Zero telemetry. Single binary. All data stays on your machine.**
 
+> **Beta**: onWatch is currently in active development. Features and APIs may change as we refine the product.
+
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-brightgreen?style=for-the-badge&logo=gnu&logoColor=white)](LICENSE)
 [![Go 1.25+](https://img.shields.io/badge/Go-1.25+-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://go.dev)
 [![Platform](https://img.shields.io/badge/macOS%20%7C%20Linux%20%7C%20Windows-orange?style=for-the-badge&logo=apple&logoColor=white)](#quick-start)

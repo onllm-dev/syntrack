@@ -1903,6 +1903,21 @@ button, input, select { font-family: inherit; }
   margin: 2px 0 0;
 }
 
+.beta-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--accent-blue-light);
+  color: var(--accent-blue-text);
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
 .settings-main {
   flex: 1;
   max-width: 760px;

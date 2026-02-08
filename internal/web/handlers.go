@@ -14,6 +14,7 @@ import (
 
 	"github.com/onllm-dev/onwatch/internal/api"
 	"github.com/onllm-dev/onwatch/internal/config"
+	"github.com/onllm-dev/onwatch/internal/notify"
 	"github.com/onllm-dev/onwatch/internal/store"
 	"github.com/onllm-dev/onwatch/internal/tracker"
 	"github.com/onllm-dev/onwatch/internal/update"
@@ -25,25 +26,26 @@ type Notifier interface {
 	Reload() error
 	ConfigureSMTP() error
 	SendTestEmail() error
+	SetEncryptionKey(key string)
 }
 
 // Handler handles HTTP requests for the web dashboard
 type Handler struct {
-	store              *store.Store
-	tracker            *tracker.Tracker
-	zaiTracker         *tracker.ZaiTracker
-	anthropicTracker   *tracker.AnthropicTracker
-	updater            *update.Updater
-	notifier           Notifier
-	logger             *slog.Logger
-	dashboardTmpl      *template.Template
-	loginTmpl          *template.Template
-	settingsTmpl       *template.Template
-	sessions           *SessionStore
-	config             *config.Config
-	version            string
-	smtpTestMu         sync.Mutex
-	smtpTestLastSent   time.Time
+	store            *store.Store
+	tracker          *tracker.Tracker
+	zaiTracker       *tracker.ZaiTracker
+	anthropicTracker *tracker.AnthropicTracker
+	updater          *update.Updater
+	notifier         Notifier
+	logger           *slog.Logger
+	dashboardTmpl    *template.Template
+	loginTmpl        *template.Template
+	settingsTmpl     *template.Template
+	sessions         *SessionStore
+	config           *config.Config
+	version          string
+	smtpTestMu       sync.Mutex
+	smtpTestLastSent time.Time
 }
 
 // NewHandler creates a new Handler instance
@@ -490,7 +492,7 @@ func buildEmptyZaiQuotaResponse(name, description string) map[string]interface{}
 
 func buildZaiTokensQuotaResponse(snapshot *api.ZaiSnapshot) map[string]interface{} {
 	// Z.ai API: "usage" = total budget/capacity, "currentValue" = actual usage
-	budget := snapshot.TokensUsage       // API's "usage" = total budget
+	budget := snapshot.TokensUsage              // API's "usage" = total budget
 	currentUsage := snapshot.TokensCurrentValue // API's "currentValue" = actual usage
 	percent := float64(snapshot.TokensPercentage)
 
@@ -904,14 +906,14 @@ func (h *Handler) historyZai(w http.ResponseWriter, r *http.Request) {
 		}
 		// Z.ai API: "usage" = budget, "currentValue" = actual usage, "percentage" = server %
 		response = append(response, map[string]interface{}{
-			"capturedAt":        snapshot.CapturedAt.Format(time.RFC3339),
-			"tokensLimit":       snapshot.TokensUsage,        // budget
-			"tokensUsage":       snapshot.TokensCurrentValue,  // actual usage
-			"tokensPercent":     float64(snapshot.TokensPercentage),
-			"timeLimit":         snapshot.TimeUsage,           // budget
-			"timeUsage":         snapshot.TimeCurrentValue,    // actual usage
-			"timePercent":       float64(snapshot.TimePercentage),
-			"toolCallsPercent":  zaiToolCallsPercent(snapshot),
+			"capturedAt":       snapshot.CapturedAt.Format(time.RFC3339),
+			"tokensLimit":      snapshot.TokensUsage,        // budget
+			"tokensUsage":      snapshot.TokensCurrentValue, // actual usage
+			"tokensPercent":    float64(snapshot.TokensPercentage),
+			"timeLimit":        snapshot.TimeUsage,        // budget
+			"timeUsage":        snapshot.TimeCurrentValue, // actual usage
+			"timePercent":      float64(snapshot.TimePercentage),
+			"toolCallsPercent": zaiToolCallsPercent(snapshot),
 		})
 	}
 
@@ -1127,7 +1129,7 @@ func zaiCycleToMap(cycle *store.ZaiResetCycle) map[string]interface{} {
 		"quotaType":    cycle.QuotaType,
 		"cycleStart":   cycle.CycleStart.Format(time.RFC3339),
 		"cycleEnd":     nil,
-		"peakRequests": cycle.PeakValue,  // normalized to match Synthetic field name for frontend
+		"peakRequests": cycle.PeakValue, // normalized to match Synthetic field name for frontend
 		"totalDelta":   cycle.TotalDelta,
 	}
 
@@ -2684,7 +2686,7 @@ func (h *Handler) computeAnthropicRate(quotaName string, currentUtil float64, su
 	if result.HasRate && result.Rate > 0 {
 		remaining := 100 - currentUtil
 		if remaining > 0 {
-			result.TimeToExhaust = time.Duration(remaining/result.Rate*float64(time.Hour))
+			result.TimeToExhaust = time.Duration(remaining / result.Rate * float64(time.Hour))
 		}
 		if result.TimeToReset > 0 {
 			result.ProjectedPct = currentUtil + (result.Rate * result.TimeToReset.Hours())
@@ -3067,6 +3069,18 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Encrypt SMTP password using admin password hash as key
+		if smtp.Password != "" && !IsEncryptedValue(smtp.Password) {
+			encryptionKey := DeriveEncryptionKey(h.sessions.passwordHash)
+			encryptedPass, err := notify.Encrypt(smtp.Password, encryptionKey)
+			if err != nil {
+				h.logger.Error("failed to encrypt SMTP password", "error", err)
+				respondError(w, http.StatusInternalServerError, "failed to encrypt SMTP password")
+				return
+			}
+			smtp.Password = encryptedPass
+		}
+
 		smtpJSON, _ := json.Marshal(smtp)
 		if err := h.store.SetSetting("smtp", string(smtpJSON)); err != nil {
 			h.logger.Error("failed to save SMTP settings", "error", err)
@@ -3093,10 +3107,10 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 			NotifyReset       bool    `json:"notify_reset"`
 			CooldownMinutes   int     `json:"cooldown_minutes"`
 			Overrides         []struct {
-				QuotaKey  string  `json:"quota_key"`
-				Provider  string  `json:"provider"`
-				Warning   float64 `json:"warning"`
-				Critical  float64 `json:"critical"`
+				QuotaKey string  `json:"quota_key"`
+				Provider string  `json:"provider"`
+				Warning  float64 `json:"warning"`
+				Critical float64 `json:"critical"`
 			} `json:"overrides"`
 		}
 		if err := json.Unmarshal(raw, &notif); err != nil {
@@ -3247,7 +3261,8 @@ func (h *Handler) loginPost(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   sessionMaxAge,
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		Secure:   h.config.Host != "" && h.config.Host != "0.0.0.0" && h.config.Host != "127.0.0.1",
+		SameSite: http.SameSiteStrictMode,
 	})
 
 	http.Redirect(w, r, "/", http.StatusFound)
@@ -3298,7 +3313,8 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify current password
+	// Verify current password and get old hash for re-encryption
+	oldHash := h.sessions.passwordHash
 	_, ok := h.sessions.Authenticate(h.sessions.username, req.CurrentPassword)
 	if !ok {
 		respondError(w, http.StatusUnauthorized, "current password is incorrect")
@@ -3306,7 +3322,12 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Hash and store new password
-	newHash := HashPassword(req.NewPassword)
+	newHash, err := HashPassword(req.NewPassword)
+	if err != nil {
+		h.logger.Error("failed to hash new password", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to process new password")
+		return
+	}
 	if err := h.store.UpsertUser(h.sessions.username, newHash); err != nil {
 		h.logger.Error("failed to update password in database", "error", err)
 		respondError(w, http.StatusInternalServerError, "failed to save new password")
@@ -3315,6 +3336,13 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	// Update in-memory hash
 	h.sessions.UpdatePassword(newHash)
+
+	// Re-encrypt all encrypted data with new password key
+	reEncryptErrors := ReEncryptAllData(h.store, oldHash, newHash)
+	if len(reEncryptErrors) > 0 {
+		h.logger.Warn("some data could not be re-encrypted during password change", "errors", reEncryptErrors)
+		// Continue anyway - data might need manual re-entry or was already encrypted with new key
+	}
 
 	// Invalidate all sessions (force re-login)
 	h.sessions.InvalidateAll()

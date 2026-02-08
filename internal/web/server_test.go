@@ -28,7 +28,8 @@ func freePort(t *testing.T) int {
 func TestServer_StartsOnPort(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewHandler(nil, nil, logger, nil, nil)
-	server := NewServer(freePort(t), handler, logger, "admin", HashPassword("test"))
+	passHash, _ := HashPassword("test")
+	server := NewServer(freePort(t), handler, logger, "admin", passHash)
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -61,7 +62,8 @@ func TestServer_StartsOnPort(t *testing.T) {
 func TestServer_ServesHTML(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewHandler(nil, nil, logger, nil, nil)
-	server := NewServer(freePort(t), handler, logger, "admin", HashPassword("test"))
+	passHash, _ := HashPassword("test")
+	server := NewServer(freePort(t), handler, logger, "admin", passHash)
 
 	// Start server
 	go server.Start()
@@ -103,7 +105,8 @@ func TestServer_ServesHTML(t *testing.T) {
 func TestServer_ServesStaticCSS(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewHandler(nil, nil, logger, nil, nil)
-	server := NewServer(freePort(t), handler, logger, "admin", HashPassword("test"))
+	passHash, _ := HashPassword("test")
+	server := NewServer(freePort(t), handler, logger, "admin", passHash)
 
 	go server.Start()
 	time.Sleep(100 * time.Millisecond)
@@ -137,7 +140,8 @@ func TestServer_ServesStaticCSS(t *testing.T) {
 func TestServer_ServesStaticJS(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewHandler(nil, nil, logger, nil, nil)
-	server := NewServer(freePort(t), handler, logger, "admin", HashPassword("test"))
+	passHash, _ := HashPassword("test")
+	server := NewServer(freePort(t), handler, logger, "admin", passHash)
 
 	go server.Start()
 	time.Sleep(100 * time.Millisecond)
@@ -171,7 +175,8 @@ func TestServer_ServesStaticJS(t *testing.T) {
 func TestServer_GracefulShutdown(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewHandler(nil, nil, logger, nil, nil)
-	server := NewServer(freePort(t), handler, logger, "admin", HashPassword("test"))
+	passHash, _ := HashPassword("test")
+	server := NewServer(freePort(t), handler, logger, "admin", passHash)
 
 	go server.Start()
 	time.Sleep(100 * time.Millisecond)
@@ -205,7 +210,8 @@ func TestServer_EmbeddedAssets(t *testing.T) {
 	// Test that embedded assets are accessible
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler := NewHandler(nil, nil, logger, nil, nil)
-	server := NewServer(freePort(t), handler, logger, "admin", HashPassword("test"))
+	passHash, _ := HashPassword("test")
+	server := NewServer(freePort(t), handler, logger, "admin", passHash)
 
 	go server.Start()
 	time.Sleep(100 * time.Millisecond)

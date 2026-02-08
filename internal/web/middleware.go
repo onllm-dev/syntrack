@@ -15,10 +15,44 @@ import (
 	"time"
 
 	"github.com/onllm-dev/onwatch/internal/store"
+	"golang.org/x/crypto/bcrypt"
 )
 
-// HashPassword returns the SHA-256 hex hash of a password.
-func HashPassword(password string) string {
+// HashPassword returns the bcrypt hash of a password.
+// Uses bcrypt.DefaultCost (10) for a good balance of security and performance.
+func HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", fmt.Errorf("failed to hash password: %w", err)
+	}
+	return string(bytes), nil
+}
+
+// CheckPasswordHash compares a password with a hash.
+// Returns true if they match, false otherwise.
+func CheckPasswordHash(password, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
+}
+
+// IsLegacyHash checks if a password hash is the old SHA-256 format.
+// Legacy hashes are exactly 64 hex characters.
+func IsLegacyHash(hash string) bool {
+	if len(hash) != 64 {
+		return false
+	}
+	// Check if it's valid hex
+	for _, c := range hash {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+// legacyHashPassword returns the SHA-256 hex hash of a password.
+// Used for backward compatibility with legacy password hashes.
+func legacyHashPassword(password string) string {
 	h := sha256.Sum256([]byte(password))
 	return fmt.Sprintf("%x", h)
 }
@@ -31,7 +65,7 @@ type SessionStore struct {
 	mu           sync.RWMutex
 	tokens       map[string]time.Time // in-memory cache: token -> expiry
 	username     string
-	passwordHash string // SHA-256 hex hash of password
+	passwordHash string       // SHA-256 hex hash of password
 	store        *store.Store // optional: if set, tokens are persisted across restarts
 }
 
@@ -53,14 +87,29 @@ func NewSessionStore(username, passwordHash string, db *store.Store) *SessionSto
 }
 
 // Authenticate validates credentials and returns a session token if valid.
+// Supports both bcrypt (new) and SHA-256 (legacy) password hashes.
 func (s *SessionStore) Authenticate(username, password string) (string, bool) {
 	userMatch := subtle.ConstantTimeCompare([]byte(username), []byte(s.username)) == 1
-	incomingHash := HashPassword(password)
+	if !userMatch {
+		return "", false
+	}
+
 	s.mu.RLock()
 	storedHash := s.passwordHash
 	s.mu.RUnlock()
-	passMatch := subtle.ConstantTimeCompare([]byte(incomingHash), []byte(storedHash)) == 1
-	if !userMatch || !passMatch {
+
+	// Check password using bcrypt or legacy SHA-256
+	var passMatch bool
+	if IsLegacyHash(storedHash) {
+		// Legacy SHA-256 hash - use constant time comparison
+		incomingHash := legacyHashPassword(password)
+		passMatch = subtle.ConstantTimeCompare([]byte(incomingHash), []byte(storedHash)) == 1
+	} else {
+		// Modern bcrypt hash
+		passMatch = CheckPasswordHash(password, storedHash)
+	}
+
+	if !passMatch {
 		return "", false
 	}
 
@@ -184,14 +233,28 @@ func SessionAuthMiddleware(sessions *SessionStore, logger ...*slog.Logger) func(
 				u, p, ok := extractCredentials(r)
 				if ok {
 					userMatch := subtle.ConstantTimeCompare([]byte(u), []byte(sessions.username)) == 1
-					incomingHash := HashPassword(p)
-					sessions.mu.RLock()
-					storedHash := sessions.passwordHash
-					sessions.mu.RUnlock()
-					passMatch := subtle.ConstantTimeCompare([]byte(incomingHash), []byte(storedHash)) == 1
-					if userMatch && passMatch {
-						next.ServeHTTP(w, r)
-						return
+					if !userMatch {
+						// Continue to auth failed response
+					} else {
+						sessions.mu.RLock()
+						storedHash := sessions.passwordHash
+						sessions.mu.RUnlock()
+
+						// Check password using bcrypt or legacy SHA-256
+						var passMatch bool
+						if IsLegacyHash(storedHash) {
+							// Legacy SHA-256 hash
+							incomingHash := legacyHashPassword(p)
+							passMatch = subtle.ConstantTimeCompare([]byte(incomingHash), []byte(storedHash)) == 1
+						} else {
+							// Modern bcrypt hash
+							passMatch = CheckPasswordHash(p, storedHash)
+						}
+
+						if passMatch {
+							next.ServeHTTP(w, r)
+							return
+						}
 					}
 				}
 				if log != nil {
