@@ -49,7 +49,13 @@ func WithAnthropicTimeout(timeout time.Duration) AnthropicOption {
 func NewAnthropicClient(token string, logger *slog.Logger, opts ...AnthropicOption) *AnthropicClient {
 	client := &AnthropicClient{
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: 30 * time.Second,
+				IdleConnTimeout:       30 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ForceAttemptHTTP2:     true,
+			},
 		},
 		token:   token,
 		baseURL: "https://api.anthropic.com/api/oauth/usage",
@@ -65,7 +71,10 @@ func NewAnthropicClient(token string, logger *slog.Logger, opts ...AnthropicOpti
 
 // FetchQuotas retrieves the current quota information from the Anthropic API.
 func (c *AnthropicClient) FetchQuotas(ctx context.Context) (*AnthropicQuotaResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL, nil)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, c.baseURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("anthropic: creating request: %w", err)
 	}

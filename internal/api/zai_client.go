@@ -50,7 +50,13 @@ func WithZaiTimeout(timeout time.Duration) ZaiOption {
 func NewZaiClient(apiKey string, logger *slog.Logger, opts ...ZaiOption) *ZaiClient {
 	client := &ZaiClient{
 		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: 30 * time.Second,
+				IdleConnTimeout:       30 * time.Second,
+				TLSHandshakeTimeout:   10 * time.Second,
+				ForceAttemptHTTP2:     true,
+			},
 		},
 		apiKey:  apiKey,
 		baseURL: "https://api.z.ai/api/monitor/usage/quota/limit",
@@ -66,7 +72,10 @@ func NewZaiClient(apiKey string, logger *slog.Logger, opts ...ZaiOption) *ZaiCli
 
 // FetchQuotas retrieves the current quota information from the Z.ai API.
 func (c *ZaiClient) FetchQuotas(ctx context.Context) (*ZaiQuotaResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL, nil)
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, c.baseURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("zai: creating request: %w", err)
 	}

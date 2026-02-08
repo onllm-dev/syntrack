@@ -325,9 +325,9 @@ func TestClient_DefaultTimeout(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	client := NewClient("syn_test_key_12345", logger)
 
-	// Default timeout should be 10 seconds
-	if client.httpClient.Timeout != 10*time.Second {
-		t.Errorf("Default timeout = %v, want %v", client.httpClient.Timeout, 10*time.Second)
+	// Default timeout should be 30 seconds
+	if client.httpClient.Timeout != 30*time.Second {
+		t.Errorf("Default timeout = %v, want %v", client.httpClient.Timeout, 30*time.Second)
 	}
 }
 

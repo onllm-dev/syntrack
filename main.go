@@ -570,6 +570,12 @@ func run() error {
 	agentErr := make(chan error, 3)
 	if ag != nil {
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("Synthetic agent panicked", "panic", r)
+					agentErr <- fmt.Errorf("synthetic agent panic: %v", r)
+				}
+			}()
 			logger.Info("Starting Synthetic agent", "interval", cfg.PollInterval)
 			if err := ag.Run(ctx); err != nil {
 				agentErr <- fmt.Errorf("synthetic agent error: %w", err)
@@ -579,6 +585,12 @@ func run() error {
 
 	if zaiAg != nil {
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("Z.ai agent panicked", "panic", r)
+					agentErr <- fmt.Errorf("zai agent panic: %v", r)
+				}
+			}()
 			time.Sleep(200 * time.Millisecond) // stagger to avoid SQLite BUSY
 			logger.Info("Starting Z.ai agent", "interval", cfg.PollInterval)
 			if err := zaiAg.Run(ctx); err != nil {
@@ -589,6 +601,12 @@ func run() error {
 
 	if anthropicAg != nil {
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("Anthropic agent panicked", "panic", r)
+					agentErr <- fmt.Errorf("anthropic agent panic: %v", r)
+				}
+			}()
 			time.Sleep(400 * time.Millisecond) // stagger to avoid SQLite BUSY
 			logger.Info("Starting Anthropic agent", "interval", cfg.PollInterval)
 			if err := anthropicAg.Run(ctx); err != nil {

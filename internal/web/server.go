@@ -52,20 +52,8 @@ func NewServer(port int, handler *Handler, logger *slog.Logger, username, passwo
 	})
 	mux.HandleFunc("/api/password", handler.ChangePassword)
 
-	// Serve robots.txt and llms.txt at root level (public, no auth)
-	staticDir, _ := fs.Sub(staticFS, "static")
-	mux.HandleFunc("/robots.txt", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		data, _ := fs.ReadFile(staticDir, "robots.txt")
-		w.Write(data)
-	})
-	mux.HandleFunc("/llms.txt", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		data, _ := fs.ReadFile(staticDir, "llms.txt")
-		w.Write(data)
-	})
-
 	// Static files from embedded filesystem
+	staticDir, _ := fs.Sub(staticFS, "static")
 	staticHandler := http.FileServer(http.FS(staticDir))
 	mux.Handle("/static/", http.StripPrefix("/static/", contentTypeHandler(staticHandler)))
 
