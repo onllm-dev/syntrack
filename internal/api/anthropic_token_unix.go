@@ -19,8 +19,10 @@ func detectAnthropicTokenPlatform(logger *slog.Logger) string {
 	}
 
 	username := ""
+	var homeDir string
 	if u, err := user.Current(); err == nil {
 		username = u.Username
+		homeDir = u.HomeDir
 	}
 
 	// macOS: try Keychain
@@ -53,20 +55,31 @@ func detectAnthropicTokenPlatform(logger *slog.Logger) string {
 	}
 
 	// File fallback: ~/.claude/.credentials.json
+	// Use os.UserHomeDir() first ($HOME), then fall back to user.Current().HomeDir
+	// (handles systemd services where $HOME is not set)
 	home, err := os.UserHomeDir()
 	if err != nil {
+		home = homeDir // fallback to passwd-based home from user.Current()
+	}
+	if home == "" {
+		logger.Debug("Cannot determine home directory for credential file lookup")
 		return ""
 	}
 	credPath := filepath.Join(home, ".claude", ".credentials.json")
 	data, err := os.ReadFile(credPath)
 	if err != nil {
+		logger.Debug("Credential file not readable", "path", credPath, "error", err)
 		return ""
 	}
 	token, err := parseClaudeCredentials(data)
-	if err == nil && token != "" {
-		logger.Info("Anthropic token auto-detected from credentials file", "path", credPath)
-		return strings.TrimSpace(token)
+	if err != nil {
+		logger.Debug("Failed to parse credentials", "path", credPath, "error", err)
+		return ""
 	}
-
-	return ""
+	if token == "" {
+		logger.Debug("Credentials file has empty access token", "path", credPath)
+		return ""
+	}
+	logger.Info("Anthropic token auto-detected from credentials file", "path", credPath)
+	return strings.TrimSpace(token)
 }

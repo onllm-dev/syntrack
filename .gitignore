@@ -62,3 +62,7 @@ market-research.md
 icp-analysis.md
 promotional-articles.md
 naming-research.md
+
+# Performance monitoring artifacts
+tools/perf-monitor/onwatch
+tools/perf-monitor/*.json
