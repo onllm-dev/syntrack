@@ -488,6 +488,134 @@ func TestStore_QueryAnthropicUtilizationSeries(t *testing.T) {
 	}
 }
 
+func TestStore_QueryAnthropicCycleOverview_NoCycles(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	rows, err := s.QueryAnthropicCycleOverview("five_hour", 10)
+	if err != nil {
+		t.Fatalf("QueryAnthropicCycleOverview failed: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("Expected 0 rows, got %d", len(rows))
+	}
+}
+
+func TestStore_QueryAnthropicCycleOverview_WithData(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	base := time.Date(2026, 2, 6, 12, 0, 0, 0, time.UTC)
+	cycleEnd := base.Add(5 * time.Hour)
+
+	// Create and close a cycle
+	_, err = s.CreateAnthropicCycle("five_hour", base, &cycleEnd)
+	if err != nil {
+		t.Fatalf("CreateAnthropicCycle failed: %v", err)
+	}
+
+	// Insert snapshots within the cycle with increasing utilization
+	for i := 0; i < 5; i++ {
+		snapshot := &api.AnthropicSnapshot{
+			CapturedAt: base.Add(time.Duration(i) * time.Hour),
+			RawJSON:    "{}",
+			Quotas: []api.AnthropicQuota{
+				{Name: "five_hour", Utilization: float64(i) * 20},
+				{Name: "seven_day", Utilization: float64(i) * 5},
+				{Name: "seven_day_sonnet", Utilization: float64(i) * 2},
+			},
+		}
+		_, err := s.InsertAnthropicSnapshot(snapshot)
+		if err != nil {
+			t.Fatalf("InsertAnthropicSnapshot failed: %v", err)
+		}
+	}
+
+	// Close the cycle
+	err = s.CloseAnthropicCycle("five_hour", cycleEnd, 80, 72)
+	if err != nil {
+		t.Fatalf("CloseAnthropicCycle failed: %v", err)
+	}
+
+	rows, err := s.QueryAnthropicCycleOverview("five_hour", 10)
+	if err != nil {
+		t.Fatalf("QueryAnthropicCycleOverview failed: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("Expected 1 row, got %d", len(rows))
+	}
+
+	row := rows[0]
+	if row.QuotaType != "five_hour" {
+		t.Errorf("QuotaType = %q, want 'five_hour'", row.QuotaType)
+	}
+	if row.PeakValue != 80 {
+		t.Errorf("PeakValue = %v, want 80", row.PeakValue)
+	}
+
+	// Should have 3 cross-quotas from the peak snapshot (i=4, five_hour=80)
+	if len(row.CrossQuotas) != 3 {
+		t.Fatalf("Expected 3 cross-quotas, got %d", len(row.CrossQuotas))
+	}
+
+	// Cross-quotas should be ordered by quota_name (ASC)
+	if row.CrossQuotas[0].Name != "five_hour" {
+		t.Errorf("First cross-quota = %q, want 'five_hour'", row.CrossQuotas[0].Name)
+	}
+	if row.CrossQuotas[0].Percent != 80 {
+		t.Errorf("five_hour percent = %v, want 80", row.CrossQuotas[0].Percent)
+	}
+	if row.CrossQuotas[1].Name != "seven_day" {
+		t.Errorf("Second cross-quota = %q, want 'seven_day'", row.CrossQuotas[1].Name)
+	}
+	if row.CrossQuotas[1].Percent != 20 {
+		t.Errorf("seven_day percent = %v, want 20", row.CrossQuotas[1].Percent)
+	}
+	if row.CrossQuotas[2].Name != "seven_day_sonnet" {
+		t.Errorf("Third cross-quota = %q, want 'seven_day_sonnet'", row.CrossQuotas[2].Name)
+	}
+	if row.CrossQuotas[2].Percent != 8 {
+		t.Errorf("seven_day_sonnet percent = %v, want 8", row.CrossQuotas[2].Percent)
+	}
+}
+
+func TestStore_QueryAnthropicCycleOverview_NoSnapshots(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	base := time.Date(2026, 2, 6, 12, 0, 0, 0, time.UTC)
+	cycleEnd := base.Add(5 * time.Hour)
+
+	_, err = s.CreateAnthropicCycle("five_hour", base, &cycleEnd)
+	if err != nil {
+		t.Fatalf("CreateAnthropicCycle failed: %v", err)
+	}
+	err = s.CloseAnthropicCycle("five_hour", cycleEnd, 0, 0)
+	if err != nil {
+		t.Fatalf("CloseAnthropicCycle failed: %v", err)
+	}
+
+	rows, err := s.QueryAnthropicCycleOverview("five_hour", 10)
+	if err != nil {
+		t.Fatalf("QueryAnthropicCycleOverview failed: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("Expected 1 row, got %d", len(rows))
+	}
+	if len(rows[0].CrossQuotas) != 0 {
+		t.Errorf("Expected 0 cross-quotas, got %d", len(rows[0].CrossQuotas))
+	}
+}
+
 func TestStore_AnthropicForeignKeyConstraint(t *testing.T) {
 	s, err := New(":memory:")
 	if err != nil {

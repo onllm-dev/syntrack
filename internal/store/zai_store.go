@@ -356,6 +356,80 @@ func (s *Store) QueryZaiCycleHistory(quotaType string, limit ...int) ([]*ZaiRese
 	return cycles, rows.Err()
 }
 
+// QueryZaiCycleOverview returns completed Z.ai cycles for a given quota type
+// with cross-quota snapshot data at the peak moment of each cycle.
+func (s *Store) QueryZaiCycleOverview(groupBy string, limit int) ([]CycleOverviewRow, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	cycles, err := s.QueryZaiCycleHistory(groupBy, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store.QueryZaiCycleOverview: %w", err)
+	}
+
+	var overviewRows []CycleOverviewRow
+	for _, c := range cycles {
+		if c.CycleEnd == nil {
+			continue
+		}
+		row := CycleOverviewRow{
+			CycleID:    c.ID,
+			QuotaType:  c.QuotaType,
+			CycleStart: c.CycleStart,
+			CycleEnd:   c.CycleEnd,
+			PeakValue:  float64(c.PeakValue),
+			TotalDelta: float64(c.TotalDelta),
+		}
+
+		var peakCol string
+		switch groupBy {
+		case "tokens":
+			peakCol = "tokens_current_value"
+		case "time":
+			peakCol = "time_current_value"
+		default:
+			peakCol = "tokens_current_value"
+		}
+
+		var capturedAt string
+		var timeUsage, timeCurrent, tokensUsage, tokensCurrent float64
+		err := s.db.QueryRow(
+			fmt.Sprintf(`SELECT captured_at, time_usage, time_current_value, tokens_usage, tokens_current_value
+			FROM zai_snapshots
+			WHERE captured_at BETWEEN ? AND ?
+			ORDER BY %s DESC LIMIT 1`, peakCol),
+			c.CycleStart.Format(time.RFC3339Nano),
+			c.CycleEnd.Format(time.RFC3339Nano),
+		).Scan(&capturedAt, &timeUsage, &timeCurrent, &tokensUsage, &tokensCurrent)
+
+		if err == sql.ErrNoRows {
+			overviewRows = append(overviewRows, row)
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("store.QueryZaiCycleOverview: peak snapshot: %w", err)
+		}
+
+		row.PeakTime, _ = time.Parse(time.RFC3339Nano, capturedAt)
+
+		pct := func(val, lim float64) float64 {
+			if lim == 0 {
+				return 0
+			}
+			return val / lim * 100
+		}
+		row.CrossQuotas = []CrossQuotaEntry{
+			{Name: "tokens", Value: tokensCurrent, Limit: tokensUsage, Percent: pct(tokensCurrent, tokensUsage)},
+			{Name: "time", Value: timeCurrent, Limit: timeUsage, Percent: pct(timeCurrent, timeUsage)},
+		}
+
+		overviewRows = append(overviewRows, row)
+	}
+
+	return overviewRows, nil
+}
+
 // QueryZaiCyclesSince returns all Z.ai cycles (completed and active) for a quota type since a given time.
 func (s *Store) QueryZaiCyclesSince(quotaType string, since time.Time) ([]*ZaiResetCycle, error) {
 	rows, err := s.db.Query(

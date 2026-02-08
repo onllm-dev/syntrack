@@ -475,3 +475,134 @@ func TestStore_SetAndGetSetting(t *testing.T) {
 		t.Errorf("Expected 'Europe/London', got %q", val)
 	}
 }
+
+func TestStore_QuerySyntheticCycleOverview_NoCycles(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	rows, err := s.QuerySyntheticCycleOverview("subscription", 10)
+	if err != nil {
+		t.Fatalf("QuerySyntheticCycleOverview failed: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("Expected 0 rows, got %d", len(rows))
+	}
+}
+
+func TestStore_QuerySyntheticCycleOverview_WithData(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	base := time.Date(2026, 2, 6, 12, 0, 0, 0, time.UTC)
+
+	// Create a cycle
+	_, err = s.CreateCycle("subscription", base, base.Add(24*time.Hour))
+	if err != nil {
+		t.Fatalf("CreateCycle failed: %v", err)
+	}
+
+	// Insert snapshots within the cycle
+	for i := 0; i < 5; i++ {
+		snapshot := &api.Snapshot{
+			CapturedAt: base.Add(time.Duration(i) * time.Hour),
+			Sub:        api.QuotaInfo{Limit: 1350, Requests: float64(i * 100), RenewsAt: base.Add(24 * time.Hour)},
+			Search:     api.QuotaInfo{Limit: 250, Requests: float64(i * 10), RenewsAt: base.Add(time.Hour)},
+			ToolCall:   api.QuotaInfo{Limit: 16200, Requests: float64(i * 500), RenewsAt: base.Add(24 * time.Hour)},
+		}
+		_, err := s.InsertSnapshot(snapshot)
+		if err != nil {
+			t.Fatalf("InsertSnapshot failed: %v", err)
+		}
+	}
+
+	// Close the cycle
+	err = s.CloseCycle("subscription", base.Add(5*time.Hour), 400, 380)
+	if err != nil {
+		t.Fatalf("CloseCycle failed: %v", err)
+	}
+
+	rows, err := s.QuerySyntheticCycleOverview("subscription", 10)
+	if err != nil {
+		t.Fatalf("QuerySyntheticCycleOverview failed: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("Expected 1 row, got %d", len(rows))
+	}
+
+	row := rows[0]
+	if row.QuotaType != "subscription" {
+		t.Errorf("QuotaType = %q, want 'subscription'", row.QuotaType)
+	}
+	if row.PeakValue != 400 {
+		t.Errorf("PeakValue = %v, want 400", row.PeakValue)
+	}
+	if row.TotalDelta != 380 {
+		t.Errorf("TotalDelta = %v, want 380", row.TotalDelta)
+	}
+	if len(row.CrossQuotas) != 3 {
+		t.Fatalf("Expected 3 cross-quotas, got %d", len(row.CrossQuotas))
+	}
+
+	// The peak snapshot should be the one at i=4 (sub_requests=400)
+	subEntry := row.CrossQuotas[0]
+	if subEntry.Name != "subscription" {
+		t.Errorf("First cross-quota name = %q, want 'subscription'", subEntry.Name)
+	}
+	if subEntry.Value != 400 {
+		t.Errorf("Subscription value = %v, want 400", subEntry.Value)
+	}
+	if subEntry.Limit != 1350 {
+		t.Errorf("Subscription limit = %v, want 1350", subEntry.Limit)
+	}
+	// Check percent is approximately correct
+	expectedPct := 400.0 / 1350.0 * 100
+	if subEntry.Percent < expectedPct-0.1 || subEntry.Percent > expectedPct+0.1 {
+		t.Errorf("Subscription percent = %v, want ~%v", subEntry.Percent, expectedPct)
+	}
+
+	// Verify search and toolcall are also present
+	if row.CrossQuotas[1].Name != "search" {
+		t.Errorf("Second cross-quota name = %q, want 'search'", row.CrossQuotas[1].Name)
+	}
+	if row.CrossQuotas[2].Name != "toolcall" {
+		t.Errorf("Third cross-quota name = %q, want 'toolcall'", row.CrossQuotas[2].Name)
+	}
+}
+
+func TestStore_QuerySyntheticCycleOverview_NoSnapshots(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	base := time.Date(2026, 2, 6, 12, 0, 0, 0, time.UTC)
+
+	// Create and close a cycle without any snapshots
+	_, err = s.CreateCycle("subscription", base, base.Add(24*time.Hour))
+	if err != nil {
+		t.Fatalf("CreateCycle failed: %v", err)
+	}
+	err = s.CloseCycle("subscription", base.Add(5*time.Hour), 0, 0)
+	if err != nil {
+		t.Fatalf("CloseCycle failed: %v", err)
+	}
+
+	rows, err := s.QuerySyntheticCycleOverview("subscription", 10)
+	if err != nil {
+		t.Fatalf("QuerySyntheticCycleOverview failed: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("Expected 1 row, got %d", len(rows))
+	}
+	// No snapshots means empty CrossQuotas
+	if len(rows[0].CrossQuotas) != 0 {
+		t.Errorf("Expected 0 cross-quotas, got %d", len(rows[0].CrossQuotas))
+	}
+}

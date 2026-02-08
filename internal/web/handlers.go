@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -3010,4 +3011,240 @@ func (h *Handler) ApplyUpdate(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("restart after update failed", "error", err)
 		}
 	}()
+}
+
+// CycleOverview returns cycle overview with cross-quota data at peak moments.
+func (h *Handler) CycleOverview(w http.ResponseWriter, r *http.Request) {
+	provider, err := h.getProviderFromRequest(r)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	switch provider {
+	case "both":
+		h.cycleOverviewBoth(w, r)
+	case "zai":
+		h.cycleOverviewZai(w, r)
+	case "synthetic":
+		h.cycleOverviewSynthetic(w, r)
+	case "anthropic":
+		h.cycleOverviewAnthropic(w, r)
+	default:
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
+	}
+}
+
+// parseCycleOverviewLimit parses the limit query param, defaulting to 50.
+func parseCycleOverviewLimit(r *http.Request) int {
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 {
+			return n
+		}
+	}
+	return 50
+}
+
+// cycleOverviewSynthetic returns Synthetic cycle overview with cross-quota data.
+func (h *Handler) cycleOverviewSynthetic(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"cycles": []interface{}{}})
+		return
+	}
+
+	groupBy := r.URL.Query().Get("groupBy")
+	if groupBy == "" {
+		groupBy = "subscription"
+	}
+
+	limit := parseCycleOverviewLimit(r)
+	rows, err := h.store.QuerySyntheticCycleOverview(groupBy, limit)
+	if err != nil {
+		h.logger.Error("failed to query synthetic cycle overview", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query cycle overview")
+		return
+	}
+
+	quotaNames := []string{"subscription", "search", "toolcall"}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"groupBy":    groupBy,
+		"provider":   "synthetic",
+		"quotaNames": quotaNames,
+		"cycles":     cycleOverviewRowsToJSON(rows),
+	})
+}
+
+// cycleOverviewZai returns Z.ai cycle overview with cross-quota data.
+func (h *Handler) cycleOverviewZai(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"cycles": []interface{}{}})
+		return
+	}
+
+	groupBy := r.URL.Query().Get("groupBy")
+	if groupBy == "" {
+		groupBy = "tokens"
+	}
+
+	limit := parseCycleOverviewLimit(r)
+	rows, err := h.store.QueryZaiCycleOverview(groupBy, limit)
+	if err != nil {
+		h.logger.Error("failed to query Z.ai cycle overview", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query cycle overview")
+		return
+	}
+
+	quotaNames := []string{"tokens", "time"}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"groupBy":    groupBy,
+		"provider":   "zai",
+		"quotaNames": quotaNames,
+		"cycles":     cycleOverviewRowsToJSON(rows),
+	})
+}
+
+// cycleOverviewAnthropic returns Anthropic cycle overview with cross-quota data.
+func (h *Handler) cycleOverviewAnthropic(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"cycles": []interface{}{}})
+		return
+	}
+
+	groupBy := r.URL.Query().Get("groupBy")
+	if groupBy == "" {
+		groupBy = "five_hour"
+	}
+
+	limit := parseCycleOverviewLimit(r)
+	rows, err := h.store.QueryAnthropicCycleOverview(groupBy, limit)
+	if err != nil {
+		h.logger.Error("failed to query Anthropic cycle overview", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query cycle overview")
+		return
+	}
+
+	// Determine quota names from first row with cross-quota data, or default
+	quotaNames := []string{}
+	for _, row := range rows {
+		if len(row.CrossQuotas) > 0 {
+			for _, cq := range row.CrossQuotas {
+				quotaNames = append(quotaNames, cq.Name)
+			}
+			break
+		}
+	}
+	if len(quotaNames) == 0 {
+		// Fallback defaults
+		quotaNames = []string{"five_hour", "seven_day", "seven_day_sonnet"}
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"groupBy":    groupBy,
+		"provider":   "anthropic",
+		"quotaNames": quotaNames,
+		"cycles":     cycleOverviewRowsToJSON(rows),
+	})
+}
+
+// cycleOverviewBoth returns combined cycle overview from all configured providers.
+func (h *Handler) cycleOverviewBoth(w http.ResponseWriter, r *http.Request) {
+	response := map[string]interface{}{}
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, response)
+		return
+	}
+
+	limit := parseCycleOverviewLimit(r)
+
+	if h.config.HasProvider("synthetic") {
+		groupBy := r.URL.Query().Get("groupBy")
+		if groupBy == "" {
+			groupBy = "subscription"
+		}
+		if rows, err := h.store.QuerySyntheticCycleOverview(groupBy, limit); err == nil {
+			response["synthetic"] = map[string]interface{}{
+				"groupBy":    groupBy,
+				"provider":   "synthetic",
+				"quotaNames": []string{"subscription", "search", "toolcall"},
+				"cycles":     cycleOverviewRowsToJSON(rows),
+			}
+		}
+	}
+
+	if h.config.HasProvider("zai") {
+		groupBy := r.URL.Query().Get("zaiGroupBy")
+		if groupBy == "" {
+			groupBy = "tokens"
+		}
+		if rows, err := h.store.QueryZaiCycleOverview(groupBy, limit); err == nil {
+			response["zai"] = map[string]interface{}{
+				"groupBy":    groupBy,
+				"provider":   "zai",
+				"quotaNames": []string{"tokens", "time"},
+				"cycles":     cycleOverviewRowsToJSON(rows),
+			}
+		}
+	}
+
+	if h.config.HasProvider("anthropic") {
+		groupBy := r.URL.Query().Get("anthropicGroupBy")
+		if groupBy == "" {
+			groupBy = "five_hour"
+		}
+		if rows, err := h.store.QueryAnthropicCycleOverview(groupBy, limit); err == nil {
+			quotaNames := []string{}
+			for _, row := range rows {
+				if len(row.CrossQuotas) > 0 {
+					for _, cq := range row.CrossQuotas {
+						quotaNames = append(quotaNames, cq.Name)
+					}
+					break
+				}
+			}
+			if len(quotaNames) == 0 {
+				quotaNames = []string{"five_hour", "seven_day", "seven_day_sonnet"}
+			}
+			response["anthropic"] = map[string]interface{}{
+				"groupBy":    groupBy,
+				"provider":   "anthropic",
+				"quotaNames": quotaNames,
+				"cycles":     cycleOverviewRowsToJSON(rows),
+			}
+		}
+	}
+
+	respondJSON(w, http.StatusOK, response)
+}
+
+// cycleOverviewRowsToJSON converts CycleOverviewRow slices to JSON-friendly maps.
+func cycleOverviewRowsToJSON(rows []store.CycleOverviewRow) []map[string]interface{} {
+	result := make([]map[string]interface{}, 0, len(rows))
+	for _, row := range rows {
+		entry := map[string]interface{}{
+			"cycleId":    row.CycleID,
+			"quotaType":  row.QuotaType,
+			"cycleStart": row.CycleStart.Format(time.RFC3339),
+			"peakValue":  row.PeakValue,
+			"totalDelta": row.TotalDelta,
+			"peakTime":   row.PeakTime.Format(time.RFC3339),
+		}
+		if row.CycleEnd != nil {
+			entry["cycleEnd"] = row.CycleEnd.Format(time.RFC3339)
+		} else {
+			entry["cycleEnd"] = nil
+		}
+
+		crossQuotas := make([]map[string]interface{}, 0, len(row.CrossQuotas))
+		for _, cq := range row.CrossQuotas {
+			crossQuotas = append(crossQuotas, map[string]interface{}{
+				"name":    cq.Name,
+				"value":   cq.Value,
+				"limit":   cq.Limit,
+				"percent": cq.Percent,
+			})
+		}
+		entry["crossQuotas"] = crossQuotas
+		result = append(result, entry)
+	}
+	return result
 }

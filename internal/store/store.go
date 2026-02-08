@@ -41,6 +41,26 @@ type ResetCycle struct {
 	TotalDelta   float64
 }
 
+// CycleOverviewRow represents a single cycle with cross-quota data at peak time.
+type CycleOverviewRow struct {
+	CycleID     int64
+	QuotaType   string
+	CycleStart  time.Time
+	CycleEnd    *time.Time
+	PeakValue   float64
+	TotalDelta  float64
+	PeakTime    time.Time
+	CrossQuotas []CrossQuotaEntry
+}
+
+// CrossQuotaEntry holds a single quota's value at a given point in time.
+type CrossQuotaEntry struct {
+	Name    string
+	Value   float64
+	Limit   float64 // 0 for Anthropic (utilization is already %)
+	Percent float64
+}
+
 // New creates a new Store with the given database path
 func New(dbPath string) (*Store, error) {
 	db, err := sql.Open("sqlite", dbPath)
@@ -708,6 +728,84 @@ func (s *Store) QueryCyclesSince(quotaType string, since time.Time) ([]*ResetCyc
 	}
 
 	return cycles, rows.Err()
+}
+
+// QuerySyntheticCycleOverview returns completed cycles for a given quota type
+// with cross-quota snapshot data at the peak moment of each cycle.
+func (s *Store) QuerySyntheticCycleOverview(groupBy string, limit int) ([]CycleOverviewRow, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	cycles, err := s.QueryCycleHistory(groupBy, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store.QuerySyntheticCycleOverview: %w", err)
+	}
+
+	var rows []CycleOverviewRow
+	for _, c := range cycles {
+		if c.CycleEnd == nil {
+			continue
+		}
+		row := CycleOverviewRow{
+			CycleID:    c.ID,
+			QuotaType:  c.QuotaType,
+			CycleStart: c.CycleStart,
+			CycleEnd:   c.CycleEnd,
+			PeakValue:  c.PeakRequests,
+			TotalDelta: c.TotalDelta,
+		}
+
+		// Find the snapshot at peak time for the primary quota within this cycle
+		var peakCol string
+		switch groupBy {
+		case "subscription":
+			peakCol = "sub_requests"
+		case "search":
+			peakCol = "search_requests"
+		case "toolcall":
+			peakCol = "tool_requests"
+		default:
+			peakCol = "sub_requests"
+		}
+
+		var capturedAt string
+		var subLimit, subReq, searchLimit, searchReq, toolLimit, toolReq float64
+		err := s.db.QueryRow(
+			fmt.Sprintf(`SELECT captured_at, sub_limit, sub_requests, search_limit, search_requests, tool_limit, tool_requests
+			FROM quota_snapshots
+			WHERE captured_at BETWEEN ? AND ?
+			ORDER BY %s DESC LIMIT 1`, peakCol),
+			c.CycleStart.Format(time.RFC3339Nano),
+			c.CycleEnd.Format(time.RFC3339Nano),
+		).Scan(&capturedAt, &subLimit, &subReq, &searchLimit, &searchReq, &toolLimit, &toolReq)
+
+		if err == sql.ErrNoRows {
+			rows = append(rows, row)
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("store.QuerySyntheticCycleOverview: peak snapshot: %w", err)
+		}
+
+		row.PeakTime, _ = time.Parse(time.RFC3339Nano, capturedAt)
+
+		pct := func(val, lim float64) float64 {
+			if lim == 0 {
+				return 0
+			}
+			return val / lim * 100
+		}
+		row.CrossQuotas = []CrossQuotaEntry{
+			{Name: "subscription", Value: subReq, Limit: subLimit, Percent: pct(subReq, subLimit)},
+			{Name: "search", Value: searchReq, Limit: searchLimit, Percent: pct(searchReq, searchLimit)},
+			{Name: "toolcall", Value: toolReq, Limit: toolLimit, Percent: pct(toolReq, toolLimit)},
+		}
+
+		rows = append(rows, row)
+	}
+
+	return rows, nil
 }
 
 // GetSetting returns the value for a setting key. Returns "" if not found.

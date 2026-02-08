@@ -63,6 +63,13 @@ const State = {
   hiddenInsights: new Set(),
   // Insights time range (1d / 7d / 30d)
   insightsRange: '7d',
+  // Cycle Overview state
+  allOverviewData: [],
+  overviewQuotaNames: [],
+  overviewGroupBy: null,
+  overviewSort: { key: null, dir: 'desc' },
+  overviewPage: 1,
+  overviewPageSize: 10,
 };
 
 // ── Persistence ──
@@ -260,6 +267,38 @@ const anthropicChartColorFallback = [
   { border: '#14B8A6', bg: 'rgba(20, 184, 166, 0.08)' },
   { border: '#EC4899', bg: 'rgba(236, 72, 153, 0.08)' }
 ];
+
+// ── Renewal Categories for Cycle Overview ──
+
+const renewalCategories = {
+  anthropic: [
+    { label: '5-Hour', groupBy: 'five_hour' },
+    { label: 'Weekly', groupBy: 'seven_day' },
+    { label: 'Monthly', groupBy: 'monthly_limit' }
+  ],
+  synthetic: [
+    { label: 'Subscription', groupBy: 'subscription' },
+    { label: 'Hourly', groupBy: 'search' },
+    { label: 'Tool Calls', groupBy: 'toolcall' }
+  ],
+  zai: [
+    { label: 'Tokens', groupBy: 'tokens' },
+    { label: 'Time', groupBy: 'time' }
+  ]
+};
+
+const overviewQuotaDisplayNames = {
+  subscription: 'Subscription',
+  search: 'Search',
+  toolcall: 'Tool Calls',
+  tokens: 'Tokens',
+  time: 'Time',
+  five_hour: '5-Hour',
+  seven_day: 'Weekly',
+  seven_day_sonnet: 'Sonnet',
+  monthly_limit: 'Monthly',
+  extra_usage: 'Extra'
+};
 
 // ── Anthropic Dynamic Card Rendering ──
 
@@ -2148,6 +2187,10 @@ function handleTableSort(tableId, th) {
     State.sessionsSort = { key, dir: newDir };
     State.sessionsPage = 1;
     renderSessionsTable();
+  } else if (tableId === 'overview') {
+    State.overviewSort = { key, dir: newDir };
+    State.overviewPage = 1;
+    renderOverviewTable();
   }
 }
 
@@ -2419,6 +2462,216 @@ function setupPasswordToggle() {
   }
 }
 
+// ── Cycle Overview ──
+
+function getOverviewCategories() {
+  const provider = getCurrentProvider();
+  if (provider === 'both') {
+    // Merge all categories
+    return [
+      ...renewalCategories.anthropic || [],
+      ...renewalCategories.synthetic || [],
+      ...renewalCategories.zai || []
+    ];
+  }
+  return renewalCategories[provider] || [];
+}
+
+function setupOverviewControls() {
+  const pillsContainer = document.getElementById('overview-period-pills');
+  if (!pillsContainer) return;
+
+  const categories = getOverviewCategories();
+  if (categories.length === 0) {
+    pillsContainer.innerHTML = '<span class="filter-label">No categories available</span>';
+    return;
+  }
+
+  pillsContainer.innerHTML = categories.map((cat, i) =>
+    `<button class="filter-pill ${i === 0 ? 'active' : ''}" data-group-by="${cat.groupBy}">${cat.label}</button>`
+  ).join('');
+
+  // Set default groupBy
+  State.overviewGroupBy = categories[0].groupBy;
+
+  // Click handler for pills
+  pillsContainer.addEventListener('click', (e) => {
+    const pill = e.target.closest('.filter-pill');
+    if (!pill) return;
+    pillsContainer.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    State.overviewGroupBy = pill.dataset.groupBy;
+    State.overviewPage = 1;
+    fetchCycleOverview();
+  });
+
+  // Page size
+  const pageSizeEl = document.getElementById('overview-page-size');
+  if (pageSizeEl) {
+    pageSizeEl.addEventListener('change', () => {
+      State.overviewPageSize = parseInt(pageSizeEl.value, 10);
+      State.overviewPage = 1;
+      renderOverviewTable();
+    });
+  }
+}
+
+async function fetchCycleOverview() {
+  if (!State.overviewGroupBy) return;
+  const provider = getCurrentProvider();
+
+  let url;
+  if (provider === 'both') {
+    // Determine which provider this groupBy belongs to
+    let effectiveProvider = 'synthetic';
+    for (const [prov, cats] of Object.entries(renewalCategories)) {
+      if (cats.some(c => c.groupBy === State.overviewGroupBy)) {
+        effectiveProvider = prov;
+        break;
+      }
+    }
+    url = `/api/cycle-overview?provider=${effectiveProvider}&groupBy=${State.overviewGroupBy}&limit=50`;
+  } else {
+    url = `/api/cycle-overview?${providerParam()}&groupBy=${State.overviewGroupBy}&limit=50`;
+  }
+
+  try {
+    const res = await authFetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    State.allOverviewData = data.cycles || [];
+    State.overviewQuotaNames = data.quotaNames || [];
+    renderOverviewTable();
+  } catch (e) {
+    console.warn('Failed to fetch cycle overview:', e);
+  }
+}
+
+function renderOverviewTable() {
+  const thead = document.getElementById('overview-thead');
+  const tbody = document.getElementById('overview-tbody');
+  const info = document.getElementById('overview-info');
+  const pagination = document.getElementById('overview-pagination');
+  if (!thead || !tbody) return;
+
+  const quotaNames = State.overviewQuotaNames;
+
+  // Build dynamic header
+  let headerHtml = `
+    <tr>
+      <th data-sort-key="id" role="button" tabindex="0">Cycle <span class="sort-arrow"></span></th>
+      <th data-sort-key="start" role="button" tabindex="0">Start <span class="sort-arrow"></span></th>
+      <th data-sort-key="end" role="button" tabindex="0">End <span class="sort-arrow"></span></th>
+      <th data-sort-key="duration" role="button" tabindex="0">Duration <span class="sort-arrow"></span></th>
+      <th data-sort-key="totalDelta" role="button" tabindex="0">Total Delta <span class="sort-arrow"></span></th>`;
+
+  quotaNames.forEach(qn => {
+    const isPrimary = qn === State.overviewGroupBy;
+    const displayName = overviewQuotaDisplayNames[qn] || qn;
+    headerHtml += `<th data-sort-key="cq_${qn}" role="button" tabindex="0" ${isPrimary ? 'class="overview-primary-col"' : ''}>${displayName} % <span class="sort-arrow"></span></th>`;
+  });
+  headerHtml += '</tr>';
+  thead.innerHTML = headerHtml;
+
+  // Attach sort handlers to new headers
+  thead.querySelectorAll('th[data-sort-key]').forEach(th => {
+    th.addEventListener('click', () => handleTableSort('overview', th));
+    th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTableSort('overview', th); } });
+  });
+
+  let data = [...State.allOverviewData];
+
+  // Sort
+  if (State.overviewSort.key) {
+    const { key, dir } = State.overviewSort;
+    data.sort((a, b) => {
+      let va, vb;
+      if (key === 'id') { va = a.cycleId; vb = b.cycleId; }
+      else if (key === 'start') { va = a.cycleStart; vb = b.cycleStart; }
+      else if (key === 'end') { va = a.cycleEnd || ''; vb = b.cycleEnd || ''; }
+      else if (key === 'duration') {
+        va = a.cycleEnd ? new Date(a.cycleEnd) - new Date(a.cycleStart) : 0;
+        vb = b.cycleEnd ? new Date(b.cycleEnd) - new Date(b.cycleStart) : 0;
+      }
+      else if (key === 'totalDelta') { va = a.totalDelta; vb = b.totalDelta; }
+      else if (key.startsWith('cq_')) {
+        const qn = key.slice(3);
+        va = getCrossQuotaPercent(a, qn);
+        vb = getCrossQuotaPercent(b, qn);
+      }
+      else { va = 0; vb = 0; }
+      if (va < vb) return dir === 'asc' ? -1 : 1;
+      if (va > vb) return dir === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }
+
+  // Pagination
+  const pageSize = State.overviewPageSize || 10;
+  const totalRows = data.length;
+  const totalPages = pageSize > 0 ? Math.ceil(totalRows / pageSize) : 1;
+  if (State.overviewPage > totalPages) State.overviewPage = totalPages || 1;
+  const page = State.overviewPage;
+  const startIdx = pageSize > 0 ? (page - 1) * pageSize : 0;
+  const pageData = pageSize > 0 ? data.slice(startIdx, startIdx + pageSize) : data;
+
+  if (pageData.length === 0) {
+    const colCount = 5 + quotaNames.length;
+    tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">No completed cycles found for this period.</td></tr>`;
+  } else {
+    tbody.innerHTML = pageData.map(row => {
+      const start = row.cycleStart || null;
+      const end = row.cycleEnd || null;
+      const startDate = start ? new Date(start) : null;
+      const endDate = end ? new Date(end) : null;
+      const duration = (startDate && endDate) ? formatDuration(Math.floor((endDate - startDate) / 1000)) : '--';
+
+      let html = `<tr>
+        <td>${row.cycleId}</td>
+        <td>${start ? formatDateTime(start) : '--'}</td>
+        <td>${end ? formatDateTime(end) : '<span class="badge">Active</span>'}</td>
+        <td>${duration}</td>
+        <td>${typeof row.totalDelta === 'number' ? row.totalDelta.toFixed(1) : '--'}</td>`;
+
+      quotaNames.forEach(qn => {
+        const pct = getCrossQuotaPercent(row, qn);
+        const isPrimary = qn === State.overviewGroupBy;
+        const cls = getThresholdClass(pct);
+        html += `<td class="${cls}${isPrimary ? ' overview-primary-val' : ''}">${pct >= 0 ? pct.toFixed(1) + '%' : '--'}</td>`;
+      });
+
+      html += '</tr>';
+      return html;
+    }).join('');
+  }
+
+  // Info
+  if (info) {
+    const showStart = totalRows > 0 ? startIdx + 1 : 0;
+    const showEnd = pageSize > 0 ? Math.min(startIdx + pageSize, totalRows) : totalRows;
+    info.textContent = `Showing ${showStart}-${showEnd} of ${totalRows}`;
+  }
+
+  // Pagination buttons
+  if (pagination) {
+    pagination.innerHTML = renderPagination('overview', page, totalPages);
+  }
+}
+
+function getCrossQuotaPercent(row, quotaName) {
+  if (!row.crossQuotas || row.crossQuotas.length === 0) return -1;
+  const entry = row.crossQuotas.find(cq => cq.name === quotaName);
+  return entry ? entry.percent : -1;
+}
+
+function getThresholdClass(pct) {
+  if (pct < 0) return '';
+  if (pct >= 95) return 'threshold-critical';
+  if (pct >= 80) return 'threshold-danger';
+  if (pct >= 50) return 'threshold-warning';
+  return 'threshold-healthy';
+}
+
 function setupTableControls() {
   // Cycles page size
   const cyclesPageSizeEl = document.getElementById('cycles-page-size');
@@ -2464,6 +2717,9 @@ function setupTableControls() {
     } else if (table === 'sessions') {
       State.sessionsPage = page;
       renderSessionsTable();
+    } else if (table === 'overview') {
+      State.overviewPage = page;
+      renderOverviewTable();
     }
   });
 
@@ -2557,6 +2813,7 @@ function startAutoRefresh() {
     fetchCurrent(); fetchDeepInsights();
     fetchHistory();
     fetchCycles();
+    fetchCycleOverview();
     fetchSessions();
   }, REFRESH_INTERVAL);
 }
@@ -2700,6 +2957,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupCycleFilters();
   setupPasswordToggle();
   setupTableControls();
+  setupOverviewControls();
   setupHeaderActions();
   setupCardModals();
 
@@ -2712,6 +2970,7 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchCurrent(); fetchDeepInsights();
     fetchHistory('6h');
     fetchCycles(defaultCycleType);
+    fetchCycleOverview();
     fetchSessions();
     startCountdowns();
     startAutoRefresh();

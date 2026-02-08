@@ -730,7 +730,7 @@ button, input, select { font-family: inherit; }
    8. SECTION PANELS
    ═══════════════════════════════════════════ */
 
-.insights-panel, .chart-section, .cycles-section, .sessions-section {
+.insights-panel, .chart-section, .cycle-overview-section, .cycles-section, .sessions-section {
   background: var(--surface-card);
   border-radius: var(--radius-lg);
   padding: 24px;
@@ -742,8 +742,17 @@ button, input, select { font-family: inherit; }
 }
 .insights-panel { animation-delay: 150ms; }
 .chart-section { animation-delay: 200ms; }
+.cycle-overview-section { animation-delay: 225ms; }
 .cycles-section { animation-delay: 250ms; }
 .sessions-section { animation-delay: 300ms; }
+
+/* Cycle Overview threshold colors */
+.threshold-healthy { color: var(--status-healthy); }
+.threshold-warning { color: var(--status-warning); }
+.threshold-danger { color: var(--status-danger); }
+.threshold-critical { color: var(--status-critical); font-weight: 700; }
+.overview-primary-col { font-weight: 600; border-bottom: 2px solid var(--accent-teal); }
+.overview-primary-val { font-weight: 600; }
 
 @keyframes sectionEntrance {
   from { opacity: 0; transform: translateY(8px); }
@@ -1789,7 +1798,7 @@ button, input, select { font-family: inherit; }
   .usage-percent { font-size: 26px; }
   .countdown { font-size: 12px; }
   .section-title { font-size: 15px; }
-  .insights-panel, .chart-section, .cycles-section, .sessions-section {
+  .insights-panel, .chart-section, .cycle-overview-section, .cycles-section, .sessions-section {
     padding: 16px;
     border-radius: var(--radius-md);
   }
@@ -1816,7 +1825,7 @@ button, input, select { font-family: inherit; }
     transition-duration: 0.01ms !important;
   }
   .progress-fill { transition: none; }
-  .quota-card, .insights-panel, .chart-section, .cycles-section, .sessions-section {
+  .quota-card, .insights-panel, .chart-section, .cycle-overview-section, .cycles-section, .sessions-section {
     opacity: 1;
     animation: none;
   }

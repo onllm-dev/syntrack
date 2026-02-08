@@ -346,6 +346,41 @@
             </div>
         </section>
 
+        <section class="cycle-overview-section">
+            <header class="section-header">
+                <h3 class="section-title">
+                    <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 20V10M18 20V4M6 20v-4"/>
+                    </svg>
+                    Cycle Overview
+                </h3>
+                <div class="cycles-filters-inline">
+                    <div class="filter-group">
+                        <span class="filter-label">Period</span>
+                        <div class="filter-pills" id="overview-period-pills" role="group" aria-label="Renewal period"></div>
+                    </div>
+                    <select class="page-size-select" id="overview-page-size" aria-label="Rows per page">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="30">30</option>
+                        <option value="0">All</option>
+                    </select>
+                </div>
+            </header>
+            <div class="table-wrapper">
+                <table class="data-table" id="overview-table">
+                    <thead id="overview-thead"><tr><th>Loading...</th></tr></thead>
+                    <tbody id="overview-tbody">
+                        <tr><td class="empty-state">Select a renewal period to view cross-quota data.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="table-footer">
+                <span class="table-info" id="overview-info">Showing 0-0 of 0</span>
+                <div class="table-pagination" id="overview-pagination"></div>
+            </div>
+        </section>
+
         <section class="cycles-section">
             <header class="section-header">
                 <h3 class="section-title">

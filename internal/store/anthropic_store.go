@@ -364,6 +364,80 @@ func (s *Store) QueryAnthropicUtilizationSeries(quotaName string, since time.Tim
 	return points, rows.Err()
 }
 
+// QueryAnthropicCycleOverview returns completed Anthropic cycles for a given quota
+// with cross-quota snapshot data at the peak moment of each cycle.
+func (s *Store) QueryAnthropicCycleOverview(groupBy string, limit int) ([]CycleOverviewRow, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	cycles, err := s.QueryAnthropicCycleHistory(groupBy, limit)
+	if err != nil {
+		return nil, fmt.Errorf("store.QueryAnthropicCycleOverview: %w", err)
+	}
+
+	var overviewRows []CycleOverviewRow
+	for _, c := range cycles {
+		if c.CycleEnd == nil {
+			continue
+		}
+		row := CycleOverviewRow{
+			CycleID:    c.ID,
+			QuotaType:  c.QuotaName,
+			CycleStart: c.CycleStart,
+			CycleEnd:   c.CycleEnd,
+			PeakValue:  c.PeakUtilization,
+			TotalDelta: c.TotalDelta,
+		}
+
+		// Find the snapshot where the primary quota peaked within this cycle
+		var snapshotID int64
+		var capturedAt string
+		err := s.db.QueryRow(
+			`SELECT s.id, s.captured_at FROM anthropic_snapshots s
+			JOIN anthropic_quota_values qv ON qv.snapshot_id = s.id
+			WHERE qv.quota_name = ? AND s.captured_at BETWEEN ? AND ?
+			ORDER BY qv.utilization DESC LIMIT 1`,
+			groupBy,
+			c.CycleStart.Format(time.RFC3339Nano),
+			c.CycleEnd.Format(time.RFC3339Nano),
+		).Scan(&snapshotID, &capturedAt)
+
+		if err == sql.ErrNoRows {
+			overviewRows = append(overviewRows, row)
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("store.QueryAnthropicCycleOverview: peak snapshot: %w", err)
+		}
+
+		row.PeakTime, _ = time.Parse(time.RFC3339Nano, capturedAt)
+
+		// Load all quota values from that snapshot
+		qRows, err := s.db.Query(
+			`SELECT quota_name, utilization FROM anthropic_quota_values WHERE snapshot_id = ? ORDER BY quota_name`,
+			snapshotID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("store.QueryAnthropicCycleOverview: quota values: %w", err)
+		}
+		for qRows.Next() {
+			var entry CrossQuotaEntry
+			if err := qRows.Scan(&entry.Name, &entry.Percent); err != nil {
+				qRows.Close()
+				return nil, fmt.Errorf("store.QueryAnthropicCycleOverview: scan quota: %w", err)
+			}
+			entry.Value = entry.Percent // utilization is already a percentage
+			row.CrossQuotas = append(row.CrossQuotas, entry)
+		}
+		qRows.Close()
+
+		overviewRows = append(overviewRows, row)
+	}
+
+	return overviewRows, nil
+}
+
 // QueryAllAnthropicQuotaNames returns all distinct quota names from Anthropic reset cycles.
 func (s *Store) QueryAllAnthropicQuotaNames() ([]string, error) {
 	rows, err := s.db.Query(
