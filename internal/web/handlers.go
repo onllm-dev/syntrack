@@ -2439,12 +2439,12 @@ func (h *Handler) buildAnthropicInsights(hidden map[string]bool, rangeDur time.D
 		}
 
 		if !rate.HasRate {
-			// Insufficient data — show current % and collecting message
+			// Insufficient data — show analyzing state with preview
 			item.Type = "factual"
 			item.Severity = "info"
-			item.Metric = fmt.Sprintf("%.0f%%", q.Utilization)
-			item.Sublabel = "collecting data"
-			item.Desc = fmt.Sprintf("Currently at %.0f%%. Collecting data for rate analysis...", q.Utilization)
+			item.Metric = "Analyzing..."
+			item.Sublabel = "burn rate & forecast"
+			item.Desc = fmt.Sprintf("Collecting usage patterns to calculate burn rate and exhaustion forecasts. Currently at %.0f%%. This typically requires ~10 minutes of data.", q.Utilization)
 		} else if rate.Rate < 0.01 {
 			// Idle — truly zero consumption
 			item.Type = "factual"
