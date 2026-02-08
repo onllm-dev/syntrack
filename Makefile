@@ -17,7 +17,6 @@ clean:
 	rm -f $(BINARY) coverage.out coverage.html
 	rm -rf dist/
 	go clean -testcache
-	rm -f *.db *.db-journal *.db-wal *.db-shm
 
 integration:
 	go test -v -tags=integration ./...
