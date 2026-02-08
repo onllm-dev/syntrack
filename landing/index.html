@@ -12,7 +12,7 @@
       gtag('config', 'G-DL6C40HTGQ');
     </script>
     <title>onWatch — Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic</title>
-    <meta name="description" content="onWatch is the intelligence layer for multi-provider AI API management. Track usage across Synthetic, Z.ai, and Anthropic with cross-provider insights, pattern detection, rate projections, and reset cycle intelligence — all in a single ~30 MB Go binary with zero telemetry.">
+    <meta name="description" content="onWatch is the intelligence layer for multi-provider AI API management. Track usage across Synthetic, Z.ai, and Anthropic with cross-provider insights, pattern detection, rate projections, and reset cycle intelligence — a ~13 MB Go binary, ~28 MB RAM idle, zero telemetry.">
     <meta name="keywords" content="onWatch, AI API intelligence, multi-provider API tracking, Synthetic API monitor, Z.ai API tracker, Anthropic API monitoring, cross-provider insights, AI coding API usage, quota monitoring tool, open source API monitor, Cline quota tracker, Claude Code API usage, intelligent provider switching, API budget tracker, self-hosted API monitoring, reset cycle detection, rate projection, Go CLI tool, API quota dashboard">
     <link rel="canonical" href="https://onwatch.onllm.dev">
 
@@ -30,7 +30,7 @@
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="onWatch — Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic">
-    <meta name="twitter:description" content="The intelligence layer for multi-provider AI API management. Cross-provider insights, pattern detection, and rate projections. Single ~30 MB binary, zero telemetry.">
+    <meta name="twitter:description" content="The intelligence layer for multi-provider AI API management. Cross-provider insights, pattern detection, and rate projections. ~13 MB binary, ~28 MB RAM, zero telemetry.">
     <meta name="twitter:image" content="https://raw.githubusercontent.com/onllm-dev/onwatch/main/screenshots/anthropic-dark.png">
 
     <!-- Additional SEO -->
@@ -44,11 +44,11 @@
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "onWatch",
-      "description": "The intelligence layer for multi-provider AI API management. Tracks usage across Synthetic, Z.ai, and Anthropic with cross-provider insights, pattern detection, consumption rate projections, reset cycle intelligence, and a Material Design 3 web dashboard. Single Go binary, ~30 MB RAM, zero telemetry.",
+      "description": "The intelligence layer for multi-provider AI API management. Tracks usage across Synthetic, Z.ai, and Anthropic with cross-provider insights, pattern detection, consumption rate projections, reset cycle intelligence, and a Material Design 3 web dashboard. ~13 MB Go binary, ~28 MB RAM idle, zero telemetry.",
       "url": "https://onwatch.onllm.dev",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "macOS, Linux, Windows",
-      "softwareVersion": "1.8.0",
+      "softwareVersion": "2.2.0",
       "license": "https://www.gnu.org/licenses/gpl-3.0.en.html",
       "isAccessibleForFree": true,
       "offers": {
@@ -79,7 +79,7 @@
         "Material Design 3 dashboard with dark and light mode",
         "Single Go binary with zero runtime dependencies",
         "Local SQLite storage with zero telemetry",
-        "Background daemon mode with ~30 MB RAM footprint",
+        "Background daemon mode with ~28 MB RAM idle footprint",
         "Cross-platform: macOS, Linux, Windows",
         "REST API with JSON endpoints",
         "Session-based auth with password management"
@@ -107,7 +107,7 @@
           "name": "What is the best open-source tool to track AI coding API usage?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "onWatch is the only open-source tool designed to track historical quota usage across Anthropic, Synthetic, and Z.ai in a single dashboard. It provides features that provider dashboards lack: historical usage trends, automatic reset cycle detection, consumption rate projections, per-session tracking, and a multi-provider unified view. It runs as a single ~30 MB Go binary with zero telemetry and local SQLite storage."
+            "text": "onWatch is the only open-source tool designed to track historical quota usage across Anthropic, Synthetic, and Z.ai in a single dashboard. It provides features that provider dashboards lack: historical usage trends, automatic reset cycle detection, consumption rate projections, per-session tracking, and a multi-provider unified view. It's a ~13 MB Go binary that idles at ~28 MB RAM with zero telemetry and local SQLite storage."
           }
         },
         {
@@ -2158,7 +2158,7 @@ a:hover { text-decoration: underline; }
                 <code><span class="install-prefix">$</span> curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>
                 <span class="copy-hint">Copy</span>
             </div>
-            <p class="hero-meta">v1.8.0 &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; ~30 MB</p>
+            <p class="hero-meta"><span id="hero-version">v2.2.0</span> &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; ~28 MB RAM &middot; ~13 MB Binary</p>
         </div>
 
         <!-- Dashboard Mockup -->
@@ -2693,7 +2693,7 @@ a:hover { text-decoration: underline; }
         </div>
         <div class="arch-stats fade-in">
             <div class="arch-stat">
-                <div class="arch-stat-value">~30 MB</div>
+                <div class="arch-stat-value">~28 MB</div>
                 <div class="arch-stat-label">RAM Idle</div>
             </div>
             <div class="arch-stat">
@@ -2747,7 +2747,7 @@ a:hover { text-decoration: underline; }
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                 </div>
                 <h3 class="feature-title">DevOps &amp; Platform Engineers</h3>
-                <p class="feature-desc">Deploy as a ~30 MB sidecar with zero SaaS dependencies. Use the SQLite database as a Grafana data source or pipe the REST API into your existing monitoring stack.</p>
+                <p class="feature-desc">Deploy as a ~13 MB binary (~28 MB RAM idle) with zero SaaS dependencies. Use the SQLite database as a Grafana data source or pipe the REST API into your existing monitoring stack.</p>
             </div>
         </div>
     </div>
@@ -3064,6 +3064,20 @@ a:hover { text-decoration: underline; }
         html.setAttribute('data-theme', next);
         localStorage.setItem('onwatch-theme', next);
     });
+})();
+
+/* Fetch latest version from GitHub */
+(function() {
+    fetch('https://api.github.com/repos/onllm-dev/onwatch/releases/latest')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data && data.tag_name) {
+                var ver = data.tag_name;
+                var el = document.getElementById('hero-version');
+                if (el) el.textContent = ver;
+            }
+        })
+        .catch(function() { /* keep fallback version */ });
 })();
 
 /* Fade-in on scroll */
