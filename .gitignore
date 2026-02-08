@@ -55,7 +55,7 @@ opencode.json
 node_modules/
 package.json
 package-lock.json
-tests/
+/tests/
 
 # Internal research & analysis docs (not for public repo)
 market-research.md
@@ -66,3 +66,12 @@ naming-research.md
 # Performance monitoring artifacts
 tools/perf-monitor/onwatch
 tools/perf-monitor/*.json
+
+# Python E2E tests
+e2e/.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Mock server binary
+/mockserver

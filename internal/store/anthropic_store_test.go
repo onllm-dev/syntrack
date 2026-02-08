@@ -634,3 +634,95 @@ func TestStore_AnthropicForeignKeyConstraint(t *testing.T) {
 		t.Error("Expected foreign key constraint error, got nil")
 	}
 }
+
+func TestStore_QueryAnthropicCyclesSince(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Create and close 3 cycles at different times
+	for i := 0; i < 3; i++ {
+		start := base.Add(time.Duration(i) * 24 * time.Hour)
+		resetsAt := start.Add(5 * time.Hour)
+		_, err := s.CreateAnthropicCycle("five_hour", start, &resetsAt)
+		if err != nil {
+			t.Fatalf("CreateAnthropicCycle %d failed: %v", i, err)
+		}
+		endTime := start.Add(5 * time.Hour)
+		err = s.CloseAnthropicCycle("five_hour", endTime, float64(i)*0.2+0.3, float64(i)*0.1+0.1)
+		if err != nil {
+			t.Fatalf("CloseAnthropicCycle %d failed: %v", i, err)
+		}
+	}
+
+	// Query since day 1 (should get cycles at day 1 and day 2, not day 0)
+	since := base.Add(24 * time.Hour)
+	cycles, err := s.QueryAnthropicCyclesSince("five_hour", since)
+	if err != nil {
+		t.Fatalf("QueryAnthropicCyclesSince failed: %v", err)
+	}
+	if len(cycles) != 2 {
+		t.Errorf("Expected 2 cycles since day 1, got %d", len(cycles))
+	}
+
+	// Verify descending order
+	if len(cycles) >= 2 && cycles[0].CycleStart.Before(cycles[1].CycleStart) {
+		t.Error("Expected cycles in descending order by cycle_start")
+	}
+
+	// Verify all returned cycles have CycleEnd set (closed)
+	for _, c := range cycles {
+		if c.CycleEnd == nil {
+			t.Errorf("Expected CycleEnd to be set for completed cycle %d", c.ID)
+		}
+	}
+}
+
+func TestStore_QueryAllAnthropicQuotaNames(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	// Empty DB should return no names
+	names, err := s.QueryAllAnthropicQuotaNames()
+	if err != nil {
+		t.Fatalf("QueryAllAnthropicQuotaNames (empty) failed: %v", err)
+	}
+	if len(names) != 0 {
+		t.Errorf("Expected 0 names for empty DB, got %d", len(names))
+	}
+
+	// Create cycles for multiple quotas
+	now := time.Now().UTC()
+	quotas := []string{"five_hour", "seven_day", "seven_day_sonnet"}
+	for _, q := range quotas {
+		resetsAt := now.Add(5 * time.Hour)
+		_, err := s.CreateAnthropicCycle(q, now, &resetsAt)
+		if err != nil {
+			t.Fatalf("CreateAnthropicCycle %s failed: %v", q, err)
+		}
+	}
+
+	// Query distinct names
+	names, err = s.QueryAllAnthropicQuotaNames()
+	if err != nil {
+		t.Fatalf("QueryAllAnthropicQuotaNames failed: %v", err)
+	}
+	if len(names) != 3 {
+		t.Fatalf("Expected 3 distinct quota names, got %d", len(names))
+	}
+
+	// Should be sorted alphabetically
+	expected := []string{"five_hour", "seven_day", "seven_day_sonnet"}
+	for i, name := range names {
+		if name != expected[i] {
+			t.Errorf("names[%d] = %q, want %q", i, name, expected[i])
+		}
+	}
+}

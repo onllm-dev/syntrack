@@ -2314,3 +2314,1090 @@ func TestHandler_Insights_AnthropicEmptyDB(t *testing.T) {
 		t.Errorf("expected 'Getting Started' insight, got %q", response.Insights[0].Title)
 	}
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Login / Logout Tests ──
+// ═══════════════════════════════════════════════════════════════════
+
+func TestHandler_Login_GET_RendersForm(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	rr := httptest.NewRecorder()
+	h.Login(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+	ct := rr.Header().Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Errorf("expected text/html, got %s", ct)
+	}
+}
+
+func TestHandler_Login_POST_ValidCredentials_Redirects(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	passHash := legacyHashPassword("test")
+	sessions := NewSessionStore("admin", passHash, s)
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, sessions, cfg)
+
+	body := strings.NewReader("username=admin&password=test")
+	req := httptest.NewRequest(http.MethodPost, "/login", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	h.Login(rr, req)
+
+	if rr.Code != http.StatusFound {
+		t.Errorf("expected status 302, got %d", rr.Code)
+	}
+	loc := rr.Header().Get("Location")
+	if loc != "/" {
+		t.Errorf("expected redirect to /, got %s", loc)
+	}
+	// Should set a session cookie
+	cookies := rr.Result().Cookies()
+	found := false
+	for _, c := range cookies {
+		if c.Name == "onwatch_session" && c.Value != "" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected onwatch_session cookie to be set")
+	}
+}
+
+func TestHandler_Login_POST_InvalidCredentials_RedirectsWithError(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	passHash := legacyHashPassword("test")
+	sessions := NewSessionStore("admin", passHash, s)
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, sessions, cfg)
+
+	body := strings.NewReader("username=admin&password=wrong")
+	req := httptest.NewRequest(http.MethodPost, "/login", body)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	h.Login(rr, req)
+
+	if rr.Code != http.StatusFound {
+		t.Errorf("expected status 302, got %d", rr.Code)
+	}
+	loc := rr.Header().Get("Location")
+	if !strings.Contains(loc, "/login?error=") {
+		t.Errorf("expected redirect to /login with error, got %s", loc)
+	}
+}
+
+func TestHandler_Login_GET_AlreadyAuthenticated_RedirectsToDashboard(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	passHash := legacyHashPassword("test")
+	sessions := NewSessionStore("admin", passHash, s)
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, sessions, cfg)
+
+	// Authenticate to get a token
+	token, ok := sessions.Authenticate("admin", "test")
+	if !ok {
+		t.Fatal("authentication should succeed")
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/login", nil)
+	req.AddCookie(&http.Cookie{Name: "onwatch_session", Value: token})
+	rr := httptest.NewRecorder()
+
+	h.Login(rr, req)
+
+	if rr.Code != http.StatusFound {
+		t.Errorf("expected status 302, got %d", rr.Code)
+	}
+	if rr.Header().Get("Location") != "/" {
+		t.Errorf("expected redirect to /, got %s", rr.Header().Get("Location"))
+	}
+}
+
+func TestHandler_Logout_ClearsCookieAndRedirects(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	passHash := legacyHashPassword("test")
+	sessions := NewSessionStore("admin", passHash, s)
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, sessions, cfg)
+
+	token, _ := sessions.Authenticate("admin", "test")
+
+	req := httptest.NewRequest(http.MethodGet, "/logout", nil)
+	req.AddCookie(&http.Cookie{Name: "onwatch_session", Value: token})
+	rr := httptest.NewRecorder()
+
+	h.Logout(rr, req)
+
+	if rr.Code != http.StatusFound {
+		t.Errorf("expected status 302, got %d", rr.Code)
+	}
+	if rr.Header().Get("Location") != "/login" {
+		t.Errorf("expected redirect to /login, got %s", rr.Header().Get("Location"))
+	}
+	// Cookie should be expired
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == "onwatch_session" && c.MaxAge >= 0 {
+			t.Error("expected session cookie to be expired (MaxAge < 0)")
+		}
+	}
+	// Token should be invalidated
+	if sessions.ValidateToken(token) {
+		t.Error("expected token to be invalidated after logout")
+	}
+}
+
+func TestHandler_SettingsPage_RendersHTML(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+	h.SetVersion("2.5.0")
+
+	req := httptest.NewRequest(http.MethodGet, "/settings", nil)
+	rr := httptest.NewRecorder()
+	h.SettingsPage(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+	ct := rr.Header().Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Errorf("expected text/html, got %s", ct)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Password Change Tests ──
+// ═══════════════════════════════════════════════════════════════════
+
+func TestHandler_ChangePassword_Success(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	passHash := legacyHashPassword("oldpass")
+	sessions := NewSessionStore("admin", passHash, s)
+	s.UpsertUser("admin", passHash)
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, sessions, cfg)
+
+	body := strings.NewReader(`{"current_password":"oldpass","new_password":"newpass123"}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/password", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.ChangePassword(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	var response map[string]string
+	json.Unmarshal(rr.Body.Bytes(), &response)
+	if response["message"] != "password updated successfully" {
+		t.Errorf("unexpected message: %s", response["message"])
+	}
+}
+
+func TestHandler_ChangePassword_WrongCurrentPassword(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	passHash := legacyHashPassword("oldpass")
+	sessions := NewSessionStore("admin", passHash, s)
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, sessions, cfg)
+
+	body := strings.NewReader(`{"current_password":"wrongpass","new_password":"newpass123"}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/password", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.ChangePassword(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("expected status 401, got %d", rr.Code)
+	}
+}
+
+func TestHandler_ChangePassword_TooShortNewPassword(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	passHash := legacyHashPassword("oldpass")
+	sessions := NewSessionStore("admin", passHash, s)
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, sessions, cfg)
+
+	body := strings.NewReader(`{"current_password":"oldpass","new_password":"abc"}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/password", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.ChangePassword(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rr.Code)
+	}
+	var response map[string]string
+	json.Unmarshal(rr.Body.Bytes(), &response)
+	if !strings.Contains(response["error"], "at least 6 characters") {
+		t.Errorf("expected 'at least 6 characters' error, got %s", response["error"])
+	}
+}
+
+func TestHandler_ChangePassword_MissingFields(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	passHash := legacyHashPassword("oldpass")
+	sessions := NewSessionStore("admin", passHash, s)
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, sessions, cfg)
+
+	body := strings.NewReader(`{"current_password":"oldpass","new_password":""}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/password", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.ChangePassword(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rr.Code)
+	}
+}
+
+func TestHandler_ChangePassword_InvalidatesAllSessions(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	passHash := legacyHashPassword("oldpass")
+	sessions := NewSessionStore("admin", passHash, s)
+	s.UpsertUser("admin", passHash)
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, sessions, cfg)
+
+	// Create a session token first
+	token, ok := sessions.Authenticate("admin", "oldpass")
+	if !ok {
+		t.Fatal("auth should succeed")
+	}
+	if !sessions.ValidateToken(token) {
+		t.Fatal("token should be valid before password change")
+	}
+
+	body := strings.NewReader(`{"current_password":"oldpass","new_password":"newpass123"}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/password", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.ChangePassword(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	// Old token should be invalidated
+	if sessions.ValidateToken(token) {
+		t.Error("expected all sessions to be invalidated after password change")
+	}
+}
+
+func TestHandler_ChangePassword_MethodNotAllowed(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/password", nil)
+	rr := httptest.NewRecorder()
+	h.ChangePassword(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", rr.Code)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Settings CRUD Tests ──
+// ═══════════════════════════════════════════════════════════════════
+
+func TestHandler_GetSettings_ReturnsTimezoneAndHiddenInsights(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	s.SetSetting("timezone", "America/New_York")
+	s.SetSetting("hidden_insights", `["cycle_utilization","trend"]`)
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	rr := httptest.NewRecorder()
+	h.GetSettings(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(rr.Body.Bytes(), &response)
+
+	if response["timezone"] != "America/New_York" {
+		t.Errorf("expected timezone America/New_York, got %v", response["timezone"])
+	}
+	hidden, ok := response["hidden_insights"].([]interface{})
+	if !ok || len(hidden) != 2 {
+		t.Errorf("expected 2 hidden insights, got %v", response["hidden_insights"])
+	}
+}
+
+func TestHandler_UpdateSettings_Timezone(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	body := strings.NewReader(`{"timezone":"Europe/London"}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.UpdateSettings(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	// Verify it was saved
+	val, _ := s.GetSetting("timezone")
+	if val != "Europe/London" {
+		t.Errorf("expected timezone Europe/London, got %s", val)
+	}
+}
+
+func TestHandler_UpdateSettings_InvalidTimezone(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	body := strings.NewReader(`{"timezone":"Invalid/Timezone"}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.UpdateSettings(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rr.Code)
+	}
+}
+
+func TestHandler_UpdateSettings_HiddenInsights(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	body := strings.NewReader(`{"hidden_insights":["cycle_utilization","weekly_pace"]}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.UpdateSettings(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	val, _ := s.GetSetting("hidden_insights")
+	if !strings.Contains(val, "cycle_utilization") || !strings.Contains(val, "weekly_pace") {
+		t.Errorf("expected hidden insights to be saved, got %s", val)
+	}
+}
+
+func TestHandler_GetSettings_SMTPMasksPassword(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	smtpConfig := `{"host":"smtp.example.com","port":587,"password":"secret123","from_address":"test@example.com"}`
+	s.SetSetting("smtp", smtpConfig)
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	rr := httptest.NewRecorder()
+	h.GetSettings(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(rr.Body.Bytes(), &response)
+
+	smtp, ok := response["smtp"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected smtp field in response")
+	}
+	// Password should be empty (masked)
+	if smtp["password"] != "" {
+		t.Error("SMTP password should be masked (empty) in GET response")
+	}
+	// password_set should be true
+	if smtp["password_set"] != true {
+		t.Error("expected password_set to be true")
+	}
+}
+
+func TestHandler_GetSettings_NotificationSettings(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	notifConfig := `{"warning_threshold":70,"critical_threshold":90,"notify_warning":true,"notify_critical":true}`
+	s.SetSetting("notifications", notifConfig)
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	rr := httptest.NewRecorder()
+	h.GetSettings(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(rr.Body.Bytes(), &response)
+
+	notif, ok := response["notifications"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected notifications field in response")
+	}
+	if notif["warning_threshold"].(float64) != 70 {
+		t.Errorf("expected warning_threshold 70, got %v", notif["warning_threshold"])
+	}
+}
+
+func TestHandler_UpdateSettings_ProviderVisibility(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	body := strings.NewReader(`{"provider_visibility":{"synthetic":{"dashboard":true,"polling":true}}}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.UpdateSettings(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	val, _ := s.GetSetting("provider_visibility")
+	if !strings.Contains(val, "synthetic") {
+		t.Errorf("expected provider_visibility to be saved, got %s", val)
+	}
+}
+
+func TestHandler_UpdateSettings_Notifications(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	body := strings.NewReader(`{"notifications":{"warning_threshold":60,"critical_threshold":85,"notify_warning":true,"notify_critical":true,"notify_reset":false,"cooldown_minutes":15}}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.UpdateSettings(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d; body: %s", rr.Code, rr.Body.String())
+	}
+
+	val, _ := s.GetSetting("notifications")
+	if !strings.Contains(val, "60") {
+		t.Errorf("expected notification settings to be saved, got %s", val)
+	}
+}
+
+func TestHandler_UpdateSettings_Notifications_InvalidThresholds(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	// Warning >= Critical should fail
+	body := strings.NewReader(`{"notifications":{"warning_threshold":90,"critical_threshold":85,"notify_warning":true,"notify_critical":true,"cooldown_minutes":15}}`)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", body)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.UpdateSettings(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400 for warning >= critical, got %d", rr.Code)
+	}
+}
+
+func TestHandler_UpdateSettings_MethodNotAllowed(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	rr := httptest.NewRecorder()
+
+	// UpdateSettings checks for PUT method
+	h.UpdateSettings(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", rr.Code)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── SMTP Test Handler Tests ──
+// ═══════════════════════════════════════════════════════════════════
+
+// mockNotifier implements the Notifier interface for testing.
+type mockNotifier struct {
+	sendTestErr  error
+	reloadCalled bool
+}
+
+func (m *mockNotifier) Reload() error           { m.reloadCalled = true; return nil }
+func (m *mockNotifier) ConfigureSMTP() error     { return nil }
+func (m *mockNotifier) SendTestEmail() error     { return m.sendTestErr }
+func (m *mockNotifier) SetEncryptionKey(_ string) {}
+
+func TestHandler_SMTPTest_Success(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+	h.SetNotifier(&mockNotifier{})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/smtp/test", nil)
+	rr := httptest.NewRecorder()
+	h.SMTPTest(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(rr.Body.Bytes(), &response)
+
+	if response["success"] != true {
+		t.Errorf("expected success true, got %v", response["success"])
+	}
+}
+
+func TestHandler_SMTPTest_RateLimit(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+	h.SetNotifier(&mockNotifier{})
+
+	// First request succeeds
+	req1 := httptest.NewRequest(http.MethodPost, "/api/settings/smtp/test", nil)
+	rr1 := httptest.NewRecorder()
+	h.SMTPTest(rr1, req1)
+
+	if rr1.Code != http.StatusOK {
+		t.Fatalf("first request: expected status 200, got %d", rr1.Code)
+	}
+
+	// Second request within 30s should be rate-limited
+	req2 := httptest.NewRequest(http.MethodPost, "/api/settings/smtp/test", nil)
+	rr2 := httptest.NewRecorder()
+	h.SMTPTest(rr2, req2)
+
+	if rr2.Code != http.StatusTooManyRequests {
+		t.Errorf("second request: expected status 429, got %d", rr2.Code)
+	}
+}
+
+func TestHandler_SMTPTest_NoNotifierConfigured(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+	// No notifier set
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/smtp/test", nil)
+	rr := httptest.NewRecorder()
+	h.SMTPTest(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", rr.Code)
+	}
+}
+
+func TestHandler_SMTPTest_MethodNotAllowed(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/settings/smtp/test", nil)
+	rr := httptest.NewRecorder()
+	h.SMTPTest(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", rr.Code)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── CycleOverview Tests ──
+// ═══════════════════════════════════════════════════════════════════
+
+func TestHandler_CycleOverview_Synthetic(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cycle-overview?provider=synthetic", nil)
+	rr := httptest.NewRecorder()
+	h.CycleOverview(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(rr.Body.Bytes(), &response)
+
+	if response["provider"] != "synthetic" {
+		t.Errorf("expected provider synthetic, got %v", response["provider"])
+	}
+	if response["groupBy"] != "subscription" {
+		t.Errorf("expected default groupBy subscription, got %v", response["groupBy"])
+	}
+}
+
+func TestHandler_CycleOverview_Zai(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithZai()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cycle-overview?provider=zai", nil)
+	rr := httptest.NewRecorder()
+	h.CycleOverview(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(rr.Body.Bytes(), &response)
+
+	if response["provider"] != "zai" {
+		t.Errorf("expected provider zai, got %v", response["provider"])
+	}
+	if response["groupBy"] != "tokens" {
+		t.Errorf("expected default groupBy tokens, got %v", response["groupBy"])
+	}
+}
+
+func TestHandler_CycleOverview_Anthropic(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cycle-overview?provider=anthropic", nil)
+	rr := httptest.NewRecorder()
+	h.CycleOverview(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(rr.Body.Bytes(), &response)
+
+	if response["provider"] != "anthropic" {
+		t.Errorf("expected provider anthropic, got %v", response["provider"])
+	}
+	if response["groupBy"] != "five_hour" {
+		t.Errorf("expected default groupBy five_hour, got %v", response["groupBy"])
+	}
+}
+
+func TestHandler_CycleOverview_Both(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithBoth()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cycle-overview?provider=both", nil)
+	rr := httptest.NewRecorder()
+	h.CycleOverview(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(rr.Body.Bytes(), &response)
+
+	if _, ok := response["synthetic"]; !ok {
+		t.Error("expected synthetic field in 'both' response")
+	}
+	if _, ok := response["zai"]; !ok {
+		t.Error("expected zai field in 'both' response")
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Update Handler Tests ──
+// ═══════════════════════════════════════════════════════════════════
+
+func TestHandler_CheckUpdate_NoUpdater(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+	// No updater set
+
+	req := httptest.NewRequest(http.MethodGet, "/api/update/check", nil)
+	rr := httptest.NewRecorder()
+	h.CheckUpdate(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", rr.Code)
+	}
+}
+
+func TestHandler_CheckUpdate_MethodNotAllowed(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/update/check", nil)
+	rr := httptest.NewRecorder()
+	h.CheckUpdate(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", rr.Code)
+	}
+}
+
+func TestHandler_ApplyUpdate_NoUpdater(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+	// No updater set
+
+	req := httptest.NewRequest(http.MethodPost, "/api/update/apply", nil)
+	rr := httptest.NewRecorder()
+	h.ApplyUpdate(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", rr.Code)
+	}
+}
+
+func TestHandler_ApplyUpdate_MethodNotAllowed(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/update/apply", nil)
+	rr := httptest.NewRecorder()
+	h.ApplyUpdate(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected status 405, got %d", rr.Code)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Anthropic Handler Tests ──
+// ═══════════════════════════════════════════════════════════════════
+
+func TestHandler_Current_Anthropic_WithData(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	resetsAt := time.Now().Add(5 * time.Hour)
+	snapshot := &api.AnthropicSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Quotas: []api.AnthropicQuota{
+			{Name: "five_hour", Utilization: 45.2, ResetsAt: &resetsAt},
+			{Name: "seven_day", Utilization: 12.8, ResetsAt: &resetsAt},
+		},
+		RawJSON: `{"five_hour":{"utilization":45.2},"seven_day":{"utilization":12.8}}`,
+	}
+	s.InsertAnthropicSnapshot(snapshot)
+
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/current?provider=anthropic", nil)
+	rr := httptest.NewRecorder()
+	h.Current(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(rr.Body.Bytes(), &response)
+
+	quotas, ok := response["quotas"].([]interface{})
+	if !ok {
+		t.Fatal("expected quotas array in response")
+	}
+	if len(quotas) != 2 {
+		t.Errorf("expected 2 quotas, got %d", len(quotas))
+	}
+
+	// Verify first quota structure
+	q0, ok := quotas[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected quota to be a map")
+	}
+	if q0["name"] != "five_hour" {
+		t.Errorf("expected first quota name 'five_hour', got %v", q0["name"])
+	}
+	if q0["utilization"].(float64) != 45.2 {
+		t.Errorf("expected utilization 45.2, got %v", q0["utilization"])
+	}
+}
+
+func TestHandler_Current_Anthropic_EmptyDB(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/current?provider=anthropic", nil)
+	rr := httptest.NewRecorder()
+	h.Current(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	json.Unmarshal(rr.Body.Bytes(), &response)
+
+	quotas, ok := response["quotas"].([]interface{})
+	if !ok {
+		t.Fatal("expected quotas array in response")
+	}
+	if len(quotas) != 0 {
+		t.Errorf("expected empty quotas for empty DB, got %d", len(quotas))
+	}
+}
+
+func TestHandler_History_Anthropic(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	resetsAt := time.Now().Add(5 * time.Hour)
+	snapshot := &api.AnthropicSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Quotas: []api.AnthropicQuota{
+			{Name: "five_hour", Utilization: 45.2, ResetsAt: &resetsAt},
+		},
+		RawJSON: `{"five_hour":{"utilization":45.2}}`,
+	}
+	s.InsertAnthropicSnapshot(snapshot)
+
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/history?provider=anthropic&range=24h", nil)
+	rr := httptest.NewRecorder()
+	h.History(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response []map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if len(response) != 1 {
+		t.Errorf("expected 1 history entry, got %d", len(response))
+	}
+	if len(response) > 0 {
+		if _, ok := response[0]["five_hour"]; !ok {
+			t.Error("expected five_hour field in history entry")
+		}
+	}
+}
+
+func TestHandler_Insights_Anthropic_WithData(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	resetsAt := time.Now().Add(5 * time.Hour)
+	snapshot := &api.AnthropicSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Quotas: []api.AnthropicQuota{
+			{Name: "five_hour", Utilization: 45.2, ResetsAt: &resetsAt},
+			{Name: "seven_day", Utilization: 12.8, ResetsAt: &resetsAt},
+		},
+		RawJSON: `{"five_hour":{"utilization":45.2},"seven_day":{"utilization":12.8}}`,
+	}
+	s.InsertAnthropicSnapshot(snapshot)
+
+	cfg := createTestConfigWithAnthropic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/insights?provider=anthropic", nil)
+	rr := httptest.NewRecorder()
+	h.Insights(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response insightsResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if response.Stats == nil {
+		t.Error("expected stats in response")
+	}
+	if response.Insights == nil {
+		t.Error("expected insights in response")
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Dashboard With Provider Param Tests ──
+// ═══════════════════════════════════════════════════════════════════
+
+func TestHandler_Dashboard_WithProviderParam(t *testing.T) {
+	cfg := createTestConfigWithAll()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/?provider=anthropic", nil)
+	rr := httptest.NewRecorder()
+	h.Dashboard(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+	ct := rr.Header().Get("Content-Type")
+	if !strings.Contains(ct, "text/html") {
+		t.Errorf("expected text/html, got %s", ct)
+	}
+}
+
+func TestHandler_Dashboard_NotFound_For_NonRootPath(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/nonexistent", nil)
+	rr := httptest.NewRecorder()
+	h.Dashboard(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected status 404 for non-root path, got %d", rr.Code)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Utility Function Tests ──
+// ═══════════════════════════════════════════════════════════════════
+
+func TestHandler_formatDuration(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    time.Duration
+		expected string
+	}{
+		{"negative", -1 * time.Minute, "Resetting..."},
+		{"days and hours", 4*24*time.Hour + 11*time.Hour, "4d 11h"},
+		{"hours and minutes", 3*time.Hour + 16*time.Minute, "3h 16m"},
+		{"only minutes", 45 * time.Minute, "45m"},
+		{"zero", 0, "0m"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatDuration(tt.input)
+			if got != tt.expected {
+				t.Errorf("formatDuration(%v) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestHandler_downsampleStep(t *testing.T) {
+	tests := []struct {
+		n, max, want int
+	}{
+		{100, 500, 1},  // No downsampling needed
+		{1000, 500, 2}, // Need to reduce
+		{0, 500, 1},    // Empty
+		{500, 0, 1},    // Max 0
+		{1500, 500, 3}, // ceil(1500/500) = 3
+	}
+
+	for _, tt := range tests {
+		got := downsampleStep(tt.n, tt.max)
+		if got != tt.want {
+			t.Errorf("downsampleStep(%d, %d) = %d, want %d", tt.n, tt.max, got, tt.want)
+		}
+	}
+}
+
+func TestHandler_parseInsightsRange(t *testing.T) {
+	tests := []struct {
+		input string
+		want  time.Duration
+	}{
+		{"1d", 24 * time.Hour},
+		{"7d", 7 * 24 * time.Hour},
+		{"30d", 30 * 24 * time.Hour},
+		{"", 7 * 24 * time.Hour},       // default
+		{"invalid", 7 * 24 * time.Hour}, // default
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := parseInsightsRange(tt.input)
+			if got != tt.want {
+				t.Errorf("parseInsightsRange(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}

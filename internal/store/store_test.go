@@ -742,3 +742,331 @@ func TestStore_QuerySyntheticCycleOverview_NoSnapshots(t *testing.T) {
 		t.Errorf("Expected 0 cross-quotas, got %d", len(rows[0].CrossQuotas))
 	}
 }
+
+// --- Auth Token Lifecycle Tests ---
+
+func TestStore_SaveAuthToken_RoundTrip(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	token := "test-token-abc123"
+	expiresAt := time.Now().UTC().Add(24 * time.Hour).Truncate(time.Millisecond)
+
+	err = s.SaveAuthToken(token, expiresAt)
+	if err != nil {
+		t.Fatalf("SaveAuthToken failed: %v", err)
+	}
+
+	gotExpiry, found, err := s.GetAuthTokenExpiry(token)
+	if err != nil {
+		t.Fatalf("GetAuthTokenExpiry failed: %v", err)
+	}
+	if !found {
+		t.Fatal("Expected token to be found")
+	}
+	// Compare to second precision (RFC3339Nano round-trip may lose sub-nanosecond)
+	if gotExpiry.Unix() != expiresAt.Unix() {
+		t.Errorf("Expiry = %v, want %v", gotExpiry, expiresAt)
+	}
+}
+
+func TestStore_GetAuthTokenExpiry_NotFound(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	expiry, found, err := s.GetAuthTokenExpiry("nonexistent-token")
+	if err != nil {
+		t.Fatalf("GetAuthTokenExpiry failed: %v", err)
+	}
+	if found {
+		t.Error("Expected token not to be found")
+	}
+	if !expiry.IsZero() {
+		t.Errorf("Expected zero time, got %v", expiry)
+	}
+}
+
+func TestStore_DeleteAllAuthTokens(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	// Insert multiple tokens
+	tokens := []string{"token-1", "token-2", "token-3"}
+	for _, tok := range tokens {
+		err := s.SaveAuthToken(tok, time.Now().UTC().Add(24*time.Hour))
+		if err != nil {
+			t.Fatalf("SaveAuthToken failed for %s: %v", tok, err)
+		}
+	}
+
+	// Verify they exist
+	for _, tok := range tokens {
+		_, found, err := s.GetAuthTokenExpiry(tok)
+		if err != nil {
+			t.Fatalf("GetAuthTokenExpiry failed: %v", err)
+		}
+		if !found {
+			t.Fatalf("Token %s should exist before delete", tok)
+		}
+	}
+
+	// Delete all
+	err = s.DeleteAllAuthTokens()
+	if err != nil {
+		t.Fatalf("DeleteAllAuthTokens failed: %v", err)
+	}
+
+	// Verify all are gone
+	for _, tok := range tokens {
+		_, found, err := s.GetAuthTokenExpiry(tok)
+		if err != nil {
+			t.Fatalf("GetAuthTokenExpiry failed after delete: %v", err)
+		}
+		if found {
+			t.Errorf("Token %s should not exist after DeleteAllAuthTokens", tok)
+		}
+	}
+}
+
+func TestStore_CleanExpiredAuthTokens(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	now := time.Now().UTC()
+
+	// Insert expired token (1 hour ago)
+	err = s.SaveAuthToken("expired-token", now.Add(-1*time.Hour))
+	if err != nil {
+		t.Fatalf("SaveAuthToken (expired) failed: %v", err)
+	}
+
+	// Insert valid token (24 hours from now)
+	err = s.SaveAuthToken("valid-token", now.Add(24*time.Hour))
+	if err != nil {
+		t.Fatalf("SaveAuthToken (valid) failed: %v", err)
+	}
+
+	// Clean expired
+	err = s.CleanExpiredAuthTokens()
+	if err != nil {
+		t.Fatalf("CleanExpiredAuthTokens failed: %v", err)
+	}
+
+	// Expired token should be gone
+	_, found, err := s.GetAuthTokenExpiry("expired-token")
+	if err != nil {
+		t.Fatalf("GetAuthTokenExpiry failed: %v", err)
+	}
+	if found {
+		t.Error("Expired token should have been cleaned")
+	}
+
+	// Valid token should still exist
+	_, found, err = s.GetAuthTokenExpiry("valid-token")
+	if err != nil {
+		t.Fatalf("GetAuthTokenExpiry failed: %v", err)
+	}
+	if !found {
+		t.Error("Valid token should still exist after cleaning")
+	}
+}
+
+// --- User CRUD Tests ---
+
+func TestStore_UpsertUser_Create(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	err = s.UpsertUser("admin", "hash-abc123")
+	if err != nil {
+		t.Fatalf("UpsertUser failed: %v", err)
+	}
+
+	hash, err := s.GetUser("admin")
+	if err != nil {
+		t.Fatalf("GetUser failed: %v", err)
+	}
+	if hash != "hash-abc123" {
+		t.Errorf("password_hash = %q, want %q", hash, "hash-abc123")
+	}
+}
+
+func TestStore_UpsertUser_Update(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	// Create user
+	err = s.UpsertUser("admin", "old-hash")
+	if err != nil {
+		t.Fatalf("UpsertUser (create) failed: %v", err)
+	}
+
+	// Update password
+	err = s.UpsertUser("admin", "new-hash")
+	if err != nil {
+		t.Fatalf("UpsertUser (update) failed: %v", err)
+	}
+
+	hash, err := s.GetUser("admin")
+	if err != nil {
+		t.Fatalf("GetUser failed: %v", err)
+	}
+	if hash != "new-hash" {
+		t.Errorf("password_hash = %q, want %q", hash, "new-hash")
+	}
+}
+
+func TestStore_GetUser_NotFound(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	hash, err := s.GetUser("nonexistent")
+	if err != nil {
+		t.Fatalf("GetUser failed: %v", err)
+	}
+	if hash != "" {
+		t.Errorf("Expected empty string for non-existent user, got %q", hash)
+	}
+}
+
+// --- Session Tests ---
+
+func TestStore_CreateSession_WithStartValues(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	sessionID := "session-start-vals"
+	startedAt := time.Now().UTC()
+
+	err = s.CreateSession(sessionID, startedAt, 60, "synthetic", 100.0, 50.0, 200.0)
+	if err != nil {
+		t.Fatalf("CreateSession with start values failed: %v", err)
+	}
+
+	sessions, err := s.QuerySessionHistory("synthetic")
+	if err != nil {
+		t.Fatalf("QuerySessionHistory failed: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("Expected 1 session, got %d", len(sessions))
+	}
+	if sessions[0].StartSubRequests != 100.0 {
+		t.Errorf("StartSubRequests = %v, want 100.0", sessions[0].StartSubRequests)
+	}
+	if sessions[0].StartSearchRequests != 50.0 {
+		t.Errorf("StartSearchRequests = %v, want 50.0", sessions[0].StartSearchRequests)
+	}
+	if sessions[0].StartToolRequests != 200.0 {
+		t.Errorf("StartToolRequests = %v, want 200.0", sessions[0].StartToolRequests)
+	}
+}
+
+func TestStore_CloseOrphanedSessions(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	now := time.Now().UTC()
+
+	// Create two open sessions
+	err = s.CreateSession("orphan-1", now.Add(-2*time.Hour), 60, "synthetic")
+	if err != nil {
+		t.Fatalf("CreateSession 1 failed: %v", err)
+	}
+	err = s.CreateSession("orphan-2", now.Add(-1*time.Hour), 60, "zai")
+	if err != nil {
+		t.Fatalf("CreateSession 2 failed: %v", err)
+	}
+
+	// Close one normally
+	err = s.CloseSession("orphan-1", now)
+	if err != nil {
+		t.Fatalf("CloseSession failed: %v", err)
+	}
+
+	// Close orphaned (should only affect orphan-2)
+	closed, err := s.CloseOrphanedSessions()
+	if err != nil {
+		t.Fatalf("CloseOrphanedSessions failed: %v", err)
+	}
+	if closed != 1 {
+		t.Errorf("Expected 1 orphaned session closed, got %d", closed)
+	}
+
+	// Verify no active sessions remain
+	active, err := s.QueryActiveSession()
+	if err != nil {
+		t.Fatalf("QueryActiveSession failed: %v", err)
+	}
+	if active != nil {
+		t.Error("Expected no active sessions after closing orphans")
+	}
+}
+
+// --- QueryCyclesSince Test ---
+
+func TestStore_QueryCyclesSince(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	// Create 3 cycles at different times
+	for i := 0; i < 3; i++ {
+		start := base.Add(time.Duration(i) * 24 * time.Hour)
+		renewsAt := start.Add(12 * time.Hour)
+		_, err := s.CreateCycle("subscription", start, renewsAt)
+		if err != nil {
+			t.Fatalf("CreateCycle %d failed: %v", i, err)
+		}
+		// Close immediately (for history)
+		err = s.CloseCycle("subscription", start.Add(6*time.Hour), float64(i*100), float64(i*50))
+		if err != nil {
+			t.Fatalf("CloseCycle %d failed: %v", i, err)
+		}
+	}
+
+	// Query since day 1 (should get cycles at day 1 and day 2, not day 0)
+	since := base.Add(24 * time.Hour)
+	cycles, err := s.QueryCyclesSince("subscription", since)
+	if err != nil {
+		t.Fatalf("QueryCyclesSince failed: %v", err)
+	}
+	if len(cycles) != 2 {
+		t.Errorf("Expected 2 cycles since day 1, got %d", len(cycles))
+	}
+
+	// Verify descending order
+	if len(cycles) >= 2 && cycles[0].CycleStart.Before(cycles[1].CycleStart) {
+		t.Error("Expected cycles in descending order by cycle_start")
+	}
+}
