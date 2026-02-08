@@ -1837,16 +1837,7 @@ function renderCyclesTable() {
 
   // Pagination
   if (paginationEl) {
-    if (pageSize > 0 && totalPages > 1) {
-      let html = `<button class="page-btn" ${page <= 1 ? 'disabled' : ''} data-table="cycles" data-page="${page - 1}">&laquo;</button>`;
-      for (let p = 1; p <= totalPages; p++) {
-        html += `<button class="page-btn ${p === page ? 'active' : ''}" data-table="cycles" data-page="${p}">${p}</button>`;
-      }
-      html += `<button class="page-btn" ${page >= totalPages ? 'disabled' : ''} data-table="cycles" data-page="${page + 1}">&raquo;</button>`;
-      paginationEl.innerHTML = html;
-    } else {
-      paginationEl.innerHTML = '';
-    }
+    paginationEl.innerHTML = (pageSize > 0 && totalPages > 1) ? renderPagination('cycles', page, totalPages) : '';
   }
 }
 
@@ -2112,16 +2103,7 @@ function renderSessionsTable() {
 
   // Pagination
   if (paginationEl) {
-    if (pageSize > 0 && totalPages > 1) {
-      let html = `<button class="page-btn" ${page <= 1 ? 'disabled' : ''} data-table="sessions" data-page="${page - 1}">&laquo;</button>`;
-      for (let p = 1; p <= totalPages; p++) {
-        html += `<button class="page-btn ${p === page ? 'active' : ''}" data-table="sessions" data-page="${p}">${p}</button>`;
-      }
-      html += `<button class="page-btn" ${page >= totalPages ? 'disabled' : ''} data-table="sessions" data-page="${page + 1}">&raquo;</button>`;
-      paginationEl.innerHTML = html;
-    } else {
-      paginationEl.innerHTML = '';
-    }
+    paginationEl.innerHTML = (pageSize > 0 && totalPages > 1) ? renderPagination('sessions', page, totalPages) : '';
   }
 }
 
@@ -2579,19 +2561,58 @@ function startAutoRefresh() {
   }, REFRESH_INTERVAL);
 }
 
+// ── Pagination Helper ──
+
+function renderPagination(table, page, totalPages) {
+  if (totalPages <= 1) return '';
+  const maxVisible = 7; // max page buttons (excluding prev/next)
+  let pages = [];
+
+  if (totalPages <= maxVisible) {
+    for (let p = 1; p <= totalPages; p++) pages.push(p);
+  } else {
+    // Always show first, last, and a window around current
+    const wing = 2;
+    let start = Math.max(2, page - wing);
+    let end = Math.min(totalPages - 1, page + wing);
+    // Shift window if near edges
+    if (start <= 2) end = Math.min(totalPages - 1, maxVisible - 2);
+    if (end >= totalPages - 1) start = Math.max(2, totalPages - maxVisible + 3);
+
+    pages.push(1);
+    if (start > 2) pages.push('...');
+    for (let p = start; p <= end; p++) pages.push(p);
+    if (end < totalPages - 1) pages.push('...');
+    pages.push(totalPages);
+  }
+
+  let html = `<button class="page-btn" ${page <= 1 ? 'disabled' : ''} data-table="${table}" data-page="${page - 1}">&laquo;</button>`;
+  for (const p of pages) {
+    if (p === '...') {
+      html += `<span class="page-ellipsis">&hellip;</span>`;
+    } else {
+      html += `<button class="page-btn ${p === page ? 'active' : ''}" data-table="${table}" data-page="${p}">${p}</button>`;
+    }
+  }
+  html += `<button class="page-btn" ${page >= totalPages ? 'disabled' : ''} data-table="${table}" data-page="${page + 1}">&raquo;</button>`;
+  return html;
+}
+
 // ── Self-Update ──
 
 async function checkForUpdate() {
   try {
     const res = await authFetch('/api/update/check');
     const data = await res.json();
+    const badge = document.getElementById('update-badge');
     if (data.available) {
-      const badge = document.getElementById('update-badge');
       const versionSpan = document.getElementById('update-version');
       if (badge && versionSpan) {
         versionSpan.textContent = data.latest_version;
         badge.hidden = false;
       }
+    } else if (badge) {
+      badge.hidden = true;
     }
   } catch (e) {
     // Silent fail — update check is best-effort

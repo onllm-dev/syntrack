@@ -182,6 +182,7 @@ html {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
 body {
@@ -1281,6 +1282,7 @@ button, input, select { font-family: inherit; }
   display: flex;
   align-items: center;
   gap: 4px;
+  flex-wrap: wrap;
 }
 .table-pagination:empty { display: none; }
 
@@ -1308,6 +1310,12 @@ button, input, select { font-family: inherit; }
 .page-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+.page-ellipsis {
+  padding: 6px 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  user-select: none;
 }
 
 /* ═══════════════════════════════════════════
