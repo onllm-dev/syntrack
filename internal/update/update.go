@@ -250,6 +250,11 @@ func (u *Updater) Apply() error {
 		"from", u.currentVersion,
 		"to", info.LatestVersion)
 
+	// Fix systemd unit file NOW, while we're still alive and before Restart().
+	// This ensures the unit has Restart=always before the process exits,
+	// so systemd will restart the service regardless of how Restart() works.
+	MigrateSystemdUnit(u.logger)
+
 	return nil
 }
 
