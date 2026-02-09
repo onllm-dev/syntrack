@@ -40,9 +40,16 @@ async function run() {
   console.log('Logged in successfully.');
 
   for (const provider of PROVIDERS) {
+    // Skip providers whose tab doesn't exist on this instance
+    const tabButton = page.locator(`button.provider-tab[data-provider="${provider.tab}"]`);
+    if (await tabButton.count() === 0) {
+      console.log(`Skipping provider: ${provider.name} (not available)`);
+      continue;
+    }
+
     // Click the provider tab
     console.log(`Switching to provider: ${provider.name}`);
-    await page.click(`button.provider-tab[data-provider="${provider.tab}"]`);
+    await tabButton.click();
 
     // Wait for content to load — quota cards or both-view to render
     await page.waitForTimeout(2000);
