@@ -261,25 +261,77 @@ go mod tidy
 
 ---
 
-## Docker Build (Optional)
+## Docker Development
 
-```dockerfile
-FROM golang:1.25-alpine AS builder
-WORKDIR /app
-COPY . .
-RUN go build -ldflags="-s -w" -o onwatch .
+onWatch provides Docker support via `app.sh --docker` and a multi-stage Dockerfile with a distroless runtime image (~10-12 MB).
 
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-COPY --from=builder /app/onwatch .
-COPY .env.example .env
-CMD ["./onwatch"]
-```
+### app.sh Docker Commands
 
 ```bash
-docker build -t onwatch .
-docker run -p 9211:9211 -v $(pwd)/.env:/root/.env onwatch
+./app.sh --docker --build      # Build Docker image
+./app.sh --docker --run        # Build image and start container
+./app.sh --docker --stop       # Stop running container
+./app.sh --docker --clean      # Remove container and image
+```
+
+### How It Works
+
+- **Build stage:** `golang:1.25-alpine` compiles a static binary (`CGO_ENABLED=0`) with `-trimpath` and stripped debug symbols
+- **Runtime stage:** `gcr.io/distroless/static-debian12:nonroot` — no shell, no package manager, minimal attack surface
+- **Docker detection:** `config.IsDockerEnvironment()` checks for `/.dockerenv` or `DOCKER=true` env var. When detected, onWatch skips daemonization and logs to stdout
+- **Data persistence:** SQLite database stored at `/data/onwatch.db` via volume mount
+- **Non-root:** Container runs as UID 65532 (distroless `nonroot` user)
+
+### Docker Development Workflow
+
+```bash
+# 1. Create .env from Docker template
+cp .env.docker.example .env
+# Edit .env — add at least one API key
+
+# 2. Build and run
+./app.sh --docker --run
+
+# 3. View logs
+docker logs -f onwatch
+
+# 4. Access dashboard
+open http://localhost:9211
+
+# 5. Stop
+./app.sh --docker --stop
+```
+
+### Manual Docker Build
+
+If you need more control than `app.sh` provides:
+
+```bash
+docker build -t onwatch:latest \
+  --build-arg VERSION=$(cat VERSION) \
+  --build-arg BUILD_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ) .
+
+docker run -d --name onwatch \
+  -p 9211:9211 \
+  -v ./onwatch-data:/data \
+  --env-file .env \
+  onwatch:latest
+```
+
+### Docker Compose
+
+```bash
+docker-compose up -d        # Start
+docker-compose logs -f      # Follow logs
+docker-compose down         # Stop and remove
+```
+
+The `docker-compose.yml` includes memory limits (64M limit, 32M reservation), log rotation, and `unless-stopped` restart policy. Data is persisted via bind mount at `./onwatch-data/`.
+
+**Note:** For bind mounts, pre-create the directory with correct ownership:
+
+```bash
+mkdir -p ./onwatch-data && sudo chown -R 65532:65532 ./onwatch-data
 ```
 
 ---

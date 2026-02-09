@@ -44,22 +44,17 @@ cp .env.example .env    # then add your API keys
 **Or use Docker** (requires Docker or Docker Compose):
 
 ```bash
+cp .env.docker.example .env   # add your API keys
 docker-compose up -d
 ```
 
-Or build and run manually:
+Or via `app.sh`:
 
 ```bash
-docker build -t onwatch:latest .
-docker run -d \
-  --name onwatch \
-  -p 9211:9211 \
-  -v onwatch-data:/data \
-  -e SYNTHETIC_API_KEY=your_key_here \
-  onwatch:latest
+./app.sh --docker --run
 ```
 
-The Docker image uses a distroless base for minimal size (~10-12 MB) and security. Data persists in a mounted volume at `/data`. Logs are written to stdout (use `docker logs -f onwatch`).
+The Docker image uses a distroless base (~10-12 MB) and runs as non-root. Data persists via volume mount at `/data`. Logs go to stdout (`docker logs -f onwatch`). See [Docker Deployment](#docker-deployment) for details.
 
 ### Configure
 
@@ -300,7 +295,7 @@ On first run, if a database exists at `./onwatch.db`, onWatch auto-migrates it t
 
 ## Docker Deployment
 
-onWatch provides official Docker support with a minimal distroless image (~10-12 MB). The container automatically detects the Docker environment and runs in foreground mode with stdout logging.
+onWatch provides Docker support with a distroless runtime image (~10-12 MB). The container auto-detects the Docker environment and runs in foreground mode with stdout logging.
 
 ### Quick Start
 
@@ -313,53 +308,66 @@ docker-compose up -d
 docker-compose logs -f
 ```
 
+**Using app.sh:**
+```bash
+./app.sh --docker --build      # Build Docker image
+./app.sh --docker --run        # Build + start container
+./app.sh --docker --stop       # Stop container
+./app.sh --docker --clean      # Remove container and image
+```
+
 **Manual Docker run:**
 ```bash
 docker build -t onwatch:latest .
-docker run -d --name onwatch -p 9211:9211 -v onwatch-data:/data \
-  -e SYNTHETIC_API_KEY=syn_your_key_here \
+docker run -d --name onwatch -p 9211:9211 \
+  -v ./onwatch-data:/data \
+  --env-file .env \
   onwatch:latest
 ```
 
 ### Configuration
 
-| Environment Variable | Description | Default |
-|---------------------|-------------|---------|
-| `SYNTHETIC_API_KEY` | Synthetic API key | (required if using Synthetic) |
-| `ZAI_API_KEY` | Z.ai API key | (required if using Z.ai) |
-| `ANTHROPIC_TOKEN` | Anthropic token | (auto-detected if not set) |
-| `ONWATCH_PORT` | Dashboard port | `9211` |
+Copy `.env.docker.example` to `.env` and set at least one provider key. See `.env.docker.example` for all available options. Key variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SYNTHETIC_API_KEY` | Synthetic API key | -- |
+| `ZAI_API_KEY` | Z.ai API key | -- |
+| `ANTHROPIC_TOKEN` | Anthropic token (auto-detected if not set) | -- |
+| `ONWATCH_ADMIN_USER` | Dashboard username | `admin` |
+| `ONWATCH_ADMIN_PASS` | Dashboard password | `changeme` |
 | `ONWATCH_POLL_INTERVAL` | Polling interval (seconds) | `60` |
-| `ONWATCH_ADMIN_USER` | Admin username | `admin` |
-| `ONWATCH_ADMIN_PASS` | Admin password | `changeme` |
 | `ONWATCH_LOG_LEVEL` | Log level | `info` |
 
 ### Storage
 
-The container runs as non-root (UID 65532) and requires a volume mount at `/data` for the SQLite database.
+The container runs as non-root (UID 65532). The SQLite database is stored at `/data/onwatch.db` and must be persisted via a volume mount.
 
-**Docker Compose (named volume - recommended):**
-```yaml
-volumes:
-  - onwatch-data:/data
+The `docker-compose.yml` uses a bind mount at `./onwatch-data/`:
+
+```bash
+# Pre-create with correct ownership
+mkdir -p ./onwatch-data && sudo chown -R 65532:65532 ./onwatch-data
 ```
 
-**Bind mount (for direct file access):**
+Alternatively, use a named volume for simpler permissions handling:
+
 ```bash
-mkdir -p ./onwatch-data
-sudo chown -R 65532:65532 ./onwatch-data
-docker run -v ./onwatch-data:/data ...
+docker run -d --name onwatch -p 9211:9211 \
+  -v onwatch-data:/data \
+  --env-file .env \
+  onwatch:latest
 ```
 
 ### Resource Limits
 
-The `docker-compose.yml` includes memory limits matching onWatch's efficient design (64M limit, 32M reservation).
+The `docker-compose.yml` includes memory limits (64M limit, 32M reservation), log rotation (10 MB, 3 files), and `unless-stopped` restart policy.
 
 ### Troubleshooting
 
-**Database errors:** Pre-create bind mount directories with `chown 65532:65532` (or use named volumes).
-**Container won't start:** Check logs with `docker-compose logs -f`; verify API keys in `.env` and port 9211 availability.
-**Debugging:** The distroless image has no shell—use a sidecar: `docker run -it --rm --pid=container:onwatch --net=container:onwatch nicolaka/netshoot bash`
+**Database errors:** Pre-create bind mount directories with `sudo chown 65532:65532` or use named volumes.
+**Container won't start:** Check `docker-compose logs -f`; verify API keys in `.env` and port 9211 availability.
+**Debugging:** The distroless image has no shell — use a sidecar: `docker run -it --rm --pid=container:onwatch --net=container:onwatch nicolaka/netshoot bash`
 
 ---
 
