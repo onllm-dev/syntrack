@@ -34,6 +34,8 @@ ${CYAN}FLAGS:${NC}
     --run,     -r                  Build and run in debug mode (foreground)
     --release                      Run tests, then cross-compile for 5 platforms
     --clean,   -c                  Remove binary, coverage files, dist/, test cache
+    --stop                         Stop a running instance (native or Docker)
+    --docker                       Docker mode: --build/--run/--clean/--stop use Docker
     --deps,    -d, --install,
                --dependencies,
                --requirements      Install dependencies (Go, git) for your OS
@@ -46,10 +48,15 @@ ${CYAN}EXAMPLES:${NC}
     ./app.sh --clean --build --run  # Clean, rebuild, and run
     ./app.sh --deps --build --test  # Install deps, build, test
     ./app.sh --release              # Full release build (5 platforms)
+    ./app.sh --docker --build      # Build Docker image
+    ./app.sh --docker --run        # Build image and start container
+    ./app.sh --docker --stop       # Stop running container
+    ./app.sh --docker --clean      # Remove container and image
 
 ${CYAN}NOTES:${NC}
     Flags can be combined. Execution order is always:
     deps -> clean -> build -> test -> smoke -> release -> run
+    With --docker, build/run/clean/stop operate on Docker instead of native Go.
 EOF
 }
 
@@ -61,6 +68,8 @@ DO_TEST=false
 DO_SMOKE=false
 DO_RELEASE=false
 DO_RUN=false
+DO_STOP=false
+DO_DOCKER=false
 
 if [[ $# -eq 0 ]]; then
     usage
@@ -81,6 +90,10 @@ for arg in "$@"; do
             DO_RELEASE=true ;;
         --clean|-c)
             DO_CLEAN=true ;;
+        --stop)
+            DO_STOP=true ;;
+        --docker)
+            DO_DOCKER=true ;;
         --deps|-d|--install|--dependencies|--requirements)
             DO_DEPS=true ;;
         --help|-h)
@@ -228,14 +241,114 @@ do_run() {
     exec "$SCRIPT_DIR/$BINARY" --debug
 }
 
-# --- Execute in order: deps -> clean -> build -> test -> smoke -> release -> run ---
+do_stop() {
+    info "Stopping onWatch..."
+    if [[ -f "$SCRIPT_DIR/$BINARY" ]]; then
+        "$SCRIPT_DIR/$BINARY" stop && success "Stopped." || warn "No running instance found."
+    else
+        warn "Binary not found. Build first with --build."
+    fi
+}
 
-$DO_DEPS    && do_deps
-$DO_CLEAN   && do_clean
-$DO_BUILD   && do_build
-$DO_TEST    && do_test
-$DO_SMOKE   && do_smoke
-$DO_RELEASE && do_release
-$DO_RUN     && do_run
+# --- Docker functions ---
+
+docker_ensure() {
+    if ! command -v docker &>/dev/null; then
+        error "Docker not found. Install from https://docs.docker.com/get-docker/"
+        exit 1
+    fi
+    if ! docker info &>/dev/null 2>&1; then
+        error "Docker daemon is not running."
+        exit 1
+    fi
+}
+
+do_docker_build() {
+    docker_ensure
+    info "Building Docker image onwatch:${VERSION}..."
+    docker build -t onwatch:latest \
+        --build-arg VERSION="$VERSION" \
+        --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        "$SCRIPT_DIR"
+    local size
+    size=$(docker image ls onwatch:latest --format '{{.Size}}')
+    success "Docker image built: onwatch:latest ($size)"
+}
+
+do_docker_run() {
+    docker_ensure
+    # Build if image doesn't exist
+    if ! docker image inspect onwatch:latest &>/dev/null; then
+        do_docker_build
+    fi
+
+    # Stop existing container if running
+    docker rm -f onwatch 2>/dev/null || true
+
+    # Create data dir
+    mkdir -p "$SCRIPT_DIR/onwatch-data"
+
+    # Build env-file arg
+    local env_args=()
+    if [[ -f "$SCRIPT_DIR/.env" ]]; then
+        env_args=(--env-file "$SCRIPT_DIR/.env")
+    else
+        warn "No .env file found. Create one from .env.docker.example"
+    fi
+
+    info "Starting onWatch container..."
+    docker run -d --name onwatch \
+        -p "${ONWATCH_PORT:-9211}:9211" \
+        -v "$SCRIPT_DIR/onwatch-data:/data" \
+        "${env_args[@]}" \
+        --restart unless-stopped \
+        --memory 64m \
+        onwatch:latest
+
+    success "Container started. Dashboard: http://localhost:${ONWATCH_PORT:-9211}"
+    info "  Logs:  docker logs -f onwatch"
+    info "  Stop:  ./app.sh --docker --stop"
+}
+
+do_docker_stop() {
+    docker_ensure
+    info "Stopping onWatch container..."
+    if docker stop onwatch 2>/dev/null; then
+        docker rm onwatch 2>/dev/null || true
+        success "Container stopped and removed."
+    else
+        warn "No running container named 'onwatch' found."
+    fi
+}
+
+do_docker_clean() {
+    docker_ensure
+    info "Cleaning Docker resources..."
+    docker rm -f onwatch 2>/dev/null && info "  Removed container: onwatch" || true
+    docker rmi onwatch:latest 2>/dev/null && info "  Removed image: onwatch:latest" || true
+    success "Docker clean complete."
+}
+
+# --- Execute in order: deps -> clean -> build -> test -> smoke -> release -> run/stop ---
+
+if $DO_DOCKER; then
+    $DO_DEPS    && do_deps
+    $DO_CLEAN   && do_docker_clean
+    $DO_BUILD   && do_docker_build
+    $DO_TEST    && do_test
+    $DO_SMOKE   && do_docker_build
+    $DO_RELEASE && { warn "Release builds native binaries, not Docker images. Skipping."; }
+    $DO_STOP    && do_docker_stop
+    $DO_RUN     && do_docker_run
+else
+    $DO_DEPS    && do_deps
+    $DO_CLEAN   && do_clean
+    $DO_BUILD   && do_build
+    $DO_TEST    && do_test
+    $DO_SMOKE   && do_smoke
+    $DO_RELEASE && do_release
+    $DO_STOP    && do_stop
+    $DO_RUN     && do_run
+fi
 
 exit 0

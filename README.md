@@ -41,6 +41,21 @@ cp .env.example .env    # then add your API keys
 ./app.sh --build && ./onwatch --debug    # or: make build && ./onwatch --debug
 ```
 
+**Or use Docker** (requires Docker or Docker Compose):
+
+```bash
+cp .env.docker.example .env   # add your API keys
+docker-compose up -d
+```
+
+Or via `app.sh`:
+
+```bash
+./app.sh --docker --run
+```
+
+The Docker image uses a distroless base (~10-12 MB) and runs as non-root. Data persists via volume mount at `/data`. Logs go to stdout (`docker logs -f onwatch`). See [Docker Deployment](#docker-deployment) for details.
+
 ### Configure
 
 Edit `~/.onwatch/.env` (or `.env` in the project directory if built from source):
@@ -275,6 +290,84 @@ onwatch stop && onwatch
 ```
 
 On first run, if a database exists at `./onwatch.db`, onWatch auto-migrates it to `~/.onwatch/data/`.
+
+---
+
+## Docker Deployment
+
+onWatch provides Docker support with a distroless runtime image (~10-12 MB). The container auto-detects the Docker environment and runs in foreground mode with stdout logging.
+
+### Quick Start
+
+**Docker Compose (recommended):**
+```bash
+git clone https://github.com/onllm-dev/onwatch.git && cd onwatch
+cp .env.docker.example .env
+nano .env  # Add your API keys
+docker-compose up -d
+docker-compose logs -f
+```
+
+**Using app.sh:**
+```bash
+./app.sh --docker --build      # Build Docker image
+./app.sh --docker --run        # Build + start container
+./app.sh --docker --stop       # Stop container
+./app.sh --docker --clean      # Remove container and image
+```
+
+**Manual Docker run:**
+```bash
+docker build -t onwatch:latest .
+docker run -d --name onwatch -p 9211:9211 \
+  -v ./onwatch-data:/data \
+  --env-file .env \
+  onwatch:latest
+```
+
+### Configuration
+
+Copy `.env.docker.example` to `.env` and set at least one provider key. See `.env.docker.example` for all available options. Key variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SYNTHETIC_API_KEY` | Synthetic API key | -- |
+| `ZAI_API_KEY` | Z.ai API key | -- |
+| `ANTHROPIC_TOKEN` | Anthropic token (auto-detected if not set) | -- |
+| `ONWATCH_ADMIN_USER` | Dashboard username | `admin` |
+| `ONWATCH_ADMIN_PASS` | Dashboard password | `changeme` |
+| `ONWATCH_POLL_INTERVAL` | Polling interval (seconds) | `60` |
+| `ONWATCH_LOG_LEVEL` | Log level | `info` |
+
+### Storage
+
+The container runs as non-root (UID 65532). The SQLite database is stored at `/data/onwatch.db` and must be persisted via a volume mount.
+
+The `docker-compose.yml` uses a bind mount at `./onwatch-data/`:
+
+```bash
+# Pre-create with correct ownership
+mkdir -p ./onwatch-data && sudo chown -R 65532:65532 ./onwatch-data
+```
+
+Alternatively, use a named volume for simpler permissions handling:
+
+```bash
+docker run -d --name onwatch -p 9211:9211 \
+  -v onwatch-data:/data \
+  --env-file .env \
+  onwatch:latest
+```
+
+### Resource Limits
+
+The `docker-compose.yml` includes memory limits (64M limit, 32M reservation), log rotation (10 MB, 3 files), and `unless-stopped` restart policy.
+
+### Troubleshooting
+
+**Database errors:** Pre-create bind mount directories with `sudo chown 65532:65532` or use named volumes.
+**Container won't start:** Check `docker-compose logs -f`; verify API keys in `.env` and port 9211 availability.
+**Debugging:** The distroless image has no shell — use a sidecar: `docker run -it --rm --pid=container:onwatch --net=container:onwatch nicolaka/netshoot bash`
 
 ---
 

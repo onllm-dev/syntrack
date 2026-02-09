@@ -19,6 +19,9 @@
 # Static (embedded from internal/web/static/ via embed.FS)
 /static/
 
+# Docker data directory
+onwatch-data/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -1,0 +1,46 @@
+services:
+  onwatch:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+        BUILD_TIME: ${BUILD_TIME:-}
+    image: onwatch:latest
+    container_name: onwatch
+
+    # Port mapping: host:container
+    ports:
+      - "${ONWATCH_PORT:-9211}:9211"
+
+    # Volume mount for persistent SQLite database
+    # Bind mount — pre-create with: mkdir -p ./onwatch-data && chown 65532:65532 ./onwatch-data
+    volumes:
+      - ./onwatch-data:/data
+
+    # Environment variables from .env file
+    env_file:
+      - .env
+
+    # Override specific environment variables for Docker
+    environment:
+      # Force foreground mode in Docker (logs to stdout)
+      ONWATCH_DB_PATH: /data/onwatch.db
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Resource limits (optional but recommended for background services)
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+        reservations:
+          memory: 32M
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

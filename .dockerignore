@@ -1,0 +1,67 @@
+# Environment files (never commit secrets)
+.env
+.env.local
+.env.test
+
+# Database files
+*.db
+*.db-*
+*.db-shm
+*.db-wal
+
+# Log files
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Build artifacts
+dist/
+bin/
+onwatch
+onwatch.exe
+
+# Screenshots, design, and docs (embedded assets are in internal/)
+docs/screenshots/
+design-system/
+landing/
+
+# Tools
+tools/
+
+# Tests (not needed in Docker image)
+tests/
+
+# Temp working directory
+temp/
+
+# Documentation (keep README.md for Docker Hub)
+*.md
+!README.md
+
+# Test files
+*_test.go
+coverage/
+coverage.html
+*.out
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Root-level static dir (embedded from internal/web/static/ via embed.FS)
+/static/
+
+# Node.js (dev tools)
+node_modules/
+
+# Claude Code memory (local only)
+.claude/
