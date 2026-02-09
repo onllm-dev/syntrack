@@ -177,7 +177,7 @@ onWatch supports three providers: Synthetic, Z.ai, and Anthropic. When multiple 
 
 The dashboard switches between providers via the `?provider=` query parameter. Each provider renders its own quota cards, insight cards, and stat summaries. Synthetic insights focus on cycle utilization and billing periods; Z.ai insights show plan capacity (daily/monthly token budgets), tokens-per-call efficiency, and top tool analysis; Anthropic insights show burn rate forecasting, window averages, projected exhaustion, and cross-quota ratio analysis (5-Hour vs Weekly).
 
-A dedicated settings page (`/settings`) provides tabbed configuration for provider controls, notification thresholds, and SMTP email alerts. The notification engine (`internal/notify/`) checks quota statuses against thresholds and dispatches email alerts for warning, critical, and reset events.
+A dedicated settings page (`/settings`) provides tabbed configuration for provider controls, notification thresholds, and SMTP email alerts. The notification engine (`internal/notify/`) checks quota statuses against thresholds and dispatches alerts for warning, critical, and reset events via email (SMTP) and/or browser push notifications (Web Push). Delivery channels are configurable per user preference.
 
 Key source files:
 
@@ -195,6 +195,7 @@ Key source files:
 | `internal/store/anthropic_store.go` | Anthropic-specific queries |
 | `internal/notify/notify.go` | Notification engine: thresholds + alerts |
 | `internal/notify/smtp.go` | SMTP mailer: TLS/STARTTLS delivery |
+| `internal/notify/push.go` | Web Push sender: VAPID + RFC 8291 encryption |
 | `internal/notify/crypto.go` | AES-GCM encryption for SMTP passwords |
 | `internal/web/handlers.go` | Provider-aware route handlers + settings |
 | `internal/web/templates/settings.html` | Settings page template |
@@ -252,6 +253,7 @@ The workflow builds, tests, and publishes binaries automatically.
 |---------|---------|
 | `modernc.org/sqlite` | Pure Go SQLite driver (no CGO) |
 | `github.com/joho/godotenv` | `.env` file loading |
+| `golang.org/x/crypto` | HKDF for Web Push encryption (RFC 8291) |
 
 Install or update:
 

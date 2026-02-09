@@ -25,8 +25,11 @@ import (
 type Notifier interface {
 	Reload() error
 	ConfigureSMTP() error
+	ConfigurePush() error
 	SendTestEmail() error
+	SendTestPush() error
 	SetEncryptionKey(key string)
+	GetVAPIDPublicKey() string
 }
 
 // Handler handles HTTP requests for the web dashboard
@@ -46,6 +49,8 @@ type Handler struct {
 	version          string
 	smtpTestMu       sync.Mutex
 	smtpTestLastSent time.Time
+	pushTestMu       sync.Mutex
+	pushTestLastSent time.Time
 }
 
 // NewHandler creates a new Handler instance
@@ -3221,6 +3226,114 @@ func (h *Handler) SMTPTest(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "Test email sent successfully",
+	})
+}
+
+// PushVAPIDKey returns the VAPID public key for push subscription.
+func (h *Handler) PushVAPIDKey(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if h.notifier == nil {
+		respondError(w, http.StatusServiceUnavailable, "notification engine not configured")
+		return
+	}
+	key := h.notifier.GetVAPIDPublicKey()
+	if key == "" {
+		respondError(w, http.StatusServiceUnavailable, "push notifications not configured")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"public_key": key})
+}
+
+// PushSubscribe handles POST (subscribe) and DELETE (unsubscribe) for push notifications.
+func (h *Handler) PushSubscribe(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		var body struct {
+			Endpoint string `json:"endpoint"`
+			Keys     struct {
+				P256dh string `json:"p256dh"`
+				Auth   string `json:"auth"`
+			} `json:"keys"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			respondError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		if body.Endpoint == "" || body.Keys.P256dh == "" || body.Keys.Auth == "" {
+			respondError(w, http.StatusBadRequest, "endpoint, p256dh, and auth are required")
+			return
+		}
+		if err := h.store.SavePushSubscription(body.Endpoint, body.Keys.P256dh, body.Keys.Auth); err != nil {
+			h.logger.Error("failed to save push subscription", "error", err)
+			respondError(w, http.StatusInternalServerError, "failed to save subscription")
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]string{"status": "subscribed"})
+		return
+	}
+
+	if r.Method == http.MethodDelete {
+		var body struct {
+			Endpoint string `json:"endpoint"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			respondError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		if body.Endpoint == "" {
+			respondError(w, http.StatusBadRequest, "endpoint is required")
+			return
+		}
+		if err := h.store.DeletePushSubscription(body.Endpoint); err != nil {
+			h.logger.Error("failed to delete push subscription", "error", err)
+			respondError(w, http.StatusInternalServerError, "failed to delete subscription")
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]string{"status": "unsubscribed"})
+		return
+	}
+
+	respondError(w, http.StatusMethodNotAllowed, "method not allowed")
+}
+
+// PushTest sends a test push notification to all subscribed devices.
+func (h *Handler) PushTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	// Rate limit: 30 second cooldown
+	h.pushTestMu.Lock()
+	elapsed := time.Since(h.pushTestLastSent)
+	if elapsed < 30*time.Second {
+		h.pushTestMu.Unlock()
+		remaining := int((30*time.Second - elapsed).Seconds())
+		respondError(w, http.StatusTooManyRequests, fmt.Sprintf("please wait %d seconds before sending another test", remaining))
+		return
+	}
+	h.pushTestLastSent = time.Now()
+	h.pushTestMu.Unlock()
+
+	if h.notifier == nil {
+		respondError(w, http.StatusServiceUnavailable, "notification engine not configured")
+		return
+	}
+
+	if err := h.notifier.SendTestPush(); err != nil {
+		h.logger.Error("push test failed", "error", err)
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"success": false,
+			"message": fmt.Sprintf("Failed: %s", err.Error()),
+		})
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Test push notification sent",
 	})
 }
 

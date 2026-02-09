@@ -90,6 +90,46 @@
         <!-- Notifications Panel -->
         <div class="settings-panel" id="panel-notifications" role="tabpanel" hidden>
             <div class="settings-section">
+                <h3 class="settings-section-title">Delivery Channels</h3>
+                <p class="settings-section-desc">Choose how to receive quota alerts.</p>
+                <div class="settings-fields">
+                    <div class="settings-toggle-row">
+                        <div class="settings-toggle-info">
+                            <div class="settings-toggle-label">Email (SMTP)</div>
+                            <div class="settings-toggle-sublabel">Send alerts via email — requires SMTP configuration</div>
+                        </div>
+                        <label class="settings-toggle">
+                            <input type="checkbox" id="channel-email" checked>
+                            <span class="settings-toggle-track"></span>
+                        </label>
+                    </div>
+                    <div class="settings-toggle-row">
+                        <div class="settings-toggle-info">
+                            <div class="settings-toggle-label">Push Notifications</div>
+                            <div class="settings-toggle-sublabel" id="push-status-label">Checking browser support...</div>
+                        </div>
+                        <div class="settings-toggle-actions-wrap">
+                            <label class="settings-toggle">
+                                <input type="checkbox" id="channel-push">
+                                <span class="settings-toggle-track"></span>
+                            </label>
+                            <button class="settings-test-btn settings-test-btn-sm" id="push-subscribe-btn" type="button" hidden>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                Enable
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-actions" id="push-test-actions" hidden>
+                    <button class="settings-test-btn" id="push-test-btn" type="button">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                        Send Test Push
+                    </button>
+                    <span class="settings-test-result" id="push-test-result"></span>
+                </div>
+            </div>
+            <div class="settings-divider"></div>
+            <div class="settings-section">
                 <h3 class="settings-section-title">Global Thresholds</h3>
                 <p class="settings-section-desc">Default thresholds that apply to all quotas unless overridden.</p>
                 <div class="settings-fields">

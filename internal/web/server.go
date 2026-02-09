@@ -60,6 +60,25 @@ func NewServer(port int, handler *Handler, logger *slog.Logger, username, passwo
 	mux.HandleFunc("/api/cycle-overview", handler.CycleOverview)
 	mux.HandleFunc("/api/update/check", handler.CheckUpdate)
 	mux.HandleFunc("/api/update/apply", handler.ApplyUpdate)
+	mux.HandleFunc("/api/push/vapid", handler.PushVAPIDKey)
+	mux.HandleFunc("/api/push/subscribe", handler.PushSubscribe)
+	mux.HandleFunc("/api/push/test", handler.PushTest)
+
+	// Service worker (must be served from root scope, no-cache)
+	mux.HandleFunc("/sw.js", func(w http.ResponseWriter, r *http.Request) {
+		data, _ := staticFS.ReadFile("static/sw.js")
+		w.Header().Set("Content-Type", "application/javascript")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Service-Worker-Allowed", "/")
+		w.Write(data)
+	})
+	// PWA manifest
+	mux.HandleFunc("/manifest.json", func(w http.ResponseWriter, r *http.Request) {
+		data, _ := staticFS.ReadFile("static/manifest.json")
+		w.Header().Set("Content-Type", "application/manifest+json")
+		w.Header().Set("Cache-Control", "public, max-age=86400")
+		w.Write(data)
+	})
 
 	// Static files from embedded filesystem
 	staticDir, _ := fs.Sub(staticFS, "static")
@@ -165,7 +184,8 @@ func securityHeadersMiddleware(next http.Handler) http.Handler {
 				"style-src 'self' 'unsafe-inline' fonts.googleapis.com; "+
 				"font-src 'self' fonts.gstatic.com; "+
 				"img-src 'self' data:; "+
-				"connect-src 'self'")
+				"connect-src 'self'; "+
+				"worker-src 'self'")
 		next.ServeHTTP(w, r)
 	})
 }

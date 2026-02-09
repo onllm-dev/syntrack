@@ -11,11 +11,13 @@ import (
 	"github.com/onllm-dev/onwatch/internal/store"
 )
 
-// NotificationEngine evaluates quota statuses and sends alerts via email.
+// NotificationEngine evaluates quota statuses and sends alerts via email and push.
 type NotificationEngine struct {
 	store         *store.Store
 	logger        *slog.Logger
 	mailer        *SMTPMailer
+	pushSender    *PushSender
+	vapidPublicKey string
 	mu            sync.RWMutex
 	cfg           NotificationConfig
 	encryptionKey string // hex-encoded key for decrypting SMTP passwords
@@ -28,6 +30,13 @@ type NotificationConfig struct {
 	Overrides map[string]ThresholdOverride // per quota key overrides
 	Cooldown  time.Duration                // minimum time between notifications
 	Types     NotificationTypes            // which notification types are enabled
+	Channels  NotificationChannels         // which delivery channels are enabled
+}
+
+// NotificationChannels controls which delivery channels are active.
+type NotificationChannels struct {
+	Email bool `json:"email"`
+	Push  bool `json:"push"`
 }
 
 // ThresholdOverride allows per-quota threshold customization.
@@ -64,6 +73,7 @@ func New(s *store.Store, logger *slog.Logger) *NotificationEngine {
 			Overrides: make(map[string]ThresholdOverride),
 			Cooldown:  30 * time.Minute,
 			Types:     NotificationTypes{Warning: true, Critical: true, Reset: false},
+			Channels:  NotificationChannels{Email: true, Push: true},
 		},
 	}
 }
@@ -98,6 +108,7 @@ type notificationSettingsJSON struct {
 	NotifyCritical    bool    `json:"notify_critical"`
 	NotifyReset       bool    `json:"notify_reset"`
 	CooldownMinutes   int     `json:"cooldown_minutes"`
+	Channels          *NotificationChannels `json:"channels,omitempty"`
 	Overrides         []struct {
 		QuotaKey   string  `json:"quota_key"`
 		Provider   string  `json:"provider"`
@@ -143,6 +154,13 @@ func (e *NotificationEngine) Reload() error {
 		overrides[o.QuotaKey] = ThresholdOverride{Warning: o.Warning, Critical: o.Critical, IsAbsolute: o.IsAbsolute}
 	}
 	e.cfg.Overrides = overrides
+
+	if notif.Channels != nil {
+		e.cfg.Channels = *notif.Channels
+	} else {
+		// Default: both channels enabled
+		e.cfg.Channels = NotificationChannels{Email: true, Push: true}
+	}
 
 	return nil
 }
@@ -233,22 +251,121 @@ func (e *NotificationEngine) ConfigureSMTP() error {
 	return nil
 }
 
+// ConfigurePush initializes the push notification sender.
+// Loads or generates VAPID keys, stored in the settings table as "vapid_keys".
+func (e *NotificationEngine) ConfigurePush() error {
+	keysJSON, err := e.store.GetSetting("vapid_keys")
+	if err != nil {
+		return fmt.Errorf("notify.ConfigurePush: %w", err)
+	}
+
+	var pub, priv string
+	if keysJSON != "" {
+		var keys struct {
+			Public  string `json:"public"`
+			Private string `json:"private"`
+		}
+		if err := json.Unmarshal([]byte(keysJSON), &keys); err != nil {
+			return fmt.Errorf("notify.ConfigurePush: invalid vapid_keys JSON: %w", err)
+		}
+		pub = keys.Public
+		priv = keys.Private
+	}
+
+	// Generate new keys if not present
+	if pub == "" || priv == "" {
+		pub, priv, err = GenerateVAPIDKeys()
+		if err != nil {
+			return fmt.Errorf("notify.ConfigurePush: %w", err)
+		}
+		keysData, _ := json.Marshal(map[string]string{"public": pub, "private": priv})
+		if err := e.store.SetSetting("vapid_keys", string(keysData)); err != nil {
+			return fmt.Errorf("notify.ConfigurePush: failed to save VAPID keys: %w", err)
+		}
+		e.logger.Info("Generated new VAPID key pair for push notifications")
+	}
+
+	sender, err := NewPushSender(pub, priv, "mailto:onwatch@localhost")
+	if err != nil {
+		return fmt.Errorf("notify.ConfigurePush: %w", err)
+	}
+
+	e.mu.Lock()
+	e.pushSender = sender
+	e.vapidPublicKey = pub
+	e.mu.Unlock()
+
+	return nil
+}
+
+// GetVAPIDPublicKey returns the VAPID public key for client-side push subscription.
+func (e *NotificationEngine) GetVAPIDPublicKey() string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.vapidPublicKey
+}
+
+// SendTestPush sends a test push notification to all subscribed devices.
+func (e *NotificationEngine) SendTestPush() error {
+	e.mu.RLock()
+	sender := e.pushSender
+	e.mu.RUnlock()
+
+	if sender == nil {
+		return fmt.Errorf("push notifications not configured")
+	}
+
+	subs, err := e.store.GetPushSubscriptions()
+	if err != nil {
+		return fmt.Errorf("failed to get subscriptions: %w", err)
+	}
+
+	if len(subs) == 0 {
+		return fmt.Errorf("no push subscriptions found")
+	}
+
+	var lastErr error
+	sent := 0
+	for _, sub := range subs {
+		ps := PushSubscription{Endpoint: sub.Endpoint}
+		ps.Keys.P256dh = sub.P256dh
+		ps.Keys.Auth = sub.Auth
+		if err := sender.Send(ps, "[onWatch] Test Push", "Push notifications are working correctly."); err != nil {
+			lastErr = err
+			e.logger.Error("test push failed", "endpoint", sub.Endpoint, "error", err)
+		} else {
+			sent++
+		}
+	}
+
+	if sent == 0 && lastErr != nil {
+		return lastErr
+	}
+
+	return nil
+}
+
 // Check evaluates a quota status against thresholds and sends notifications if needed.
 // Runs synchronously -- no goroutines spawned.
 func (e *NotificationEngine) Check(status QuotaStatus) {
 	e.mu.RLock()
 	cfg := e.cfg
 	mailer := e.mailer
+	pushSender := e.pushSender
 	e.mu.RUnlock()
 
-	if mailer == nil {
+	// Need at least one channel configured
+	if mailer == nil && pushSender == nil {
 		return
 	}
 
-	// Handle reset notification
+	// Handle reset: clear notification log so alerts can fire again in the new cycle
 	if status.ResetOccurred {
+		if err := e.store.ClearNotificationLog(status.QuotaKey); err != nil {
+			e.logger.Error("failed to clear notification log on reset", "error", err)
+		}
 		if cfg.Types.Reset {
-			e.sendNotification(mailer, status, "reset")
+			e.sendNotification(mailer, pushSender, cfg.Channels, status, "reset")
 		}
 		return
 	}
@@ -277,13 +394,13 @@ func (e *NotificationEngine) Check(status QuotaStatus) {
 
 	// Check critical first (higher priority)
 	if status.Utilization >= criticalThreshold && cfg.Types.Critical {
-		e.sendNotification(mailer, status, "critical")
+		e.sendNotification(mailer, pushSender, cfg.Channels, status, "critical")
 		return
 	}
 
 	// Check warning
 	if status.Utilization >= warningThreshold && cfg.Types.Warning {
-		e.sendNotification(mailer, status, "warning")
+		e.sendNotification(mailer, pushSender, cfg.Channels, status, "warning")
 		return
 	}
 }
@@ -303,37 +420,66 @@ func (e *NotificationEngine) SendTestEmail() error {
 	return mailer.Send(subject, body)
 }
 
-// sendNotification sends an email notification if cooldown has elapsed.
-func (e *NotificationEngine) sendNotification(mailer *SMTPMailer, status QuotaStatus, notifType string) {
-	// Check cooldown
-	e.mu.RLock()
-	cooldown := e.cfg.Cooldown
-	e.mu.RUnlock()
-
+// sendNotification sends notifications via enabled channels.
+// Each quota+type combination fires at most once per cycle.
+// The notification_log entry is cleared on quota reset (see Check/resetOccurred).
+func (e *NotificationEngine) sendNotification(mailer *SMTPMailer, pushSender *PushSender, channels NotificationChannels, status QuotaStatus, notifType string) {
 	sentAt, _, err := e.store.GetLastNotification(status.QuotaKey, notifType)
 	if err != nil {
 		e.logger.Error("failed to check notification log", "error", err)
 		return
 	}
-	if !sentAt.IsZero() && time.Since(sentAt) < cooldown {
-		e.logger.Debug("notification cooldown active",
+	// Already sent for this cycle — skip (log is cleared on reset)
+	if !sentAt.IsZero() {
+		e.logger.Debug("notification already sent for this cycle",
 			"quota", status.QuotaKey, "type", notifType,
-			"last_sent", sentAt, "cooldown", cooldown)
+			"sent_at", sentAt)
 		return
 	}
 
 	subject := e.buildSubject(status, notifType)
 	body := e.buildBody(status, notifType)
+	sent := false
 
-	if err := mailer.Send(subject, body); err != nil {
-		e.logger.Error("failed to send notification", "error", err,
-			"quota", status.QuotaKey, "type", notifType)
-		return
+	// Send via email if enabled and configured
+	if channels.Email && mailer != nil {
+		if err := mailer.Send(subject, body); err != nil {
+			e.logger.Error("failed to send email notification", "error", err,
+				"quota", status.QuotaKey, "type", notifType)
+		} else {
+			sent = true
+		}
 	}
 
-	// Log the notification
-	if err := e.store.UpsertNotificationLog(status.QuotaKey, notifType, status.Utilization); err != nil {
-		e.logger.Error("failed to log notification", "error", err)
+	// Send via push if enabled and configured
+	if channels.Push && pushSender != nil {
+		subs, err := e.store.GetPushSubscriptions()
+		if err != nil {
+			e.logger.Error("failed to get push subscriptions", "error", err)
+		} else {
+			for _, sub := range subs {
+				ps := PushSubscription{Endpoint: sub.Endpoint}
+				ps.Keys.P256dh = sub.P256dh
+				ps.Keys.Auth = sub.Auth
+				if err := pushSender.Send(ps, subject, body); err != nil {
+					e.logger.Error("failed to send push notification", "error", err,
+						"endpoint", sub.Endpoint)
+					// If subscription is gone (410), remove it
+					if strings.Contains(err.Error(), "410") {
+						e.store.DeletePushSubscription(sub.Endpoint)
+					}
+				} else {
+					sent = true
+				}
+			}
+		}
+	}
+
+	// Log the notification only if at least one channel succeeded
+	if sent {
+		if err := e.store.UpsertNotificationLog(status.QuotaKey, notifType, status.Utilization); err != nil {
+			e.logger.Error("failed to log notification", "error", err)
+		}
 	}
 }
 

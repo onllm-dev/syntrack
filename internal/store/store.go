@@ -263,6 +263,15 @@ func (s *Store) createTables() error {
 			utilization REAL,
 			UNIQUE(quota_key, notification_type)
 		);
+
+		-- Push notification subscriptions
+		CREATE TABLE IF NOT EXISTS push_subscriptions (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			endpoint TEXT NOT NULL UNIQUE,
+			p256dh TEXT NOT NULL,
+			auth TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		);
 	`
 
 	if _, err := s.db.Exec(schema); err != nil {
@@ -1268,4 +1277,64 @@ func (s *Store) GetLastNotification(quotaKey, notifType string) (time.Time, floa
 	}
 	sentAt, _ := time.Parse(time.RFC3339Nano, sentAtStr)
 	return sentAt, util, nil
+}
+
+// ClearNotificationLog removes all notification log entries for a quota key.
+// Called on quota reset to allow notifications to fire again in the new cycle.
+func (s *Store) ClearNotificationLog(quotaKey string) error {
+	_, err := s.db.Exec(`DELETE FROM notification_log WHERE quota_key = ?`, quotaKey)
+	if err != nil {
+		return fmt.Errorf("store.ClearNotificationLog: %w", err)
+	}
+	return nil
+}
+
+// SavePushSubscription stores a push notification subscription (upsert by endpoint).
+func (s *Store) SavePushSubscription(endpoint, p256dh, auth string) error {
+	_, err := s.db.Exec(`
+		INSERT INTO push_subscriptions (endpoint, p256dh, auth, created_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(endpoint) DO UPDATE SET p256dh = ?, auth = ?`,
+		endpoint, p256dh, auth, time.Now().UTC().Format(time.RFC3339),
+		p256dh, auth,
+	)
+	if err != nil {
+		return fmt.Errorf("store.SavePushSubscription: %w", err)
+	}
+	return nil
+}
+
+// DeletePushSubscription removes a push subscription by endpoint.
+func (s *Store) DeletePushSubscription(endpoint string) error {
+	_, err := s.db.Exec(`DELETE FROM push_subscriptions WHERE endpoint = ?`, endpoint)
+	if err != nil {
+		return fmt.Errorf("store.DeletePushSubscription: %w", err)
+	}
+	return nil
+}
+
+// PushSubscriptionRow represents a stored push subscription.
+type PushSubscriptionRow struct {
+	Endpoint string
+	P256dh   string
+	Auth     string
+}
+
+// GetPushSubscriptions returns all stored push subscriptions.
+func (s *Store) GetPushSubscriptions() ([]PushSubscriptionRow, error) {
+	rows, err := s.db.Query(`SELECT endpoint, p256dh, auth FROM push_subscriptions`)
+	if err != nil {
+		return nil, fmt.Errorf("store.GetPushSubscriptions: %w", err)
+	}
+	defer rows.Close()
+
+	var subs []PushSubscriptionRow
+	for rows.Next() {
+		var sub PushSubscriptionRow
+		if err := rows.Scan(&sub.Endpoint, &sub.P256dh, &sub.Auth); err != nil {
+			return nil, fmt.Errorf("store.GetPushSubscriptions: scan: %w", err)
+		}
+		subs = append(subs, sub)
+	}
+	return subs, rows.Err()
 }

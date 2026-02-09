@@ -1,0 +1,17 @@
+{
+  "name": "onWatch",
+  "short_name": "onWatch",
+  "description": "API usage tracker with quota alerts",
+  "display": "standalone",
+  "start_url": "/",
+  "scope": "/",
+  "theme_color": "#0D9488",
+  "background_color": "#111318",
+  "icons": [
+    {
+      "src": "/static/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ]
+}

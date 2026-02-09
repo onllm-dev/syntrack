@@ -342,7 +342,7 @@ func extractCredentials(r *http.Request) (username, password string, ok bool) {
 
 // isStaticAsset checks if the request path is for a static asset.
 func isStaticAsset(path string) bool {
-	return strings.HasPrefix(path, "/static/")
+	return strings.HasPrefix(path, "/static/") || path == "/sw.js" || path == "/manifest.json"
 }
 
 // writeUnauthorized sends a 401 Unauthorized response.

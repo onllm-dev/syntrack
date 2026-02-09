@@ -599,6 +599,7 @@ func run() error {
 	notifier.SetEncryptionKey(deriveEncryptionKey(cfg.AdminPassHash))
 	notifier.Reload()
 	notifier.ConfigureSMTP()
+	notifier.ConfigurePush()
 
 	// Wire notifier to agents
 	if ag != nil {

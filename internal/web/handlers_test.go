@@ -2897,10 +2897,13 @@ type mockNotifier struct {
 	reloadCalled bool
 }
 
-func (m *mockNotifier) Reload() error           { m.reloadCalled = true; return nil }
-func (m *mockNotifier) ConfigureSMTP() error     { return nil }
-func (m *mockNotifier) SendTestEmail() error     { return m.sendTestErr }
-func (m *mockNotifier) SetEncryptionKey(_ string) {}
+func (m *mockNotifier) Reload() error              { m.reloadCalled = true; return nil }
+func (m *mockNotifier) ConfigureSMTP() error        { return nil }
+func (m *mockNotifier) ConfigurePush() error        { return nil }
+func (m *mockNotifier) SendTestEmail() error        { return m.sendTestErr }
+func (m *mockNotifier) SendTestPush() error         { return nil }
+func (m *mockNotifier) SetEncryptionKey(_ string)   {}
+func (m *mockNotifier) GetVAPIDPublicKey() string   { return "" }
 
 func TestHandler_SMTPTest_Success(t *testing.T) {
 	cfg := createTestConfigWithSynthetic()

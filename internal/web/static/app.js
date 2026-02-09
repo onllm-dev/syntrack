@@ -2995,6 +2995,7 @@ function initSettingsPage() {
   loadSettings();
   setupSettingsSave();
   setupSMTPTest();
+  setupPushNotifications();
   setupSettingsPassword();
   setupThresholdSliders();
   setupOverrides();
@@ -3074,6 +3075,13 @@ async function loadSettings() {
       if (critCheck) critCheck.checked = n.notify_critical !== false;
       if (resetCheck) resetCheck.checked = n.notify_reset !== false;
       setVal('notify-cooldown', n.cooldown_minutes || 30);
+      // Load channel preferences
+      if (n.channels) {
+        const emailToggle = document.getElementById('channel-email');
+        const pushToggle = document.getElementById('channel-push');
+        if (emailToggle) emailToggle.checked = n.channels.email !== false;
+        if (pushToggle) pushToggle.checked = n.channels.push !== false;
+      }
       // Load overrides
       if (n.overrides && n.overrides.length > 0) {
         n.overrides.forEach(o => addOverrideRow(o.quota_key, o.provider, o.warning, o.critical, o.is_absolute));
@@ -3195,6 +3203,10 @@ function gatherSettings() {
       notify_critical: document.getElementById('notify-critical')?.checked ?? true,
       notify_reset: document.getElementById('notify-reset')?.checked ?? true,
       cooldown_minutes: parseInt(document.getElementById('notify-cooldown')?.value) || 30,
+      channels: {
+        email: document.getElementById('channel-email')?.checked ?? true,
+        push: document.getElementById('channel-push')?.checked ?? true,
+      },
       overrides: overrides,
     };
   }
@@ -3299,6 +3311,144 @@ function setupSMTPTest() {
       testBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Send Test Email';
     }
   });
+}
+
+function setupPushNotifications() {
+  var statusLabel = document.getElementById('push-status-label');
+  var subscribeBtn = document.getElementById('push-subscribe-btn');
+  var channelToggle = document.getElementById('channel-push');
+  var testActions = document.getElementById('push-test-actions');
+  var testBtn = document.getElementById('push-test-btn');
+  var testResult = document.getElementById('push-test-result');
+
+  if (!statusLabel) return;
+
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    statusLabel.textContent = 'Push notifications not supported in this browser';
+    if (channelToggle) { channelToggle.disabled = true; }
+    return;
+  }
+
+  // Register service worker
+  navigator.serviceWorker.register('/sw.js').then(function(reg) {
+    return reg.pushManager.getSubscription();
+  }).then(function(sub) {
+    if (sub) {
+      statusLabel.textContent = 'Subscribed — push notifications active';
+      if (subscribeBtn) { subscribeBtn.hidden = true; }
+      if (testActions) { testActions.hidden = false; }
+    } else {
+      statusLabel.textContent = 'Not subscribed — click Enable to subscribe';
+      if (subscribeBtn) { subscribeBtn.hidden = false; }
+    }
+  }).catch(function() {
+    statusLabel.textContent = 'Service worker registration failed';
+  });
+
+  // Subscribe button
+  if (subscribeBtn) {
+    subscribeBtn.addEventListener('click', async function() {
+      subscribeBtn.disabled = true;
+      subscribeBtn.textContent = 'Enabling...';
+      try {
+        var vapidResp = await authFetch('/api/push/vapid');
+        if (!vapidResp.ok) throw new Error('Failed to get VAPID key');
+        var vapidData = await vapidResp.json();
+        var applicationServerKey = urlBase64ToUint8Array(vapidData.public_key);
+
+        var reg = await navigator.serviceWorker.ready;
+        var sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: applicationServerKey
+        });
+
+        var subJSON = sub.toJSON();
+        var saveResp = await authFetch('/api/push/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            endpoint: subJSON.endpoint,
+            keys: { p256dh: subJSON.keys.p256dh, auth: subJSON.keys.auth }
+          })
+        });
+        if (!saveResp.ok) throw new Error('Failed to save subscription');
+
+        statusLabel.textContent = 'Subscribed — push notifications active';
+        subscribeBtn.hidden = true;
+        if (testActions) testActions.hidden = false;
+        if (channelToggle) channelToggle.checked = true;
+      } catch (e) {
+        statusLabel.textContent = 'Failed: ' + (e.message || 'unknown error');
+      } finally {
+        subscribeBtn.disabled = false;
+        subscribeBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg> Enable';
+      }
+    });
+  }
+
+  // Unsubscribe when push toggle is turned off
+  if (channelToggle) {
+    channelToggle.addEventListener('change', async function() {
+      if (!channelToggle.checked) {
+        try {
+          var reg = await navigator.serviceWorker.ready;
+          var sub = await reg.pushManager.getSubscription();
+          if (sub) {
+            var endpoint = sub.endpoint;
+            await sub.unsubscribe();
+            await authFetch('/api/push/subscribe', {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ endpoint: endpoint })
+            });
+          }
+          statusLabel.textContent = 'Not subscribed — click Enable to subscribe';
+          if (subscribeBtn) subscribeBtn.hidden = false;
+          if (testActions) testActions.hidden = true;
+        } catch (e) {
+          statusLabel.textContent = 'Failed to unsubscribe';
+          channelToggle.checked = true;
+        }
+      }
+    });
+  }
+
+  // Test push button
+  if (testBtn) {
+    testBtn.addEventListener('click', async function() {
+      testBtn.disabled = true;
+      testBtn.textContent = 'Sending...';
+      if (testResult) { testResult.textContent = ''; testResult.className = 'settings-test-result'; }
+
+      try {
+        var resp = await authFetch('/api/push/test', { method: 'POST' });
+        var data = await resp.json();
+        if (testResult) {
+          testResult.textContent = data.message || (data.success ? 'Test push sent.' : 'Test failed.');
+          testResult.className = 'settings-test-result ' + (data.success ? 'success' : 'error');
+        }
+      } catch (e) {
+        if (testResult) {
+          testResult.textContent = 'Network error.';
+          testResult.className = 'settings-test-result error';
+        }
+      } finally {
+        testBtn.disabled = false;
+        testBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg> Send Test Push';
+      }
+    });
+  }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  var padding = '='.repeat((4 - base64String.length % 4) % 4);
+  var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  var rawData = atob(base64);
+  var outputArray = new Uint8Array(rawData.length);
+  for (var i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 }
 
 function setupSettingsPassword() {
@@ -3471,6 +3621,11 @@ function addOverrideRow(quotaKey, provider, warning, critical, isAbsolute) {
 // ── Init ──
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Register service worker for PWA + push (all pages)
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(function() {});
+  }
+
   // Settings page has its own initialization
   if (isSettingsPage()) {
     initTheme();

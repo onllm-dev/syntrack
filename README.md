@@ -105,6 +105,7 @@ Open **http://localhost:9211** and log in with your `.env` credentials.
 - **Z.ai** -- Tokens, Time, and Tool Call quota cards
 - **Anthropic** -- Dynamic quota cards (5-Hour, 7-Day, 7-Day Sonnet, Monthly, etc.) with utilization percentages
 - **All** -- Side-by-side view of all configured providers
+- **PWA installable** -- Install onWatch from your browser for a native app experience (Beta)
 
 Each quota card shows: usage vs. limit with progress bar, live countdown to reset, status badge (healthy/warning/danger/critical), and consumption rate with projected usage.
 
@@ -118,7 +119,9 @@ Each quota card shows: usage vs. limit with progress bar, live countdown to rese
 
 **Settings** -- Dedicated settings page (`/settings`) with tabs for general preferences, provider controls, notification thresholds, and SMTP email configuration.
 
-**Email notifications** -- Configure SMTP to receive alerts when quotas cross warning or critical thresholds, or when quotas reset. SMTP passwords are encrypted at rest with AES-GCM.
+**Email notifications** -- Configure SMTP to receive alerts when quotas cross warning or critical thresholds, or when quotas reset. Per-quota threshold overrides for fine-grained control. SMTP passwords are encrypted at rest with AES-GCM.
+
+**Push notifications (Beta)** -- Receive browser push notifications when quotas cross thresholds. onWatch is a PWA (Progressive Web App) — install it from your browser for a native app experience. Uses Web Push protocol (VAPID) with zero external dependencies. Configure delivery channels (email, push, or both) per your preference.
 
 **Dark/Light mode** -- Toggle via sun/moon icon in the header. Auto-detects system preference on first visit and persists your choice across sessions.
 
@@ -246,6 +249,9 @@ All endpoints require authentication (session cookie or Basic Auth). Append `?pr
 | `/api/settings` | GET/PUT | User settings (notifications, SMTP, providers) |
 | `/api/settings/smtp/test` | POST | Send test email via configured SMTP |
 | `/api/password` | PUT | Change password |
+| `/api/push/vapid` | GET | Get VAPID public key for push subscription |
+| `/api/push/subscribe` | POST/DELETE | Subscribe/unsubscribe push endpoint |
+| `/api/push/test` | POST | Send test push notification |
 | `/api/update/check` | GET | Check for new version |
 | `/api/update/apply` | POST | Download and apply update |
 
@@ -376,6 +382,9 @@ The `docker-compose.yml` includes memory limits (64M limit, 32M reservation), lo
 - API keys loaded from `.env`, never committed, redacted in all log output
 - Session-based auth with cookie + Basic Auth fallback
 - Passwords stored as SHA-256 hashes with constant-time comparison
+- SMTP passwords encrypted at rest with AES-256-GCM (key derived from admin password)
+- VAPID keys auto-generated (ECDSA P-256) and stored in database
+- Web Push payloads encrypted per RFC 8291 (ECDH + HKDF + AES-128-GCM)
 - Parameterized SQL queries throughout
 
 ---

@@ -48,7 +48,7 @@
       "url": "https://onwatch.onllm.dev",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "macOS, Linux, Windows",
-      "softwareVersion": "2.4.0",
+      "softwareVersion": "2.7.0",
       "license": "https://www.gnu.org/licenses/gpl-3.0.en.html",
       "isAccessibleForFree": true,
       "offers": {
@@ -83,6 +83,9 @@
         "Cross-platform: macOS, Linux, Windows",
         "REST API with JSON endpoints",
         "Session-based auth with password management",
+        "Email alerts via SMTP with encrypted password storage",
+        "Push notifications via Web Push (PWA, Beta)",
+        "Configurable delivery channels: email, push, or both",
         "Built-in self-update via CLI or dashboard"
       ],
       "keywords": "AI API intelligence, multi-provider API tracking, Synthetic API, Z.ai, Anthropic, AI coding tools, usage monitoring, open source, Cline, Claude Code, cross-provider insights, API budget tracker, self-hosted"
@@ -141,6 +144,14 @@
           "acceptedAnswer": {
             "@type": "Answer",
             "text": "onWatch idles at ~28 MB RAM and peaks at ~36 MB under continuous dashboard load, measured with all three agents (Synthetic, Z.ai, Anthropic) polling in parallel. It's designed to run as a background daemon with minimal resource usage: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), and polling buffer (1 MB). This is lighter than a single browser tab."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "How do email and push notifications work?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Configure SMTP in Settings to receive email alerts when quotas cross warning or critical thresholds or reset. SMTP passwords are encrypted at rest with AES-256-GCM. For push notifications (Beta), enable them in Delivery Channels and allow browser notifications. onWatch uses Web Push (VAPID) with no external dependencies — keys are auto-generated. Choose email, push, or both."
           }
         },
         {
@@ -2162,7 +2173,7 @@ a:hover { text-decoration: underline; }
                 Beta — Currently in active development
             </div>
             <h1>The <span class="accent">intelligence</span> layer for your AI API stack</h1>
-            <p class="hero-desc">Track API usage across Synthetic, Z.ai, and Anthropic in one place. onWatch polls every provider's quotas, stores historical data locally, and surfaces patterns, projections, and cross-provider context&mdash;so you always know where your budget stands and which provider has headroom.</p>
+            <p class="hero-desc">Track API usage across Synthetic, Z.ai, and Anthropic in one place. onWatch polls every provider's quotas, stores historical data locally, and surfaces patterns, projections, and cross-provider context&mdash;so you always know where your budget stands and which provider has headroom. Get notified via email or push notifications when quotas approach limits.</p>
             <div class="hero-actions">
                 <a href="#install" class="btn-primary">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
@@ -2178,7 +2189,7 @@ a:hover { text-decoration: underline; }
                 <code><span class="install-prefix">$</span> curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>
                 <span class="copy-hint">Copy</span>
             </div>
-            <p class="hero-meta"><span id="hero-version">v2.4.0</span> &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; ~28 MB RAM &middot; ~13 MB Binary</p>
+            <p class="hero-meta"><span id="hero-version">v2.7.0</span> &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; ~28 MB RAM &middot; ~13 MB Binary</p>
         </div>
 
         <!-- Dashboard Mockup -->
@@ -2574,6 +2585,20 @@ a:hover { text-decoration: underline; }
                 <h3 class="feature-title">Session tracking &amp; insights</h3>
                 <p class="feature-desc">Every agent run logs peak consumption per provider. Compare sessions side-by-side, see cycle utilization trends, and get cross-provider routing recommendations.</p>
             </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon peach">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                </div>
+                <h3 class="feature-title">Email &amp; push alerts</h3>
+                <p class="feature-desc">Get notified when quotas cross warning or critical thresholds. Configure SMTP email alerts with encrypted passwords, or enable browser push notifications (Beta) via the PWA. Choose email, push, or both.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon blue">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                </div>
+                <h3 class="feature-title">PWA installable <span style="font-size:11px;font-weight:600;color:var(--accent-blue);background:var(--accent-blue-muted);padding:2px 8px;border-radius:var(--radius-full);margin-left:6px;">Beta</span></h3>
+                <p class="feature-desc">Install onWatch from your browser for a native app experience. Works on desktop and mobile. Powered by Web Push (VAPID) with zero external service dependencies.</p>
+            </div>
         </div>
     </div>
 </section>
@@ -2656,6 +2681,20 @@ a:hover { text-decoration: underline; }
                     </tr>
                     <tr>
                         <td>Live countdown timers</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                    <tr>
+                        <td>Email &amp; push alerts</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                    <tr>
+                        <td>PWA installable</td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
@@ -2906,6 +2945,12 @@ a:hover { text-decoration: underline; }
                 <summary class="faq-question">How much memory does onWatch use?</summary>
                 <div class="faq-answer">
                     <p>onWatch idles at ~28 MB RAM and peaks at ~36 MB under continuous dashboard load, measured with all three agents (Synthetic, Z.ai, Anthropic) polling in parallel. Breakdown: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), polling buffer (1 MB). This is lighter than a single browser tab and designed to run as a background daemon indefinitely.</p>
+                </div>
+            </details>
+            <details class="faq-item">
+                <summary class="faq-question">How do email and push notifications work?</summary>
+                <div class="faq-answer">
+                    <p>Configure SMTP settings in the Settings page to receive email alerts when quotas cross warning or critical thresholds, or when they reset. SMTP passwords are encrypted at rest with AES-256-GCM. For push notifications (Beta), enable them in Settings &rarr; Notifications &rarr; Delivery Channels and allow browser notifications. onWatch uses the Web Push protocol (VAPID) with no external service dependencies &mdash; VAPID keys are auto-generated and all encryption is handled locally. You can choose email, push, or both.</p>
                 </div>
             </details>
             <details class="faq-item">
