@@ -205,11 +205,16 @@ func (c *Config) applyDefaults() {
 		c.AdminPass = "changeme"
 	}
 	if c.DBPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil || home == "" {
-			c.DBPath = "./onwatch.db"
+		// Check if running in Docker and use /data/onwatch.db as default
+		if c.isDockerEnvironment() {
+			c.DBPath = "/data/onwatch.db"
 		} else {
-			c.DBPath = filepath.Join(home, ".onwatch", "data", "onwatch.db")
+			home, err := os.UserHomeDir()
+			if err != nil || home == "" {
+				c.DBPath = "./onwatch.db"
+			} else {
+				c.DBPath = filepath.Join(home, ".onwatch", "data", "onwatch.db")
+			}
 		}
 	}
 	if c.LogLevel == "" {
@@ -364,9 +369,15 @@ func redactAPIKey(key string, expectedPrefix string) string {
 
 // LogWriter returns the appropriate log destination based on debug mode.
 // In debug mode: returns os.Stdout
+// In Docker: returns os.Stdout (containers should log to stdout)
 // In background mode: returns a file handle to .onwatch.log
 func (c *Config) LogWriter() (io.Writer, error) {
 	if c.DebugMode {
+		return os.Stdout, nil
+	}
+
+	// Docker mode: always log to stdout
+	if c.isDockerEnvironment() {
 		return os.Stdout, nil
 	}
 
@@ -383,4 +394,19 @@ func (c *Config) LogWriter() (io.Writer, error) {
 	}
 
 	return file, nil
+}
+
+// isDockerEnvironment detects if running inside a Docker container.
+// Checks for the presence of /.dockerenv (created by Docker) or the
+// DOCKER_CONTAINER environment variable (set by some container runtimes).
+func (c *Config) isDockerEnvironment() bool {
+	// Check for /.dockerenv file (standard Docker indicator)
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+	// Check for DOCKER_CONTAINER environment variable
+	if os.Getenv("DOCKER_CONTAINER") != "" {
+		return true
+	}
+	return false
 }

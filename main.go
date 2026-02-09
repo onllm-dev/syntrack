@@ -418,8 +418,9 @@ func run() error {
 		stopPreviousInstance(cfg.Port, testMode)
 	}
 
-	// Daemonize: if not in debug mode and not already the daemon child, fork
-	if !cfg.DebugMode && !isDaemonChild {
+	// Daemonize: if not in debug mode, not already the daemon child, and NOT in Docker, fork
+	// Docker containers should always run in foreground mode (logs to stdout)
+	if !cfg.DebugMode && !isDaemonChild && !cfg.isDockerEnvironment() {
 		printBanner(cfg, version)
 		return daemonize(cfg)
 	}

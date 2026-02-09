@@ -1,0 +1,58 @@
+# Environment files (never commit secrets)
+.env
+.env.local
+.env.test
+
+# Database files
+*.db
+*.db-*
+*.db-shm
+*.db-wal
+
+# Log files
+*.log
+
+# Git
+.git/
+.gitignore
+
+# Build artifacts
+dist/
+bin/
+onwatch
+onwatch.exe
+
+# Screenshots and design
+screenshots/
+design-system/
+
+# Tools
+tools/
+perf-monitor/
+
+# Documentation (keep README.md for Docker Hub)
+*.md
+!README.md
+
+# Test files
+*_test.go
+coverage/
+coverage.html
+*.out
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Static files sync (embedded in binary)
+static/
+
+# Claude Code memory (local only)
+.claude/
