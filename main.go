@@ -587,6 +587,11 @@ func run() error {
 		anthropicAg.SetTokenRefresh(func() string {
 			return api.DetectAnthropicToken(logger)
 		})
+		// Enable proactive OAuth refresh — refreshes token via OAuth API before expiry
+		// and saves new tokens to credentials file immediately.
+		anthropicAg.SetCredentialsRefresh(func() *api.AnthropicCredentials {
+			return api.DetectAnthropicCredentials(logger)
+		})
 	}
 
 	// Create notification engine

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -132,7 +131,7 @@ func TestAnthropicClient_FetchQuotas_ServerError(t *testing.T) {
 	}
 }
 
-func TestAnthropicClient_FetchQuotas_UnexpectedStatus(t *testing.T) {
+func TestAnthropicClient_FetchQuotas_Forbidden(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden) // 403
 	}))
@@ -146,10 +145,9 @@ func TestAnthropicClient_FetchQuotas_UnexpectedStatus(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
-	// Should contain the status code in the error message
-	errMsg := err.Error()
-	if !strings.Contains(errMsg, "403") {
-		t.Errorf("expected error to contain '403', got %q", errMsg)
+	// Should be ErrAnthropicForbidden (token revoked/invalid)
+	if !errors.Is(err, api.ErrAnthropicForbidden) {
+		t.Errorf("expected ErrAnthropicForbidden, got %v", err)
 	}
 	// Should NOT be wrapped as ErrAnthropicUnauthorized or ErrAnthropicServerError
 	if errors.Is(err, api.ErrAnthropicUnauthorized) {

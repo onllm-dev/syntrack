@@ -17,6 +17,15 @@ import (
 // Returns the new token, or empty string if refresh is not needed/available.
 type TokenRefreshFunc func() string
 
+// CredentialsRefreshFunc returns the full credentials for proactive OAuth refresh.
+type CredentialsRefreshFunc func() *api.AnthropicCredentials
+
+// maxAuthFailures is the number of consecutive auth failures before pausing polling.
+const maxAuthFailures = 3
+
+// tokenRefreshThreshold is how soon before expiry we proactively refresh the token.
+const tokenRefreshThreshold = 10 * time.Minute
+
 // AnthropicAgent manages the background polling loop for Anthropic quota tracking.
 type AnthropicAgent struct {
 	client       *api.AnthropicClient
@@ -26,9 +35,15 @@ type AnthropicAgent struct {
 	logger       *slog.Logger
 	sm           *SessionManager
 	tokenRefresh TokenRefreshFunc
+	credsRefresh CredentialsRefreshFunc
 	lastToken    string
 	notifier     *notify.NotificationEngine
 	pollingCheck func() bool
+
+	// Auth failure rate limiting
+	authFailCount   int    // consecutive auth failures (401 or 403)
+	authPaused      bool   // true when polling is paused due to auth failures
+	lastFailedToken string // token that caused the failures (to detect credential refresh)
 }
 
 // SetPollingCheck sets a function that is called before each poll.
@@ -64,6 +79,12 @@ func (a *AnthropicAgent) SetTokenRefresh(fn TokenRefreshFunc) {
 	a.tokenRefresh = fn
 }
 
+// SetCredentialsRefresh sets a function that returns full credentials for
+// proactive OAuth token refresh before expiry.
+func (a *AnthropicAgent) SetCredentialsRefresh(fn CredentialsRefreshFunc) {
+	a.credsRefresh = fn
+}
+
 // Run starts the Anthropic agent's polling loop. It polls immediately,
 // then continues at the configured interval until the context is cancelled.
 func (a *AnthropicAgent) Run(ctx context.Context) error {
@@ -95,19 +116,75 @@ func (a *AnthropicAgent) Run(ctx context.Context) error {
 	}
 }
 
+// isAuthError returns true if the error is an authentication/authorization error.
+func isAuthError(err error) bool {
+	return errors.Is(err, api.ErrAnthropicUnauthorized) || errors.Is(err, api.ErrAnthropicForbidden)
+}
+
 // poll performs a single Anthropic poll cycle: fetch quotas, store snapshot, process with tracker.
 func (a *AnthropicAgent) poll(ctx context.Context) {
 	if a.pollingCheck != nil && !a.pollingCheck() {
 		return // polling disabled for this provider
 	}
 
-	// Refresh token before each poll (picks up rotated credentials)
+	// Proactive OAuth refresh: check if token expires soon and refresh via OAuth API
+	if a.credsRefresh != nil {
+		if creds := a.credsRefresh(); creds != nil {
+			// Check if token is expiring soon or already expired
+			if creds.IsExpiringSoon(tokenRefreshThreshold) && creds.RefreshToken != "" {
+				a.logger.Info("Token expiring soon, attempting proactive OAuth refresh",
+					"expires_in", creds.ExpiresIn.Round(time.Second))
+
+				newTokens, err := api.RefreshAnthropicToken(ctx, creds.RefreshToken)
+				if err != nil {
+					a.logger.Error("Proactive OAuth refresh failed", "error", err)
+					// Continue with existing token - it might still work
+				} else {
+					// CRITICAL: Save new tokens to disk IMMEDIATELY
+					if err := api.WriteAnthropicCredentials(newTokens.AccessToken, newTokens.RefreshToken, newTokens.ExpiresIn); err != nil {
+						a.logger.Error("Failed to save refreshed credentials", "error", err)
+					} else {
+						a.client.SetToken(newTokens.AccessToken)
+						a.lastToken = newTokens.AccessToken
+						a.logger.Info("Proactively refreshed OAuth token",
+							"expires_in_hours", newTokens.ExpiresIn/3600)
+
+						// Reset auth failures since we have fresh credentials
+						if a.authPaused {
+							a.authPaused = false
+							a.authFailCount = 0
+							a.lastFailedToken = ""
+							a.logger.Info("Auth failure pause lifted - token refreshed via OAuth")
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Refresh token before each poll (picks up rotated credentials from disk)
+	var newToken string
 	if a.tokenRefresh != nil {
-		if newToken := a.tokenRefresh(); newToken != "" && newToken != a.lastToken {
+		newToken = a.tokenRefresh()
+		if newToken != "" && newToken != a.lastToken {
 			a.client.SetToken(newToken)
 			a.lastToken = newToken
 			a.logger.Info("Anthropic token refreshed from credentials")
+
+			// If we were paused due to auth failures and credentials changed, resume
+			if a.authPaused && newToken != a.lastFailedToken {
+				a.authPaused = false
+				a.authFailCount = 0
+				a.lastFailedToken = ""
+				a.logger.Info("Auth failure pause lifted - new credentials detected")
+			}
 		}
+	}
+
+	// If auth is paused, skip polling until credentials change
+	if a.authPaused {
+		// Only log periodically to avoid spamming logs
+		return
 	}
 
 	resp, err := a.client.FetchQuotas(ctx)
@@ -115,23 +192,41 @@ func (a *AnthropicAgent) poll(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		// On 401, force token re-read and retry once
-		if errors.Is(err, api.ErrAnthropicUnauthorized) && a.tokenRefresh != nil {
-			a.logger.Warn("Anthropic token rejected (401), forcing credential re-read")
+		// On auth error (401 or 403), force token re-read and retry once
+		if isAuthError(err) && a.tokenRefresh != nil {
+			a.logger.Warn("Anthropic auth error, forcing credential re-read", "error", err)
 			a.lastToken = "" // force re-read even if token hasn't changed on disk
-			if newToken := a.tokenRefresh(); newToken != "" {
-				a.client.SetToken(newToken)
-				a.lastToken = newToken
+			if retryToken := a.tokenRefresh(); retryToken != "" {
+				a.client.SetToken(retryToken)
+				a.lastToken = retryToken
 				a.logger.Info("Retrying with refreshed token")
 				resp, err = a.client.FetchQuotas(ctx)
 				if err != nil {
 					if ctx.Err() != nil {
 						return
 					}
-					a.logger.Error("Anthropic retry also failed", "error", err)
+					// Retry also failed - count this as an auth failure
+					if isAuthError(err) {
+						a.authFailCount++
+						a.logger.Error("Anthropic auth retry failed",
+							"error", err,
+							"failure_count", a.authFailCount,
+							"max_failures", maxAuthFailures)
+
+						if a.authFailCount >= maxAuthFailures {
+							a.authPaused = true
+							a.lastFailedToken = retryToken
+							a.logger.Error("Anthropic polling PAUSED due to repeated auth failures",
+								"failure_count", a.authFailCount,
+								"action", "Re-authenticate with 'claude auth' to resume polling")
+						}
+					} else {
+						a.logger.Error("Anthropic retry failed with non-auth error", "error", err)
+					}
 					return
 				}
-				// Retry succeeded — fall through to process the response
+				// Retry succeeded — reset auth failure count and fall through
+				a.authFailCount = 0
 			} else {
 				a.logger.Error("No Anthropic token available after re-read")
 				return
@@ -140,6 +235,9 @@ func (a *AnthropicAgent) poll(ctx context.Context) {
 			a.logger.Error("Failed to fetch Anthropic quotas", "error", err)
 			return
 		}
+	} else {
+		// Success — reset auth failure count
+		a.authFailCount = 0
 	}
 
 	// Convert to snapshot and store

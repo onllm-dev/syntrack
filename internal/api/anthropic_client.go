@@ -15,6 +15,7 @@ import (
 // Custom errors for Anthropic API failures.
 var (
 	ErrAnthropicUnauthorized    = errors.New("anthropic: unauthorized - invalid API key")
+	ErrAnthropicForbidden       = errors.New("anthropic: forbidden - token revoked or invalid")
 	ErrAnthropicServerError     = errors.New("anthropic: server error")
 	ErrAnthropicNetworkError    = errors.New("anthropic: network error")
 	ErrAnthropicInvalidResponse = errors.New("anthropic: invalid response")
@@ -119,6 +120,8 @@ func (c *AnthropicClient) FetchQuotas(ctx context.Context) (*AnthropicQuotaRespo
 		// Continue to parse response
 	case resp.StatusCode == http.StatusUnauthorized:
 		return nil, ErrAnthropicUnauthorized
+	case resp.StatusCode == http.StatusForbidden:
+		return nil, ErrAnthropicForbidden
 	case resp.StatusCode >= 500:
 		return nil, ErrAnthropicServerError
 	default:
