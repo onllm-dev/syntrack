@@ -7,10 +7,12 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 //go:embed templates/*.html
@@ -29,9 +31,12 @@ type Server struct {
 
 // NewServer creates a new Server instance.
 // passwordHash should be a SHA-256 hex hash of the admin password.
-func NewServer(port int, handler *Handler, logger *slog.Logger, username, passwordHash string) *Server {
+func NewServer(port int, handler *Handler, logger *slog.Logger, username, passwordHash, host string) *Server {
 	if port == 0 {
 		port = 9211 // default port
+	}
+	if host == "" {
+		host = "0.0.0.0" // default bind address
 	}
 
 	mux := http.NewServeMux()
@@ -94,11 +99,16 @@ func NewServer(port int, handler *Handler, logger *slog.Logger, username, passwo
 	}
 	// Apply security headers and gzip compression (outermost)
 	finalHandler = securityHeadersMiddleware(gzipHandler(finalHandler))
+	finalHandler = csrfMiddleware(finalHandler)
 
 	return &Server{
 		httpServer: &http.Server{
-			Addr:    ":" + strconv.Itoa(port),
-			Handler: finalHandler,
+			Addr:              net.JoinHostPort(host, strconv.Itoa(port)),
+			Handler:           finalHandler,
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      60 * time.Second,
+			IdleTimeout:       120 * time.Second,
 		},
 		handler: handler,
 		logger:  logger,
@@ -166,6 +176,19 @@ func gzipHandler(next http.Handler) http.Handler {
 	})
 }
 
+// csrfMiddleware requires custom header on state-changing requests
+func csrfMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" && r.Method != "HEAD" {
+			if r.Header.Get("X-Requested-With") == "" {
+				http.Error(w, "missing required header", http.StatusForbidden)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // securityHeadersMiddleware adds security headers to all responses
 func securityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -200,6 +223,14 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.logger.Info("shutting down web server")
 	return s.httpServer.Shutdown(ctx)
+}
+
+// GetSessionStore returns the session store for token eviction.
+func (s *Server) GetSessionStore() *SessionStore {
+	if s.handler == nil {
+		return nil
+	}
+	return s.handler.GetSessionStore()
 }
 
 // GetEmbeddedTemplates returns the embedded templates filesystem

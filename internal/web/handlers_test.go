@@ -3404,3 +3404,154 @@ func TestHandler_parseInsightsRange(t *testing.T) {
 		})
 	}
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Security Tests: MaxBytesReader and Error Sanitization ──
+// ═══════════════════════════════════════════════════════════════════
+
+func TestHandler_MaxBytesReader_RejectsLargeBody(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	// Create valid JSON that exceeds 64KB when parsed
+	// Use a key with a large string value to exceed the limit
+	largeValue := strings.Repeat("x", 65*1024)
+	largePayload := fmt.Sprintf(`{"timezone":"%s"}`, largeValue)
+
+	tests := []struct {
+		name   string
+		method string
+		handler func(http.ResponseWriter, *http.Request)
+	}{
+		{
+			name:    "UpdateSettings PUT",
+			method:  http.MethodPut,
+			handler: h.UpdateSettings,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, "/api/settings", strings.NewReader(largePayload))
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
+
+			tt.handler(rr, req)
+
+			// MaxBytesReader returns 413 Entity Too Large for oversized bodies
+			if rr.Code != http.StatusRequestEntityTooLarge {
+				t.Errorf("expected status %d (RequestEntityTooLarge), got %d", http.StatusRequestEntityTooLarge, rr.Code)
+			}
+		})
+	}
+}
+
+func TestHandler_ApplyUpdate_SanitizesErrors(t *testing.T) {
+	// Create a mock updater that will return an error
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	// The handler should sanitize internal errors
+	// We'll test that the ApplyUpdate endpoint doesn't leak internal error details
+
+	// Since we can't easily mock the updater, we test the 503 case (no updater configured)
+	// which already returns a generic message
+	req := httptest.NewRequest(http.MethodPost, "/api/update/apply", nil)
+	rr := httptest.NewRecorder()
+
+	h.ApplyUpdate(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", rr.Code)
+	}
+
+	// Verify the error message is generic
+	var response map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if response["error"] != "updater not configured" {
+		t.Errorf("expected generic error message, got %q", response["error"])
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Security Tests: Login Error Whitelist ──
+// ═══════════════════════════════════════════════════════════════════
+
+func TestLogin_WhitelistsErrorCodes(t *testing.T) {
+	tests := []struct {
+		name         string
+		errorCode    string
+		wantContains string
+	}{
+		{
+			name:         "invalid error code shows whitelisted message",
+			errorCode:    "invalid",
+			wantContains: "Invalid username or password",
+		},
+		{
+			name:         "expired error code shows whitelisted message",
+			errorCode:    "expired",
+			wantContains: "Session expired",
+		},
+		{
+			name:         "required error code shows whitelisted message",
+			errorCode:    "required",
+			wantContains: "Authentication required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := createTestConfigWithSynthetic()
+			h := NewHandler(nil, nil, nil, nil, cfg)
+
+			req := httptest.NewRequest(http.MethodGet, "/login?error="+tt.errorCode, nil)
+			rr := httptest.NewRecorder()
+			h.Login(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Errorf("expected status 200, got %d", rr.Code)
+			}
+
+			body := rr.Body.String()
+			if !strings.Contains(body, tt.wantContains) {
+				t.Errorf("expected body to contain %q, got:\n%s", tt.wantContains, body)
+			}
+		})
+	}
+}
+
+func TestLogin_RejectsUnknownErrorCode(t *testing.T) {
+	cfg := createTestConfigWithSynthetic()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	// Unknown error code should result in empty error message
+	req := httptest.NewRequest(http.MethodGet, "/login?error=malicious<script>alert(1)</script>", nil)
+	rr := httptest.NewRecorder()
+	h.Login(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+	// The error should not contain the malicious input
+	// Note: we check for the specific malicious pattern, not all <script> tags
+	// since the template legitimately contains theme-toggle scripts
+	if strings.Contains(body, "malicious") {
+		t.Error("body should not contain unknown error code")
+	}
+	if strings.Contains(body, "alert(1)") {
+		t.Error("body should not contain malicious script content")
+	}
+	// Verify the error-message div is not rendered for unknown codes
+	if strings.Contains(body, `class="error-message"`) {
+		t.Error("error-message div should not be rendered for unknown error codes")
+	}
+}

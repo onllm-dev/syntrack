@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -597,5 +599,142 @@ func TestAuth_ConcurrentRequests(t *testing.T) {
 	// Wait for all goroutines
 	for i := 0; i < 10; i++ {
 		<-done
+	}
+}
+
+// =============================================================================
+// Login Rate Limiter Tests
+// =============================================================================
+
+func TestLoginRateLimit_Blocks_After5Failures(t *testing.T) {
+	limiter := NewLoginRateLimiter(1000)
+	ip := "192.168.1.1"
+
+	for i := 0; i < 4; i++ {
+		blocked := limiter.RecordFailure(ip)
+		if blocked {
+			t.Errorf("should not be blocked after %d failures", i+1)
+		}
+		if limiter.IsBlocked(ip) {
+			t.Errorf("IsBlocked should be false after %d failures", i+1)
+		}
+	}
+
+	blocked := limiter.RecordFailure(ip)
+	if !blocked {
+		t.Error("should be blocked after 5 failures")
+	}
+	if !limiter.IsBlocked(ip) {
+		t.Error("IsBlocked should be true after 5 failures")
+	}
+}
+
+func TestLoginRateLimit_Clears_OnSuccess(t *testing.T) {
+	limiter := NewLoginRateLimiter(1000)
+	ip := "192.168.1.2"
+
+	for i := 0; i < 4; i++ {
+		limiter.RecordFailure(ip)
+	}
+
+	if limiter.IsBlocked(ip) {
+		t.Error("should not be blocked yet after 4 failures")
+	}
+
+	limiter.Clear(ip)
+
+	if limiter.IsBlocked(ip) {
+		t.Error("should not be blocked after Clear")
+	}
+
+	for i := 0; i < 4; i++ {
+		blocked := limiter.RecordFailure(ip)
+		if blocked {
+			t.Errorf("should not be blocked after clear + %d failures", i+1)
+		}
+	}
+}
+
+func TestLoginRateLimit_EvictsStale(t *testing.T) {
+	limiter := NewLoginRateLimiter(1000)
+	ip := "192.168.1.3"
+
+	for i := 0; i < 3; i++ {
+		limiter.RecordFailure(ip)
+	}
+
+	if !limiter.HasEntryForTest(ip) {
+		t.Error("entry should exist after recording failures")
+	}
+
+	limiter.EvictStaleEntries(0)
+
+	if limiter.HasEntryForTest(ip) {
+		t.Error("entry should be evicted after EvictStaleEntries(0)")
+	}
+}
+
+func TestLoginRateLimit_MaxIPsLimit(t *testing.T) {
+	limiter := NewLoginRateLimiter(10)
+
+	for i := 0; i < 15; i++ {
+		ip := "192.168.1." + string(rune('0'+i%10))
+		limiter.RecordFailure(ip)
+	}
+
+	count := limiter.EntryCountForTest()
+	if count > 10 {
+		t.Errorf("expected at most 10 entries, got %d", count)
+	}
+}
+
+func TestLoginRateLimit_ConcurrentAccess(t *testing.T) {
+	limiter := NewLoginRateLimiter(1000)
+	ip := "192.168.1.100"
+	var wg sync.WaitGroup
+	var blockedCount int32
+
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if limiter.RecordFailure(ip) {
+				atomic.AddInt32(&blockedCount, 1)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	if !limiter.IsBlocked(ip) {
+		t.Error("IP should be blocked after concurrent failures")
+	}
+
+	if atomic.LoadInt32(&blockedCount) < 1 {
+		t.Error("at least one goroutine should have reported blocked")
+	}
+}
+
+func TestLoginRateLimit_DifferentIPsIndependent(t *testing.T) {
+	limiter := NewLoginRateLimiter(1000)
+	ip1 := "192.168.1.5"
+	ip2 := "192.168.1.6"
+
+	for i := 0; i < 5; i++ {
+		limiter.RecordFailure(ip1)
+	}
+
+	if !limiter.IsBlocked(ip1) {
+		t.Error("ip1 should be blocked")
+	}
+	if limiter.IsBlocked(ip2) {
+		t.Error("ip2 should not be blocked")
+	}
+
+	for i := 0; i < 4; i++ {
+		blocked := limiter.RecordFailure(ip2)
+		if blocked {
+			t.Errorf("ip2 should not be blocked after %d failures", i+1)
+		}
 	}
 }

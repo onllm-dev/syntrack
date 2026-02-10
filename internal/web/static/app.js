@@ -23,6 +23,15 @@ function lazyLoadOnVisible(selector, callback) {
 
 // ── Auth helper: redirect to login on 401 ──
 async function authFetch(url, options) {
+  // Add CSRF protection header for state-changing requests
+  options = options || {};
+  const method = (options.method || 'GET').toUpperCase();
+  if (method !== 'GET' && method !== 'HEAD') {
+    options.headers = options.headers || {};
+    if (!options.headers['X-Requested-With']) {
+      options.headers['X-Requested-With'] = 'XMLHttpRequest';
+    }
+  }
   const res = await fetch(url, options);
   if (res.status === 401) {
     // Don't redirect if already on the login page (avoids infinite refresh loop)
@@ -818,7 +827,7 @@ async function selectTz(tz, picker, badge) {
   updateBadgeText(badge);
   if (picker) picker.remove();
   try {
-    await fetch(`${API_BASE}/api/settings`, {
+    await authFetch(`${API_BASE}/api/settings`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ timezone: tz })

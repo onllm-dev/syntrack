@@ -120,8 +120,8 @@ func (c *Client) FetchQuotas(ctx context.Context) (*QuotaResponse, error) {
 		return nil, fmt.Errorf("api: unexpected status code %d", resp.StatusCode)
 	}
 
-	// Read and parse response body
-	body, err := io.ReadAll(resp.Body)
+	// Read and parse response body (bounded to 64KB)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	if err != nil {
 		return nil, fmt.Errorf("%w: reading body: %v", ErrInvalidResponse, err)
 	}

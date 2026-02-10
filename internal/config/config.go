@@ -31,6 +31,7 @@ type Config struct {
 	PollInterval       time.Duration // ONWATCH_POLL_INTERVAL (seconds → Duration)
 	Port               int           // ONWATCH_PORT
 	Host               string        // ONWATCH_HOST (bind address, default: 0.0.0.0)
+	SecureCookies      bool          // ONWATCH_SECURE_COOKIES (set Secure flag on cookies)
 	AdminUser          string        // ONWATCH_ADMIN_USER
 	AdminPass          string        // ONWATCH_ADMIN_PASS
 	AdminPassHash      string        // SHA-256 hash of password (set after DB check)
@@ -166,6 +167,14 @@ func loadFromEnvAndFlags(flags *flagValues) (*Config, error) {
 	// Log Level
 	cfg.LogLevel = envWithFallback("ONWATCH_LOG_LEVEL", "SYNTRACK_LOG_LEVEL")
 
+	// Host (bind address)
+	cfg.Host = envWithFallback("ONWATCH_HOST", "SYNTRACK_HOST")
+
+	// Secure Cookies
+	if env := envWithFallback("ONWATCH_SECURE_COOKIES", "SYNTRACK_SECURE_COOKIES"); env != "" {
+		cfg.SecureCookies = strings.ToLower(env) == "true" || env == "1"
+	}
+
 	// Session Idle Timeout (seconds)
 	if env := envWithFallback("ONWATCH_SESSION_IDLE_TIMEOUT", "SYNTRACK_SESSION_IDLE_TIMEOUT"); env != "" {
 		if v, err := strconv.Atoi(env); err == nil {
@@ -238,11 +247,6 @@ func (c *Config) Validate() error {
 	// Validate Synthetic API key if provided
 	if c.SyntheticAPIKey != "" && !strings.HasPrefix(c.SyntheticAPIKey, "syn_") {
 		return fmt.Errorf("SYNTHETIC_API_KEY must start with 'syn_'")
-	}
-
-	// Validate Z.ai API key if provided
-	if c.ZaiAPIKey != "" && c.ZaiAPIKey == "" {
-		return fmt.Errorf("ZAI_API_KEY cannot be empty if provided")
 	}
 
 	// Poll interval bounds
@@ -409,4 +413,9 @@ func (c *Config) IsDockerEnvironment() bool {
 		return true
 	}
 	return false
+}
+
+// IsDefaultPassword returns true if the default password "changeme" is being used.
+func (c *Config) IsDefaultPassword() bool {
+	return c.AdminPass == "changeme"
 }

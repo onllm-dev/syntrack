@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -465,6 +466,11 @@ func run() error {
 	}))
 	slog.SetDefault(logger)
 
+	// Warn if using default password
+	if cfg.IsDefaultPassword() {
+		logger.Warn("⚠️  USING DEFAULT PASSWORD — set ONWATCH_ADMIN_PASS in .env for production")
+	}
+
 	// Print startup banner (only in debug/foreground mode)
 	if cfg.DebugMode {
 		printBanner(cfg, version)
@@ -491,6 +497,11 @@ func run() error {
 	defer db.Close()
 
 	logger.Info("Database opened", "path", cfg.DBPath)
+
+	// Initialize or load encryption salt for HKDF key derivation
+	if err := initEncryptionSalt(db, logger); err != nil {
+		logger.Warn("Failed to initialize encryption salt", "error", err)
+	}
 
 	// Password precedence: DB-stored hash takes priority over .env
 	dbHash, hashErr := db.GetUser(cfg.AdminUser)
@@ -662,7 +673,12 @@ func run() error {
 	}
 	updater := update.NewUpdater(version, logger)
 	handler.SetUpdater(updater)
-	server := web.NewServer(cfg.Port, handler, logger, cfg.AdminUser, cfg.AdminPassHash)
+
+	// Create login rate limiter for brute force protection
+	loginRateLimiter := web.NewLoginRateLimiter(1000)
+	handler.SetRateLimiter(loginRateLimiter)
+
+	server := web.NewServer(cfg.Port, handler, logger, cfg.AdminUser, cfg.AdminPassHash, cfg.Host)
 
 	// Setup signal handling
 	ctx, cancel := context.WithCancel(context.Background())
@@ -735,6 +751,7 @@ func run() error {
 
 	// Periodically return freed memory to the OS. On macOS, MADV_FREE pages
 	// are reclaimable but still counted in RSS. FreeOSMemory forces MADV_DONTNEED.
+	// Also evict stale rate limiter entries and expired session tokens to prevent memory growth.
 	go func() {
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
@@ -744,6 +761,11 @@ func run() error {
 				return
 			case <-ticker.C:
 				debug.FreeOSMemory()
+				loginRateLimiter.EvictStaleEntries(5 * time.Minute)
+				// Evict expired session tokens
+				if sessions := server.GetSessionStore(); sessions != nil {
+					sessions.EvictExpiredTokens()
+				}
 			}
 		}
 	}()
@@ -1191,4 +1213,35 @@ func redactAPIKey(key string) string {
 		return prefix + key[:4] + "***"
 	}
 	return prefix + key[:4] + "***" + key[len(key)-4:]
+}
+
+// initEncryptionSalt loads or generates the encryption salt for HKDF key derivation.
+// If no salt exists in the database, a new one is generated and stored.
+func initEncryptionSalt(db *store.Store, logger *slog.Logger) error {
+	// Try to load existing salt
+	saltHex, err := db.GetSetting("encryption_salt")
+	if err == nil && saltHex != "" {
+		// Decode and use existing salt
+		salt, err := hex.DecodeString(saltHex)
+		if err == nil && len(salt) == 16 {
+			web.SetEncryptionSalt(salt)
+			logger.Debug("Loaded encryption salt from database")
+			return nil
+		}
+	}
+
+	// Generate new salt
+	salt, err := web.GenerateEncryptionSalt()
+	if err != nil {
+		return fmt.Errorf("failed to generate encryption salt: %w", err)
+	}
+
+	// Store salt in database
+	if err := db.SetSetting("encryption_salt", hex.EncodeToString(salt)); err != nil {
+		return fmt.Errorf("failed to store encryption salt: %w", err)
+	}
+
+	web.SetEncryptionSalt(salt)
+	logger.Info("Generated and stored new encryption salt")
+	return nil
 }

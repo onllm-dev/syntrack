@@ -1,52 +1,83 @@
 package web
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"strings"
+	"io"
 
 	"github.com/onllm-dev/onwatch/internal/notify"
+	"golang.org/x/crypto/hkdf"
 )
 
-// DeriveEncryptionKey derives a 32-byte encryption key from the admin password hash.
-// The password hash is expected to be a SHA-256 hex string (64 characters).
-// Returns a hex-encoded 32-byte key suitable for AES-256-GCM.
-func DeriveEncryptionKey(passwordHash string) string {
-	// The passwordHash is already SHA-256 hex (64 chars = 32 bytes)
-	// We use it directly as the encryption key
-	if len(passwordHash) == 64 {
-		return passwordHash
-	}
+// encryptionSalt is the package-level salt for HKDF key derivation.
+// Set during initialization via SetEncryptionSalt.
+var encryptionSalt []byte
 
-	// Fallback: if somehow we get a non-hex password, hash it again
-	h := sha256.Sum256([]byte(passwordHash))
-	return hex.EncodeToString(h[:])
+// SetEncryptionSalt sets the salt used for HKDF key derivation.
+// Called once during application startup.
+func SetEncryptionSalt(salt []byte) {
+	encryptionSalt = salt
 }
 
-// IsEncryptedValue checks if a string looks like an encrypted value
-// (base64 encoded with minimum length for nonce + ciphertext)
-func IsEncryptedValue(value string) bool {
-	if value == "" {
-		return false
+// GetEncryptionSalt returns the current encryption salt.
+func GetEncryptionSalt() []byte {
+	return encryptionSalt
+}
+
+// GenerateEncryptionSalt generates a new random 16-byte salt.
+func GenerateEncryptionSalt() ([]byte, error) {
+	salt := make([]byte, 16)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return nil, fmt.Errorf("failed to generate encryption salt: %w", err)
+	}
+	return salt, nil
+}
+
+// DeriveEncryptionKey derives a 32-byte encryption key from the admin password hash using HKDF-SHA256.
+// The password hash is expected to be a bcrypt hash or SHA-256 hex string.
+// Uses HKDF with the provided salt for secure key derivation.
+// Returns a hex-encoded 32-byte key suitable for AES-256-GCM.
+func DeriveEncryptionKey(passwordHash string, salt []byte) string {
+	// Use HKDF-SHA256 for secure key derivation
+	// secret = passwordHash bytes
+	// salt = stored salt from database (or nil to use package-level salt)
+	// info = "onwatch-smtp-encryption" (domain separation)
+
+	// Use package-level salt if none provided
+	if salt == nil {
+		salt = encryptionSalt
 	}
 
-	// Encrypted values are base64 encoded and typically longer than plaintext
-	// Minimum: 12 bytes nonce + 1 byte ciphertext + base64 overhead
-	if len(value) < 24 {
-		return false
-	}
-
-	// Check if it looks like base64 (contains only base64 chars)
-	base64Chars := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
-	for _, c := range value {
-		if !strings.ContainsRune(base64Chars, c) {
-			return false
+	if salt == nil {
+		// Legacy fallback: use raw SHA-256 of password hash
+		// This maintains backward compatibility during migration
+		if len(passwordHash) == 64 {
+			return passwordHash
 		}
+		h := sha256.Sum256([]byte(passwordHash))
+		return hex.EncodeToString(h[:])
 	}
 
-	return true
+	hkdfReader := hkdf.New(sha256.New, []byte(passwordHash), salt, []byte("onwatch-smtp-encryption"))
+	key := make([]byte, 32)
+	if _, err := io.ReadFull(hkdfReader, key); err != nil {
+		// Fallback to legacy on error
+		if len(passwordHash) == 64 {
+			return passwordHash
+		}
+		h := sha256.Sum256([]byte(passwordHash))
+		return hex.EncodeToString(h[:])
+	}
+	return hex.EncodeToString(key)
+}
+
+// IsEncryptedValue checks if a string has the encrypted prefix marker.
+// Delegates to notify.IsEncryptedValue for the actual check.
+func IsEncryptedValue(value string) bool {
+	return notify.IsEncryptedValue(value)
 }
 
 // ReEncryptAllData re-encrypts all encrypted data in the database when password changes.
@@ -58,8 +89,8 @@ func ReEncryptAllData(store interface {
 }, oldPasswordHash, newPasswordHash string) map[string]string {
 	errors := make(map[string]string)
 
-	oldKey := DeriveEncryptionKey(oldPasswordHash)
-	newKey := DeriveEncryptionKey(newPasswordHash)
+	oldKey := DeriveEncryptionKey(oldPasswordHash, nil)
+	newKey := DeriveEncryptionKey(newPasswordHash, nil)
 
 	// If keys are the same (shouldn't happen, but safety check), skip
 	if oldKey == newKey {

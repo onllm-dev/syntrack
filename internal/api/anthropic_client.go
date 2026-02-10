@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -25,6 +26,7 @@ var (
 type AnthropicClient struct {
 	httpClient *http.Client
 	token      string
+	tokenMu    sync.RWMutex
 	baseURL    string
 	logger     *slog.Logger
 }
@@ -74,7 +76,16 @@ func NewAnthropicClient(token string, logger *slog.Logger, opts ...AnthropicOpti
 
 // SetToken updates the token used for API requests (for token refresh).
 func (c *AnthropicClient) SetToken(token string) {
+	c.tokenMu.Lock()
+	defer c.tokenMu.Unlock()
 	c.token = token
+}
+
+// getToken returns the current token safely for concurrent access.
+func (c *AnthropicClient) getToken() string {
+	c.tokenMu.RLock()
+	defer c.tokenMu.RUnlock()
+	return c.token
 }
 
 // FetchQuotas retrieves the current quota information from the Anthropic API.
@@ -88,7 +99,8 @@ func (c *AnthropicClient) FetchQuotas(ctx context.Context) (*AnthropicQuotaRespo
 	}
 
 	// Set headers
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	token := c.getToken()
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("anthropic-beta", "oauth-2025-04-20")
 	req.Header.Set("User-Agent", "onwatch/1.0")
@@ -96,7 +108,7 @@ func (c *AnthropicClient) FetchQuotas(ctx context.Context) (*AnthropicQuotaRespo
 	// Log request (with redacted token)
 	c.logger.Debug("fetching Anthropic quotas",
 		"url", c.baseURL,
-		"token", redactAnthropicToken(c.token),
+		"token", redactAnthropicToken(token),
 	)
 
 	resp, err := c.httpClient.Do(req)
@@ -128,8 +140,8 @@ func (c *AnthropicClient) FetchQuotas(ctx context.Context) (*AnthropicQuotaRespo
 		return nil, fmt.Errorf("anthropic: unexpected status code %d", resp.StatusCode)
 	}
 
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
+	// Read response body (bounded to 64KB)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	if err != nil {
 		return nil, fmt.Errorf("%w: reading body: %v", ErrAnthropicInvalidResponse, err)
 	}

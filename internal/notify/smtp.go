@@ -30,6 +30,9 @@ type SMTPMailer struct {
 
 // NewSMTPMailer creates a new SMTP mailer with the given config.
 func NewSMTPMailer(cfg SMTPConfig, logger *slog.Logger) *SMTPMailer {
+	if cfg.Protocol == "none" && logger != nil {
+		logger.Warn("SMTP using unencrypted connection - credentials will be sent in plaintext. Consider using TLS or STARTTLS.")
+	}
 	return &SMTPMailer{config: cfg, logger: logger}
 }
 

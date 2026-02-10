@@ -12,10 +12,19 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/onllm-dev/onwatch/internal/store"
 	"golang.org/x/crypto/bcrypt"
+)
+
+// Rate limiting constants
+const (
+	maxFailedAttempts = 5                // Max failures before blocking
+	blockDuration     = 5 * time.Minute  // How long to block an IP
+	maxTrackedIPs     = 1000             // Max IPs to track in memory
+	failureWindow     = 5 * time.Minute  // Window for counting failures
 )
 
 // HashPassword returns the bcrypt hash of a password.
@@ -192,6 +201,23 @@ func (s *SessionStore) InvalidateAll() {
 	}
 }
 
+// EvictExpiredTokens removes expired tokens from memory and database.
+// Called periodically to prevent unbounded memory growth.
+func (s *SessionStore) EvictExpiredTokens() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	for token, expiry := range s.tokens {
+		if now.After(expiry) {
+			delete(s.tokens, token)
+			if s.store != nil {
+				s.store.DeleteAuthToken(token)
+			}
+		}
+	}
+}
+
 func generateToken() string {
 	b := make([]byte, 32)
 	rand.Read(b)
@@ -351,3 +377,167 @@ func writeUnauthorized(w http.ResponseWriter) {
 	w.WriteHeader(http.StatusUnauthorized)
 	http.Error(w, "Unauthorized", http.StatusUnauthorized)
 }
+
+// loginAttempt tracks failure attempts for a single IP.
+type loginAttempt struct {
+	failures  int32 // atomic
+	lastFail  int64 // unix timestamp (nanoseconds), atomic
+	blockedAt int64 // unix timestamp (nanoseconds), atomic
+}
+
+// LoginRateLimiter implements per-IP token bucket rate limiting for login attempts.
+// It limits failed login attempts to prevent brute force attacks.
+type LoginRateLimiter struct {
+	mu       sync.RWMutex
+	attempts map[string]*loginAttempt // IP -> attempts
+	maxIPs   int
+}
+
+// NewLoginRateLimiter creates a new rate limiter with the specified maximum IPs to track.
+func NewLoginRateLimiter(maxIPs int) *LoginRateLimiter {
+	if maxIPs <= 0 {
+		maxIPs = maxTrackedIPs
+	}
+	return &LoginRateLimiter{
+		attempts: make(map[string]*loginAttempt),
+		maxIPs:   maxIPs,
+	}
+}
+
+// RecordFailure records a failed login attempt from the given IP.
+// Returns true if the IP is now blocked (exceeded maxFailedAttempts).
+func (l *LoginRateLimiter) RecordFailure(ip string) bool {
+	l.mu.Lock()
+	entry, exists := l.attempts[ip]
+	if !exists {
+		// Check if we need to evict to make room
+		if len(l.attempts) >= l.maxIPs {
+			l.evictOldestEntry()
+		}
+		entry = &loginAttempt{}
+		l.attempts[ip] = entry
+	}
+	l.mu.Unlock()
+
+	now := time.Now().UnixNano()
+
+	// Increment failure count atomically
+	failures := atomic.AddInt32(&entry.failures, 1)
+	atomic.StoreInt64(&entry.lastFail, now)
+
+	// Check if this failure triggers a block
+	if failures >= maxFailedAttempts {
+		// Only set blockedAt if not already blocked
+		atomic.CompareAndSwapInt64(&entry.blockedAt, 0, now)
+		return true
+	}
+
+	return false
+}
+
+// IsBlocked returns true if the given IP is currently blocked.
+func (l *LoginRateLimiter) IsBlocked(ip string) bool {
+	l.mu.RLock()
+	entry, exists := l.attempts[ip]
+	l.mu.RUnlock()
+
+	if !exists {
+		return false
+	}
+
+	blockedAt := atomic.LoadInt64(&entry.blockedAt)
+	if blockedAt == 0 {
+		return false
+	}
+
+	// Check if block has expired
+	now := time.Now().UnixNano()
+	if time.Duration(now-blockedAt) >= blockDuration {
+		// Block expired - clear it
+		atomic.StoreInt64(&entry.blockedAt, 0)
+		atomic.StoreInt32(&entry.failures, 0)
+		return false
+	}
+
+	return true
+}
+
+// Clear removes the tracking entry for the given IP (call on successful login).
+func (l *LoginRateLimiter) Clear(ip string) {
+	l.mu.Lock()
+	delete(l.attempts, ip)
+	l.mu.Unlock()
+}
+
+// EvictStaleEntries removes entries that haven't had activity within maxAge.
+func (l *LoginRateLimiter) EvictStaleEntries(maxAge time.Duration) {
+	now := time.Now().UnixNano()
+	// If maxAge is 0, we want to evict everything that's not currently blocked
+	// Otherwise, calculate the cutoff time
+	var cutoff int64
+	if maxAge > 0 {
+		cutoff = now - int64(maxAge)
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	for ip, entry := range l.attempts {
+		lastFail := atomic.LoadInt64(&entry.lastFail)
+		blockedAt := atomic.LoadInt64(&entry.blockedAt)
+
+		// Keep entries that are currently blocked and block hasn't expired
+		if blockedAt > 0 && time.Duration(now-blockedAt) < blockDuration {
+			continue
+		}
+
+		// Evict if:
+		// - maxAge is 0 (evict all non-blocked entries), OR
+		// - last activity is older than maxAge
+		if maxAge == 0 || lastFail < cutoff {
+			delete(l.attempts, ip)
+		}
+	}
+}
+
+// evictOldestEntry removes the oldest entry to make room (called with lock held).
+func (l *LoginRateLimiter) evictOldestEntry() {
+	var oldestIP string
+	var oldestTime int64 = -1
+	now := time.Now().UnixNano()
+
+	for ip, entry := range l.attempts {
+		lastFail := atomic.LoadInt64(&entry.lastFail)
+		blockedAt := atomic.LoadInt64(&entry.blockedAt)
+
+		// Don't evict currently blocked entries
+		if blockedAt > 0 && time.Duration(now-blockedAt) < blockDuration {
+			continue
+		}
+
+		if oldestTime == -1 || lastFail < oldestTime {
+			oldestTime = lastFail
+			oldestIP = ip
+		}
+	}
+
+	if oldestIP != "" {
+		delete(l.attempts, oldestIP)
+	}
+}
+
+// HasEntryForTest returns true if an entry exists for the IP (test helper).
+func (l *LoginRateLimiter) HasEntryForTest(ip string) bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	_, ok := l.attempts[ip]
+	return ok
+}
+
+// EntryCountForTest returns the number of tracked IPs (test helper).
+func (l *LoginRateLimiter) EntryCountForTest() int {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return len(l.attempts)
+}
+

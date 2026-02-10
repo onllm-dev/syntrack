@@ -20,6 +20,22 @@ import (
 	"github.com/onllm-dev/onwatch/internal/update"
 )
 
+// Login error codes for whitelisting - prevents XSS and information leakage
+const (
+	LoginErrorInvalid   = "invalid"
+	LoginErrorExpired   = "expired"
+	LoginErrorRequired  = "required"
+	LoginErrorRateLimit = "ratelimit"
+)
+
+// loginErrors maps whitelisted error codes to user-friendly messages
+var loginErrors = map[string]string{
+	LoginErrorInvalid:   "Invalid username or password",
+	LoginErrorExpired:   "Session expired, please log in again",
+	LoginErrorRequired:  "Authentication required",
+	LoginErrorRateLimit: "Too many login attempts. Please try again later.",
+}
+
 // Notifier defines the interface for the notification engine.
 // The concrete implementation lives in internal/notify.
 type Notifier interface {
@@ -51,6 +67,7 @@ type Handler struct {
 	smtpTestLastSent time.Time
 	pushTestMu       sync.Mutex
 	pushTestLastSent time.Time
+	rateLimiter      *LoginRateLimiter // Per-IP rate limiting for login attempts
 }
 
 // NewHandler creates a new Handler instance
@@ -116,6 +133,16 @@ func (h *Handler) SetNotifier(n Notifier) {
 	h.notifier = n
 }
 
+// GetSessionStore returns the session store for token eviction.
+func (h *Handler) GetSessionStore() *SessionStore {
+	return h.sessions
+}
+
+// SetRateLimiter sets the login rate limiter for brute force protection.
+func (h *Handler) SetRateLimiter(l *LoginRateLimiter) {
+	h.rateLimiter = l
+}
+
 // SettingsPage renders the settings page.
 func (h *Handler) SettingsPage(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
@@ -141,6 +168,41 @@ func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 // respondError sends an error response
 func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
+}
+
+// isMaxBytesError checks if an error is from http.MaxBytesReader
+func isMaxBytesError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// MaxBytesReader returns an error with a specific message
+	return strings.Contains(err.Error(), "http: request body too large")
+}
+
+// sanitizeSMTPError classifies SMTP errors into user-friendly categories
+// to prevent information leakage about internal system details
+func sanitizeSMTPError(err error) string {
+	if err == nil {
+		return "SMTP test failed"
+	}
+	errStr := strings.ToLower(err.Error())
+
+	// Classify errors by type
+	switch {
+	case strings.Contains(errStr, "authentication") || strings.Contains(errStr, "auth") ||
+		strings.Contains(errStr, "username") || strings.Contains(errStr, "password") ||
+		strings.Contains(errStr, "535") || strings.Contains(errStr, "530"):
+		return "Authentication failed: check username/password"
+	case strings.Contains(errStr, "connection") || strings.Contains(errStr, "refused") ||
+		strings.Contains(errStr, "timeout") || strings.Contains(errStr, "no such host") ||
+		strings.Contains(errStr, "i/o timeout"):
+		return "Connection failed: unable to reach SMTP server"
+	case strings.Contains(errStr, "tls") || strings.Contains(errStr, "ssl") ||
+		strings.Contains(errStr, "certificate") || strings.Contains(errStr, "x509"):
+		return "TLS error: check encryption settings"
+	default:
+		return "SMTP test failed"
+	}
 }
 
 // parseTimeRange parses a time range string (1h, 6h, 24h, 1d, 7d, 30d)
@@ -2969,8 +3031,16 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Limit request body size to 64KB
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+
 	var body map[string]json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		// Check if error is due to MaxBytesReader limit exceeded
+		if err.Error() == "http: request body too large" {
+			respondError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
 		respondError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
@@ -3077,7 +3147,7 @@ func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 
 		// Encrypt SMTP password using admin password hash as key
 		if smtp.Password != "" && !IsEncryptedValue(smtp.Password) {
-			encryptionKey := DeriveEncryptionKey(h.sessions.passwordHash)
+			encryptionKey := DeriveEncryptionKey(h.sessions.passwordHash, nil)
 			encryptedPass, err := notify.Encrypt(smtp.Password, encryptionKey)
 			if err != nil {
 				h.logger.Error("failed to encrypt SMTP password", "error", err)
@@ -3216,9 +3286,11 @@ func (h *Handler) SMTPTest(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.notifier.SendTestEmail(); err != nil {
 		h.logger.Error("SMTP test failed", "error", err)
+		// Sanitize error message to prevent information leakage
+		errorMsg := sanitizeSMTPError(err)
 		respondJSON(w, http.StatusOK, map[string]interface{}{
 			"success": false,
-			"message": fmt.Sprintf("Failed: %s", err.Error()),
+			"message": errorMsg,
 		})
 		return
 	}
@@ -3250,6 +3322,9 @@ func (h *Handler) PushVAPIDKey(w http.ResponseWriter, r *http.Request) {
 // PushSubscribe handles POST (subscribe) and DELETE (unsubscribe) for push notifications.
 func (h *Handler) PushSubscribe(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
+		// Limit request body size to 64KB
+		r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+
 		var body struct {
 			Endpoint string `json:"endpoint"`
 			Keys     struct {
@@ -3258,6 +3333,10 @@ func (h *Handler) PushSubscribe(w http.ResponseWriter, r *http.Request) {
 			} `json:"keys"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			if err.Error() == "http: request body too large" {
+				respondError(w, http.StatusRequestEntityTooLarge, "request body too large")
+				return
+			}
 			respondError(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
@@ -3275,10 +3354,17 @@ func (h *Handler) PushSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodDelete {
+		// Limit request body size to 64KB
+		r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+
 		var body struct {
 			Endpoint string `json:"endpoint"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			if err.Error() == "http: request body too large" {
+				respondError(w, http.StatusRequestEntityTooLarge, "request body too large")
+				return
+			}
 			respondError(w, http.StatusBadRequest, "invalid JSON")
 			return
 		}
@@ -3324,9 +3410,10 @@ func (h *Handler) PushTest(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.notifier.SendTestPush(); err != nil {
 		h.logger.Error("push test failed", "error", err)
+		// Return generic error message to prevent information leakage
 		respondJSON(w, http.StatusOK, map[string]interface{}{
 			"success": false,
-			"message": fmt.Sprintf("Failed: %s", err.Error()),
+			"message": "Push test failed",
 		})
 		return
 	}
@@ -3352,9 +3439,13 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Use whitelisted error messages to prevent XSS and info leakage
+	errorCode := r.URL.Query().Get("error")
+	errorMsg := loginErrors[errorCode] // empty string if not in whitelist
+
 	data := map[string]interface{}{
 		"Title": "Login",
-		"Error": r.URL.Query().Get("error"),
+		"Error": errorMsg,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -3365,8 +3456,18 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) loginPost(w http.ResponseWriter, r *http.Request) {
+	// Check rate limit before processing login attempt
+	if h.rateLimiter != nil {
+		clientIP := getClientIP(r)
+		if h.rateLimiter.IsBlocked(clientIP) {
+			w.Header().Set("Retry-After", "300") // 5 minutes in seconds
+			http.Redirect(w, r, "/login?error="+LoginErrorRateLimit, http.StatusFound)
+			return
+		}
+	}
+
 	if err := r.ParseForm(); err != nil {
-		http.Redirect(w, r, "/login?error=Invalid+request", http.StatusFound)
+		http.Redirect(w, r, "/login?error="+LoginErrorInvalid, http.StatusFound)
 		return
 	}
 
@@ -3374,14 +3475,28 @@ func (h *Handler) loginPost(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 
 	if h.sessions == nil {
-		http.Redirect(w, r, "/login?error=Auth+not+configured", http.StatusFound)
+		http.Redirect(w, r, "/login?error="+LoginErrorRequired, http.StatusFound)
 		return
 	}
 
 	token, ok := h.sessions.Authenticate(username, password)
 	if !ok {
-		http.Redirect(w, r, "/login?error=Invalid+username+or+password", http.StatusFound)
+		// Record failed attempt for rate limiting
+		if h.rateLimiter != nil {
+			clientIP := getClientIP(r)
+			if h.rateLimiter.RecordFailure(clientIP) {
+				// IP is now blocked
+				w.Header().Set("Retry-After", "300")
+			}
+		}
+		http.Redirect(w, r, "/login?error="+LoginErrorInvalid, http.StatusFound)
 		return
+	}
+
+	// Clear rate limit on successful login
+	if h.rateLimiter != nil {
+		clientIP := getClientIP(r)
+		h.rateLimiter.Clear(clientIP)
 	}
 
 	http.SetCookie(w, &http.Cookie{
@@ -3390,7 +3505,7 @@ func (h *Handler) loginPost(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   sessionMaxAge,
 		HttpOnly: true,
-		Secure:   h.config.Host != "" && h.config.Host != "0.0.0.0" && h.config.Host != "127.0.0.1",
+		Secure:   h.config.SecureCookies || (h.config.Host != "" && h.config.Host != "0.0.0.0" && h.config.Host != "127.0.0.1"),
 		SameSite: http.SameSiteStrictMode,
 	})
 
@@ -3423,11 +3538,18 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Limit request body size to 64KB
+	r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+
 	var req struct {
 		CurrentPassword string `json:"current_password"`
 		NewPassword     string `json:"new_password"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err.Error() == "http: request body too large" {
+			respondError(w, http.StatusRequestEntityTooLarge, "request body too large")
+			return
+		}
 		respondError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
@@ -3510,7 +3632,8 @@ func (h *Handler) ApplyUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.updater.Apply(); err != nil {
 		h.logger.Error("update apply failed", "error", err)
-		respondError(w, http.StatusInternalServerError, err.Error())
+		// Return generic error message to prevent information leakage
+		respondError(w, http.StatusInternalServerError, "update failed")
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]string{"status": "updated"})
@@ -3547,9 +3670,14 @@ func (h *Handler) CycleOverview(w http.ResponseWriter, r *http.Request) {
 }
 
 // parseCycleOverviewLimit parses the limit query param, defaulting to 50.
+// Caps at 500 to prevent unbounded queries.
 func parseCycleOverviewLimit(r *http.Request) int {
+	const maxLimit = 500
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 {
+			if n > maxLimit {
+				return maxLimit
+			}
 			return n
 		}
 	}

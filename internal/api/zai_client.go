@@ -108,8 +108,8 @@ func (c *ZaiClient) FetchQuotas(ctx context.Context) (*ZaiQuotaResponse, error) 
 		"status", resp.StatusCode,
 	)
 
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
+	// Read response body (bounded to 64KB)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
 	if err != nil {
 		return nil, fmt.Errorf("%w: reading body: %v", ErrZaiInvalidResponse, err)
 	}

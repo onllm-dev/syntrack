@@ -47,10 +47,8 @@ func GenerateVAPIDKeys() (publicKey, privateKey string, err error) {
 		return "", "", fmt.Errorf("notify.GenerateVAPIDKeys: %w", err)
 	}
 
-	// Public key: uncompressed point (65 bytes)
-	pubBytes := elliptic.MarshalCompressed(elliptic.P256(), priv.PublicKey.X, priv.PublicKey.Y)
-	// Actually we need uncompressed for Web Push
-	pubBytes = elliptic.Marshal(elliptic.P256(), priv.PublicKey.X, priv.PublicKey.Y)
+	// Public key: uncompressed point (65 bytes) required for Web Push
+	pubBytes := elliptic.Marshal(elliptic.P256(), priv.PublicKey.X, priv.PublicKey.Y)
 
 	// Private key: raw 32-byte scalar
 	privBytes := priv.D.Bytes()
@@ -270,9 +268,9 @@ func createVAPIDJWT(endpoint string, key *ecdsa.PrivateKey) (string, error) {
 	// JWT header: {"typ":"JWT","alg":"ES256"}
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"typ":"JWT","alg":"ES256"}`))
 
-	// JWT claims
+	// JWT claims - 2 hour expiration
 	now := time.Now().Unix()
-	claims := fmt.Sprintf(`{"aud":"%s","exp":%d,"sub":"mailto:onwatch@localhost"}`, origin, now+86400)
+	claims := fmt.Sprintf(`{"aud":"%s","exp":%d,"sub":"mailto:onwatch@localhost"}`, origin, now+7200)
 	claimsB64 := base64.RawURLEncoding.EncodeToString([]byte(claims))
 
 	// Sign

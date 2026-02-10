@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -262,6 +263,40 @@ func TestAnthropicClient_SetToken_UpdatesAuth(t *testing.T) {
 	auth2, _ := lastAuth.Load().(string)
 	if auth2 != "Bearer refreshed_token" {
 		t.Errorf("second request: expected 'Bearer refreshed_token', got %q", auth2)
+	}
+}
+
+func TestAnthropicClient_SetToken_ConcurrentSafe(t *testing.T) {
+	var requestCount atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, testutil.DefaultAnthropicResponse())
+	}))
+	defer server.Close()
+
+	client := api.NewAnthropicClient("initial_token", testutil.DiscardLogger(),
+		api.WithAnthropicBaseURL(server.URL),
+	)
+
+	// Run concurrent SetToken and FetchQuotas operations
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(2)
+		go func(idx int) {
+			defer wg.Done()
+			client.SetToken(fmt.Sprintf("token_%d", idx))
+		}(i)
+		go func() {
+			defer wg.Done()
+			_, _ = client.FetchQuotas(context.Background())
+		}()
+	}
+	wg.Wait()
+
+	// We should have made some successful requests
+	if requestCount.Load() == 0 {
+		t.Error("expected some requests to be made")
 	}
 }
 

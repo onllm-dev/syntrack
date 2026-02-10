@@ -2,6 +2,8 @@ package store
 
 import (
 	"database/sql"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +15,19 @@ import (
 // Store provides SQLite storage for onWatch
 type Store struct {
 	db *sql.DB
+}
+
+// validateOrderByColumn validates that the column name is in the allowlist.
+// This prevents SQL injection via ORDER BY clauses. The allowlist must contain
+// only known-safe column names. Usage with fmt.Sprintf is safe only when
+// combined with this validation.
+func validateOrderByColumn(column string, allowlist []string) (string, bool) {
+	for _, allowed := range allowlist {
+		if column == allowed {
+			return column, true
+		}
+	}
+	return "", false
 }
 
 // Session represents an agent session
@@ -1290,7 +1305,23 @@ func (s *Store) ClearNotificationLog(quotaKey string) error {
 }
 
 // SavePushSubscription stores a push notification subscription (upsert by endpoint).
+// Validates endpoint, p256dh, and auth before storing.
 func (s *Store) SavePushSubscription(endpoint, p256dh, auth string) error {
+	// Validate endpoint must be HTTPS
+	if !strings.HasPrefix(endpoint, "https://") {
+		return errors.New("store.SavePushSubscription: endpoint must use HTTPS")
+	}
+
+	// Validate p256dh is valid base64url and decodes to 65 bytes (uncompressed P-256 point)
+	if p256dhBytes, err := base64.RawURLEncoding.DecodeString(p256dh); err != nil || len(p256dhBytes) != 65 {
+		return errors.New("store.SavePushSubscription: p256dh must be base64url-encoded 65-byte P-256 point")
+	}
+
+	// Validate auth is valid base64url and decodes to 16 bytes
+	if authBytes, err := base64.RawURLEncoding.DecodeString(auth); err != nil || len(authBytes) != 16 {
+		return errors.New("store.SavePushSubscription: auth must be base64url-encoded 16-byte secret")
+	}
+
 	_, err := s.db.Exec(`
 		INSERT INTO push_subscriptions (endpoint, p256dh, auth, created_at)
 		VALUES (?, ?, ?, ?)
