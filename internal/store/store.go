@@ -770,23 +770,34 @@ func (s *Store) QueryCyclesSince(quotaType string, since time.Time) ([]*ResetCyc
 	return cycles, rows.Err()
 }
 
-// QuerySyntheticCycleOverview returns completed cycles for a given quota type
+// QuerySyntheticCycleOverview returns cycles for a given quota type
 // with cross-quota snapshot data at the peak moment of each cycle.
+// Includes the currently active cycle (if any) at the top.
 func (s *Store) QuerySyntheticCycleOverview(groupBy string, limit int) ([]CycleOverviewRow, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 
-	cycles, err := s.QueryCycleHistory(groupBy, limit)
+	// Get active cycle first (if any)
+	var allCycles []*ResetCycle
+	activeCycle, err := s.QueryActiveCycle(groupBy)
+	if err != nil {
+		return nil, fmt.Errorf("store.QuerySyntheticCycleOverview: active: %w", err)
+	}
+	if activeCycle != nil {
+		allCycles = append(allCycles, activeCycle)
+		limit-- // Reduce limit for completed cycles
+	}
+
+	// Get completed cycles
+	completedCycles, err := s.QueryCycleHistory(groupBy, limit)
 	if err != nil {
 		return nil, fmt.Errorf("store.QuerySyntheticCycleOverview: %w", err)
 	}
+	allCycles = append(allCycles, completedCycles...)
 
 	var rows []CycleOverviewRow
-	for _, c := range cycles {
-		if c.CycleEnd == nil {
-			continue
-		}
+	for _, c := range allCycles {
 		row := CycleOverviewRow{
 			CycleID:    c.ID,
 			QuotaType:  c.QuotaType,
@@ -809,17 +820,25 @@ func (s *Store) QuerySyntheticCycleOverview(groupBy string, limit int) ([]CycleO
 			peakCol = "sub_requests"
 		}
 
-		// Note: cycle_end is the timestamp when reset was detected, which is actually
-		// the first snapshot of the NEW cycle, so we use < instead of <= to exclude it
+		// Determine the end boundary for the snapshot query
+		// For active cycles (no cycle_end), use current time
+		// For completed cycles, use cycle_end (exclusive, as it's the first snapshot of NEW cycle)
+		var endBoundary time.Time
+		if c.CycleEnd != nil {
+			endBoundary = *c.CycleEnd
+		} else {
+			endBoundary = time.Now().Add(time.Minute) // Include current snapshots
+		}
+
 		var capturedAt string
 		var subLimit, subReq, searchLimit, searchReq, toolLimit, toolReq float64
-		err := s.db.QueryRow(
+		err = s.db.QueryRow(
 			fmt.Sprintf(`SELECT captured_at, sub_limit, sub_requests, search_limit, search_requests, tool_limit, tool_requests
 			FROM quota_snapshots
 			WHERE captured_at >= ? AND captured_at < ?
 			ORDER BY %s DESC LIMIT 1`, peakCol),
 			c.CycleStart.Format(time.RFC3339Nano),
-			c.CycleEnd.Format(time.RFC3339Nano),
+			endBoundary.Format(time.RFC3339Nano),
 		).Scan(&capturedAt, &subLimit, &subReq, &searchLimit, &searchReq, &toolLimit, &toolReq)
 
 		if err == sql.ErrNoRows {

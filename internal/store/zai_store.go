@@ -356,28 +356,39 @@ func (s *Store) QueryZaiCycleHistory(quotaType string, limit ...int) ([]*ZaiRese
 	return cycles, rows.Err()
 }
 
-// QueryZaiCycleOverview returns completed Z.ai cycles for a given quota type
+// QueryZaiCycleOverview returns Z.ai cycles for a given quota type
 // with cross-quota snapshot data at the peak moment of each cycle.
+// Includes the currently active cycle (if any) at the top.
 func (s *Store) QueryZaiCycleOverview(groupBy string, limit int) ([]CycleOverviewRow, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 
-	cycles, err := s.QueryZaiCycleHistory(groupBy, limit)
+	// Get active cycle first (if any)
+	var allCycles []*ZaiResetCycle
+	activeCycle, err := s.QueryActiveZaiCycle(groupBy)
+	if err != nil {
+		return nil, fmt.Errorf("store.QueryZaiCycleOverview: active: %w", err)
+	}
+	if activeCycle != nil {
+		allCycles = append(allCycles, activeCycle)
+		limit-- // Reduce limit for completed cycles
+	}
+
+	// Get completed cycles
+	completedCycles, err := s.QueryZaiCycleHistory(groupBy, limit)
 	if err != nil {
 		return nil, fmt.Errorf("store.QueryZaiCycleOverview: %w", err)
 	}
+	allCycles = append(allCycles, completedCycles...)
 
 	var overviewRows []CycleOverviewRow
-	for _, c := range cycles {
-		if c.CycleEnd == nil {
-			continue
-		}
+	for _, c := range allCycles {
 		row := CycleOverviewRow{
 			CycleID:    c.ID,
 			QuotaType:  c.QuotaType,
 			CycleStart: c.CycleStart,
-			CycleEnd:   c.CycleEnd,
+			CycleEnd:   c.CycleEnd, // nil for active cycles
 			PeakValue:  float64(c.PeakValue),
 			TotalDelta: float64(c.TotalDelta),
 		}
@@ -392,17 +403,25 @@ func (s *Store) QueryZaiCycleOverview(groupBy string, limit int) ([]CycleOvervie
 			peakCol = "tokens_current_value"
 		}
 
-		// Note: cycle_end is the timestamp when reset was detected, which is actually
-		// the first snapshot of the NEW cycle, so we use < instead of <= to exclude it
+		// Determine the end boundary for the snapshot query
+		// For active cycles (no cycle_end), use current time
+		// For completed cycles, use cycle_end (exclusive)
+		var endBoundary time.Time
+		if c.CycleEnd != nil {
+			endBoundary = *c.CycleEnd
+		} else {
+			endBoundary = time.Now().Add(time.Minute)
+		}
+
 		var capturedAt string
 		var timeUsage, timeCurrent, tokensUsage, tokensCurrent float64
-		err := s.db.QueryRow(
+		err = s.db.QueryRow(
 			fmt.Sprintf(`SELECT captured_at, time_usage, time_current_value, tokens_usage, tokens_current_value
 			FROM zai_snapshots
 			WHERE captured_at >= ? AND captured_at < ?
 			ORDER BY %s DESC LIMIT 1`, peakCol),
 			c.CycleStart.Format(time.RFC3339Nano),
-			c.CycleEnd.Format(time.RFC3339Nano),
+			endBoundary.Format(time.RFC3339Nano),
 		).Scan(&capturedAt, &timeUsage, &timeCurrent, &tokensUsage, &tokensCurrent)
 
 		if err == sql.ErrNoRows {

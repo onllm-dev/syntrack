@@ -364,35 +364,54 @@ func (s *Store) QueryAnthropicUtilizationSeries(quotaName string, since time.Tim
 	return points, rows.Err()
 }
 
-// QueryAnthropicCycleOverview returns completed Anthropic cycles for a given quota
+// QueryAnthropicCycleOverview returns Anthropic cycles for a given quota
 // with cross-quota snapshot data at the peak moment of each cycle.
+// Includes the currently active cycle (if any) at the top.
 func (s *Store) QueryAnthropicCycleOverview(groupBy string, limit int) ([]CycleOverviewRow, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 
-	cycles, err := s.QueryAnthropicCycleHistory(groupBy, limit)
+	// Get active cycle first (if any)
+	var cycles []*AnthropicResetCycle
+	activeCycle, err := s.QueryActiveAnthropicCycle(groupBy)
+	if err != nil {
+		return nil, fmt.Errorf("store.QueryAnthropicCycleOverview: active: %w", err)
+	}
+	if activeCycle != nil {
+		cycles = append(cycles, activeCycle)
+		limit-- // Reduce limit for completed cycles
+	}
+
+	// Get completed cycles
+	completedCycles, err := s.QueryAnthropicCycleHistory(groupBy, limit)
 	if err != nil {
 		return nil, fmt.Errorf("store.QueryAnthropicCycleOverview: %w", err)
 	}
+	cycles = append(cycles, completedCycles...)
 
 	var overviewRows []CycleOverviewRow
 	for _, c := range cycles {
-		if c.CycleEnd == nil {
-			continue
-		}
 		row := CycleOverviewRow{
 			CycleID:    c.ID,
 			QuotaType:  c.QuotaName,
 			CycleStart: c.CycleStart,
-			CycleEnd:   c.CycleEnd,
+			CycleEnd:   c.CycleEnd, // nil for active cycles
 			PeakValue:  c.PeakUtilization,
 			TotalDelta: c.TotalDelta,
 		}
 
+		// Determine the end boundary for the snapshot query
+		// For active cycles (no cycle_end), use current time
+		// For completed cycles, use cycle_end (exclusive, as it's the first snapshot of NEW cycle)
+		var endBoundary time.Time
+		if c.CycleEnd != nil {
+			endBoundary = *c.CycleEnd
+		} else {
+			endBoundary = time.Now().Add(time.Minute) // Include current snapshots
+		}
+
 		// Find the snapshot where the primary quota peaked within this cycle
-		// Note: cycle_end is the timestamp when reset was detected, which is actually
-		// the first snapshot of the NEW cycle, so we use < instead of <= to exclude it
 		var snapshotID int64
 		var capturedAt string
 		err := s.db.QueryRow(
@@ -402,7 +421,7 @@ func (s *Store) QueryAnthropicCycleOverview(groupBy string, limit int) ([]CycleO
 			ORDER BY qv.utilization DESC LIMIT 1`,
 			groupBy,
 			c.CycleStart.Format(time.RFC3339Nano),
-			c.CycleEnd.Format(time.RFC3339Nano),
+			endBoundary.Format(time.RFC3339Nano),
 		).Scan(&snapshotID, &capturedAt)
 
 		if err == sql.ErrNoRows {
