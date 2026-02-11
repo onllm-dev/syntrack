@@ -100,8 +100,15 @@ func (t *Tracker) processQuota(quotaType string, capturedAt time.Time, info api.
 		return nil
 	}
 
-	// Check for reset (renewsAt changed)
-	if !cycle.RenewsAt.Equal(info.RenewsAt) {
+	// Check for reset: compare renewsAt at hour precision (ignore minutes and seconds).
+	// Synthetic API may return "rolling window" renewal times that shift forward
+	// by the poll interval on each request (e.g., search quota's hourly window
+	// returns "now + 1 hour"). Real resets shift by the full quota window duration
+	// (1 hour for search, longer for subscription/toolcall), so comparing at hour
+	// precision catches real resets while ignoring minute-level drift.
+	oldHour := cycle.RenewsAt.Truncate(time.Hour)
+	newHour := info.RenewsAt.Truncate(time.Hour)
+	if !oldHour.Equal(newHour) {
 		// First, update delta from last snapshot before closing
 		if t.hasLastValues {
 			delta := info.Requests - *lastRequests

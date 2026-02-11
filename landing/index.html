@@ -84,7 +84,7 @@
         "REST API with JSON endpoints",
         "Session-based auth with password management",
         "Email alerts via SMTP with encrypted password storage",
-        "Push notifications via Web Push (PWA, Beta)",
+        "Push notifications via Web Push (PWA, Beta, HTTPS only)",
         "Configurable delivery channels: email, push, or both",
         "Built-in self-update via CLI or dashboard"
       ],
@@ -151,7 +151,7 @@
           "name": "How do email and push notifications work?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Configure SMTP in Settings to receive email alerts when quotas cross warning or critical thresholds or reset. SMTP passwords are encrypted at rest with AES-256-GCM. For push notifications (Beta), enable them in Delivery Channels and allow browser notifications. onWatch uses Web Push (VAPID) with no external dependencies — keys are auto-generated. Choose email, push, or both."
+            "text": "Configure SMTP in Settings to receive email alerts when quotas cross warning or critical thresholds or reset. SMTP passwords are encrypted at rest with AES-256-GCM. For push notifications (Beta), enable them in Delivery Channels and allow browser notifications. onWatch uses Web Push (VAPID) with no external dependencies — keys are auto-generated. Note: Push notifications require HTTPS to work. Choose email, push, or both."
           }
         },
         {
@@ -2589,15 +2589,43 @@ a:hover { text-decoration: underline; }
                 <div class="feature-icon peach">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                 </div>
-                <h3 class="feature-title">Email &amp; push alerts</h3>
-                <p class="feature-desc">Get notified when quotas cross warning or critical thresholds. Configure SMTP email alerts with encrypted passwords, or enable browser push notifications (Beta) via the PWA. Choose email, push, or both.</p>
+                <h3 class="feature-title">Email &amp; push alerts <span style="font-size:11px;font-weight:600;color:var(--accent-blue);background:var(--accent-blue-muted);padding:2px 8px;border-radius:var(--radius-full);margin-left:6px;">Beta</span></h3>
+                <p class="feature-desc">Get notified when quotas cross thresholds. SMTP email with AES-256 encrypted passwords, or browser push notifications via the PWA. Configure per-quota thresholds and delivery channels.</p>
             </div>
             <div class="feature-card fade-in">
                 <div class="feature-icon blue">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
                 </div>
                 <h3 class="feature-title">PWA installable <span style="font-size:11px;font-weight:600;color:var(--accent-blue);background:var(--accent-blue-muted);padding:2px 8px;border-radius:var(--radius-full);margin-left:6px;">Beta</span></h3>
-                <p class="feature-desc">Install onWatch from your browser for a native app experience. Works on desktop and mobile. Powered by Web Push (VAPID) with zero external service dependencies.</p>
+                <p class="feature-desc">Install onWatch from your browser for a native app experience. Works on desktop and mobile. Powered by Web Push (VAPID) with zero external dependencies. <strong>Note:</strong> Push notifications require HTTPS.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon teal">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                </div>
+                <h3 class="feature-title">Anthropic OAuth auto-refresh</h3>
+                <p class="feature-desc">Automatically refreshes Anthropic tokens before expiry. Detects Claude Code credential changes, handles auth failures gracefully, and resumes polling when new tokens appear. Never manually update credentials.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon peach">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </div>
+                <h3 class="feature-title">Self-updating binary</h3>
+                <p class="feature-desc">Update from CLI or dashboard with one click. Automatic systemd restart on Linux, graceful binary replacement on macOS. Always stay current without manual downloads or service interruption.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon blue">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                </div>
+                <h3 class="feature-title">Enterprise-grade security</h3>
+                <p class="feature-desc">AES-256-GCM encrypted SMTP passwords, auto-generated VAPID keys (ECDSA P-256), Web Push RFC 8291 encryption, constant-time auth, parameterized SQL. Zero telemetry — all data stays local.</p>
+            </div>
+            <div class="feature-card fade-in">
+                <div class="feature-icon peach">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                </div>
+                <h3 class="feature-title">REST API &amp; Docker</h3>
+                <p class="feature-desc">15+ JSON endpoints for integration with your monitoring stack. Docker support with distroless base (~12 MB), non-root user, and Docker Compose ready. Perfect for DevOps workflows.</p>
             </div>
         </div>
     </div>
@@ -2695,6 +2723,27 @@ a:hover { text-decoration: underline; }
                     </tr>
                     <tr>
                         <td>PWA installable</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                    <tr>
+                        <td>OAuth token auto-refresh</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                    <tr>
+                        <td>Self-updating binary</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
+                    </tr>
+                    <tr>
+                        <td>REST API &amp; Docker support</td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
@@ -2841,24 +2890,18 @@ a:hover { text-decoration: underline; }
                 </div>
                 <div class="method-code">
                     <div class="method-code-header">
-                        <span class="method-code-lang">configure &amp; manage</span>
+                        <span class="method-code-lang">configure &amp; manage (macOS)</span>
                         <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
                     </div>
                     <div class="method-code-body"><span class="code-comment"># Edit config</span>
 <span class="code-cmd">nano</span> ~/.onwatch/.env
 
-<span class="code-comment"># ── Linux (systemd) ──</span>
-<span class="code-cmd">systemctl</span> start onwatch      <span class="code-comment"># start</span>
-<span class="code-cmd">systemctl</span> stop onwatch       <span class="code-comment"># stop</span>
-<span class="code-cmd">systemctl</span> status onwatch     <span class="code-comment"># check status</span>
-<span class="code-cmd">systemctl</span> restart onwatch    <span class="code-comment"># restart</span>
-<span class="code-cmd">journalctl</span> -u onwatch -f     <span class="code-comment"># live logs</span>
-
-<span class="code-comment"># ── macOS ──</span>
-<span class="code-cmd">onwatch</span>            <span class="code-comment"># start (background)</span>
+<span class="code-comment"># Manage daemon</span>
+<span class="code-cmd">onwatch</span>             <span class="code-comment"># start (background)</span>
 <span class="code-cmd">onwatch</span> stop        <span class="code-comment"># stop</span>
 <span class="code-cmd">onwatch</span> status      <span class="code-comment"># check status</span>
-<span class="code-cmd">onwatch</span> --debug     <span class="code-comment"># foreground mode</span></div>
+<span class="code-cmd">onwatch</span> --debug     <span class="code-comment"># foreground mode</span>
+<span class="code-cmd">onwatch</span> update      <span class="code-comment"># self-update</span></div>
                 </div>
             </div>
 
@@ -2870,36 +2913,87 @@ a:hover { text-decoration: underline; }
                     </div>
                     <div class="method-title">Manual Download</div>
                 </div>
-                <p class="method-desc">Download the binary for your platform from GitHub Releases, configure your <code>.env</code>, and run directly.</p>
+                <p class="method-desc">Download the binary for your platform from GitHub Releases. Best for Linux with systemd service management.</p>
+                <div class="method-code" style="margin-bottom:12px;">
+                    <div class="method-code-header">
+                        <span class="method-code-lang">download &amp; install</span>
+                        <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
+                    </div>
+                    <div class="method-code-body"><span class="code-comment"># Download (Linux AMD64)</span>
+<span class="code-cmd">curl</span> -L -o onwatch \
+  https://github.com/onllm-dev/onwatch/releases/latest/download/onwatch-linux-amd64
+<span class="code-cmd">chmod</span> +x onwatch && <span class="code-cmd">sudo</span> mv onwatch /usr/local/bin/</div>
+                </div>
+                <div class="method-code">
+                    <div class="method-code-header">
+                        <span class="method-code-lang">configure &amp; manage (Linux)</span>
+                        <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
+                    </div>
+                    <div class="method-code-body"><span class="code-comment"># Edit config</span>
+<span class="code-cmd">nano</span> ~/.onwatch/.env
+
+<span class="code-comment"># Manage via systemd</span>
+<span class="code-cmd">systemctl</span> start onwatch      <span class="code-comment"># start</span>
+<span class="code-cmd">systemctl</span> stop onwatch       <span class="code-comment"># stop</span>
+<span class="code-cmd">systemctl</span> status onwatch     <span class="code-comment"># check status</span>
+<span class="code-cmd">journalctl</span> -u onwatch -f     <span class="code-comment"># live logs</span></div>
+                </div>
+            </div>
+
+            <!-- Method 3: Docker -->
+            <div class="install-method fade-in">
+                <div class="method-header">
+                    <div class="method-icon blue">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12.5c0 .8-.3 1.5-.8 2-.3-.5-.8-.9-1.4-1.1-.2-.8-.7-1.5-1.3-2 .5-.3.9-.8 1.1-1.3.8-.2 1.5-.7 2-1.3.5.5.9 1.2.9 2 0 .4-.1.7-.2 1 .5.2.7.7.7 1.2z"/><rect x="1" y="8" width="4" height="4"/><rect x="6" y="8" width="4" height="4"/><rect x="11" y="8" width="4" height="4"/><rect x="6" y="3" width="4" height="4"/><rect x="11" y="3" width="4" height="4"/><rect x="16" y="8" width="4" height="4"/></svg>
+                    </div>
+                    <div class="method-title">Docker</div>
+                </div>
+                <p class="method-desc">Run in a container with Docker Compose. Distroless image (~12 MB), non-root user, persistent data volume.</p>
+                <div class="method-code">
+                    <div class="method-code-header">
+                        <span class="method-code-lang">docker</span>
+                        <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
+                    </div>
+                    <div class="method-code-body"><span class="code-comment"># Clone &amp; configure</span>
+<span class="code-cmd">git</span> clone https://github.com/onllm-dev/onwatch.git
+<span class="code-cmd">cd</span> onwatch
+<span class="code-cmd">cp</span> .env.docker.example .env
+<span class="code-cmd">nano</span> .env              <span class="code-comment"># add your API keys</span>
+
+<span class="code-comment"># Run with Docker Compose</span>
+<span class="code-cmd">docker-compose</span> up -d
+<span class="code-cmd">docker-compose</span> logs -f  <span class="code-comment"># view logs</span></div>
+                </div>
+            </div>
+
+            <!-- Method 4: Build from Source -->
+            <div class="install-method fade-in">
+                <div class="method-header">
+                    <div class="method-icon teal">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+                    </div>
+                    <div class="method-title">Build from Source</div>
+                </div>
+                <p class="method-desc">Clone the repo and build with <code>app.sh</code>. Requires Go 1.25+. Full control over build flags.</p>
                 <div class="method-code">
                     <div class="method-code-header">
                         <span class="method-code-lang">bash</span>
                         <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
                     </div>
-                    <div class="method-code-body"><span class="code-comment"># Download (Linux AMD64 example)</span>
-<span class="code-cmd">curl</span> -L -o onwatch \
-  https://github.com/onllm-dev/onwatch/releases/latest/downloa./onwatch-linux-amd64
-<span class="code-cmd">chmod +x onwatch
+                    <div class="method-code-body"><span class="code-comment"># Clone &amp; build</span>
+<span class="code-cmd">git</span> clone https://github.com/onllm-dev/onwatch.git
+<span class="code-cmd">cd</span> onwatch
+<span class="code-cmd">cp</span> .env.example .env
+<span class="code-cmd">nano</span> .env              <span class="code-comment"># add your API keys</span>
 
-<span class="code-comment"># Create config</span>
-<span class="code-cmd">cat</span> > .env &lt;&lt; <span class="code-string">'EOF'</span>
-<span class="code-string">SYNTHETIC_API_KEY=syn_your_key_here</span>
-<span class="code-string">ZAI_API_KEY=your_zai_key_here</span>
-<span class="code-string">ONWATCH_ADMIN_USER=admin</span>
-<span class="code-string">ONWATCH_ADMIN_PASS=changeme</span>
-<span class="code-string">ONWATCH_PORT=9211</span>
-<span class="code-string">EOF</span>
-
-<span class="code-comment"># Run</span>
-<span class="code-cmd">./onwatch</span>            <span class="code-comment"># start (background)</span>
-<span class="code-cmd">./onwatch</span> --debug     <span class="code-comment"># foreground mode</span>
-<span class="code-cmd">./onwatch</span> stop        <span class="code-comment"># stop</span>
-<span class="code-cmd">./onwatch</span> status      <span class="code-comment"># check status</span></div>
+<span class="code-comment"># Build &amp; run</span>
+<span class="code-cmd">./app.sh</span> --build       <span class="code-comment"># build binary</span>
+<span class="code-cmd">./onwatch</span>              <span class="code-comment"># start daemon</span></div>
                 </div>
             </div>
 
         </div>
-        <p class="fade-in" style="text-align:center;font-size:13px;color:var(--text-muted);margin-top:16px;">Want to build from source? See <a href="https://github.com/onllm-dev/onwatch/blob/main/docs/DEVELOPMENT.md" target="_blank" rel="noopener noreferrer" style="color:var(--accent-teal);">DEVELOPMENT.md</a></p>
+        <p class="fade-in" style="text-align:center;font-size:13px;color:var(--text-muted);margin-top:16px;">See <a href="https://github.com/onllm-dev/onwatch/blob/main/docs/DEVELOPMENT.md" target="_blank" rel="noopener noreferrer" style="color:var(--accent-teal);">DEVELOPMENT.md</a> for advanced build options and cross-compilation.</p>
     </div>
 </section>
 
@@ -2950,7 +3044,7 @@ a:hover { text-decoration: underline; }
             <details class="faq-item">
                 <summary class="faq-question">How do email and push notifications work?</summary>
                 <div class="faq-answer">
-                    <p>Configure SMTP settings in the Settings page to receive email alerts when quotas cross warning or critical thresholds, or when they reset. SMTP passwords are encrypted at rest with AES-256-GCM. For push notifications (Beta), enable them in Settings &rarr; Notifications &rarr; Delivery Channels and allow browser notifications. onWatch uses the Web Push protocol (VAPID) with no external service dependencies &mdash; VAPID keys are auto-generated and all encryption is handled locally. You can choose email, push, or both.</p>
+                    <p>Configure SMTP settings in the Settings page to receive email alerts when quotas cross warning or critical thresholds, or when they reset. SMTP passwords are encrypted at rest with AES-256-GCM. For push notifications (Beta), enable them in Settings &rarr; Notifications &rarr; Delivery Channels and allow browser notifications. onWatch uses the Web Push protocol (VAPID) with no external service dependencies &mdash; VAPID keys are auto-generated and all encryption is handled locally. <strong>Note:</strong> Push notifications require HTTPS to work. You can choose email, push, or both.</p>
                 </div>
             </details>
             <details class="faq-item">

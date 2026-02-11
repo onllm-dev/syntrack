@@ -360,3 +360,55 @@ func TestTracker_UsageSummary_MultipleCycles(t *testing.T) {
 		t.Errorf("PeakCycle = %v, want 200", summary.PeakCycle)
 	}
 }
+
+func TestTracker_MinuteLevelJitter_IgnoredAsNonReset(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	tracker := New(s, nil)
+	baseTime := time.Now().Truncate(time.Hour) // Start at hour boundary
+
+	// First snapshot with renewsAt at +5:00
+	snapshot1 := &api.Snapshot{
+		CapturedAt: baseTime,
+		Sub:        api.QuotaInfo{Limit: 1000, Requests: 100, RenewsAt: baseTime.Add(5 * time.Hour)},
+		Search:     api.QuotaInfo{Limit: 250, Requests: 10, RenewsAt: baseTime.Add(1 * time.Hour)},
+		ToolCall:   api.QuotaInfo{Limit: 5000, Requests: 500, RenewsAt: baseTime.Add(3 * time.Hour)},
+	}
+	tracker.Process(snapshot1)
+
+	// Simulate rolling window: renewsAt shifts forward by poll interval (1 minute)
+	// This is how Synthetic API's search quota works - it returns "now + 1 hour"
+	// on each poll, so renewsAt increments by 1 minute each time.
+	// This should NOT trigger a new cycle (compare at hour precision).
+	for i := 1; i <= 30; i++ { // Simulate 30 polls over 30 minutes
+		snapshot := &api.Snapshot{
+			CapturedAt: baseTime.Add(time.Duration(i) * time.Minute),
+			Sub:        api.QuotaInfo{Limit: 1000, Requests: 100 + float64(i)*2, RenewsAt: baseTime.Add(5*time.Hour + time.Duration(i)*time.Minute)},
+			Search:     api.QuotaInfo{Limit: 250, Requests: 10 + float64(i), RenewsAt: baseTime.Add(1*time.Hour + time.Duration(i)*time.Minute)},
+			ToolCall:   api.QuotaInfo{Limit: 5000, Requests: 500 + float64(i)*5, RenewsAt: baseTime.Add(3*time.Hour + time.Duration(i)*time.Minute)},
+		}
+		tracker.Process(snapshot)
+	}
+
+	// Verify cycles were NOT closed (still active, all within same hour)
+	for _, quotaType := range []string{"subscription", "search", "toolcall"} {
+		cycle, _ := s.QueryActiveCycle(quotaType)
+		if cycle == nil {
+			t.Errorf("Expected active cycle for %s to still be open", quotaType)
+			continue
+		}
+		// Verify no completed cycles (history should be empty)
+		history, _ := s.QueryCycleHistory(quotaType)
+		if len(history) != 0 {
+			t.Errorf("Expected 0 completed cycles for %s, got %d (minute-level jitter caused false reset)", quotaType, len(history))
+		}
+	}
+
+	// Verify delta was calculated correctly (should accumulate across all 30 polls)
+	subCycle, _ := s.QueryActiveCycle("subscription")
+	expectedDelta := float64(30 * 2) // 2 per poll for 30 polls
+	if subCycle.TotalDelta != expectedDelta {
+		t.Errorf("TotalDelta = %v, want %v", subCycle.TotalDelta, expectedDelta)
+	}
+}
