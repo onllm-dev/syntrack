@@ -267,11 +267,20 @@ func (a *AnthropicAgent) poll(ctx context.Context) {
 		}
 	}
 
-	// Report to session manager — extract utilization values for change detection
+	// Report to session manager — extract utilization values for change detection.
+	// Use fixed order matching UI columns: five_hour, seven_day, seven_day_sonnet
+	// (alphabetical sort would put monthly_limit between them, breaking the mapping).
 	if a.sm != nil {
-		values := make([]float64, len(snapshot.Quotas))
-		for i, q := range snapshot.Quotas {
-			values[i] = q.Utilization
+		// Build a map for O(1) lookup
+		quotaMap := make(map[string]float64, len(snapshot.Quotas))
+		for _, q := range snapshot.Quotas {
+			quotaMap[q.Name] = q.Utilization
+		}
+		// Report in fixed order matching session columns (sub, search, tool)
+		values := []float64{
+			quotaMap["five_hour"],        // Column 0: 5-Hour %
+			quotaMap["seven_day"],        // Column 1: Weekly %
+			quotaMap["seven_day_sonnet"], // Column 2: Sonnet %
 		}
 		a.sm.ReportPoll(values)
 	}
