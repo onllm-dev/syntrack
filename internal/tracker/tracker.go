@@ -100,15 +100,41 @@ func (t *Tracker) processQuota(quotaType string, capturedAt time.Time, info api.
 		return nil
 	}
 
-	// Check for reset: compare renewsAt at hour precision (ignore minutes and seconds).
+	// Reset detection method 1: Time-based check
+	// If the stored cycle's RenewsAt has passed, the quota has reset (even if app was offline).
+	// Use a small grace period (2 min) to account for clock drift and API delays.
+	resetDetected := false
+	resetReason := ""
+	if capturedAt.After(cycle.RenewsAt.Add(2 * time.Minute)) {
+		resetDetected = true
+		resetReason = "time-based (stored RenewsAt passed)"
+	}
+
+	// Reset detection method 2: API-based check
+	// Compare renewsAt at hour precision (ignore minutes and seconds).
 	// Synthetic API may return "rolling window" renewal times that shift forward
 	// by the poll interval on each request (e.g., search quota's hourly window
 	// returns "now + 1 hour"). Real resets shift by the full quota window duration
 	// (1 hour for search, longer for subscription/toolcall), so comparing at hour
 	// precision catches real resets while ignoring minute-level drift.
-	oldHour := cycle.RenewsAt.Truncate(time.Hour)
-	newHour := info.RenewsAt.Truncate(time.Hour)
-	if !oldHour.Equal(newHour) {
+	if !resetDetected {
+		oldHour := cycle.RenewsAt.Truncate(time.Hour)
+		newHour := info.RenewsAt.Truncate(time.Hour)
+		if !oldHour.Equal(newHour) {
+			resetDetected = true
+			resetReason = "api-based (RenewsAt changed)"
+		}
+	}
+
+	if resetDetected {
+		// Determine the actual cycle end time:
+		// - If we have a stored RenewsAt and it's in the past, use it as cycle end
+		// - Otherwise use capturedAt (API-based detection)
+		cycleEndTime := capturedAt
+		if capturedAt.After(cycle.RenewsAt) {
+			cycleEndTime = cycle.RenewsAt
+		}
+
 		// Calculate final delta from the last snapshot before closing.
 		// The delta includes the change up to the reset point.
 		if t.hasLastValues {
@@ -124,13 +150,13 @@ func (t *Tracker) processQuota(quotaType string, capturedAt time.Time, info api.
 			// overview doesn't match any snapshot in the query range.
 		}
 
-		// Close old cycle with final stats
-		err := t.store.CloseCycle(quotaType, capturedAt, cycle.PeakRequests, cycle.TotalDelta)
+		// Close old cycle at the actual reset time
+		err := t.store.CloseCycle(quotaType, cycleEndTime, cycle.PeakRequests, cycle.TotalDelta)
 		if err != nil {
 			return fmt.Errorf("failed to close cycle: %w", err)
 		}
 
-		// Create new cycle
+		// Create new cycle starting from capturedAt (when we actually detected it)
 		_, err = t.store.CreateCycle(quotaType, capturedAt, info.RenewsAt)
 		if err != nil {
 			return fmt.Errorf("failed to create new cycle: %w", err)
@@ -147,8 +173,10 @@ func (t *Tracker) processQuota(quotaType string, capturedAt time.Time, info api.
 
 		t.logger.Info("Detected quota reset",
 			"quotaType", quotaType,
+			"reason", resetReason,
 			"oldRenewsAt", cycle.RenewsAt,
 			"newRenewsAt", info.RenewsAt,
+			"cycleEndTime", cycleEndTime,
 			"totalDelta", cycle.TotalDelta,
 		)
 		if t.onReset != nil {

@@ -1260,6 +1260,27 @@ button, input, select { font-family: inherit; }
   font-size: 14px;
 }
 
+/* Delta indicator for inline percentage changes */
+.delta {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+/* Rate indicator with lightning bolt */
+.rate-indicator {
+  color: var(--text-muted);
+  font-size: 0.85em;
+  margin-left: 4px;
+}
+
+/* Table legend for explaining symbols */
+.table-legend {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-left: auto;
+  margin-right: 16px;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

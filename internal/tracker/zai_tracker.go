@@ -96,17 +96,39 @@ func (t *ZaiTracker) processTokensQuota(snapshot *api.ZaiSnapshot) error {
 		return nil
 	}
 
-	// Check for reset: compare nextResetTime
+	// Reset detection method 1: Time-based check
+	// If the stored cycle's NextReset has passed, the quota has reset (even if app was offline).
+	// Use a small grace period (2 min) to account for clock drift and API delays.
 	resetDetected := false
-	if snapshot.TokensNextResetTime != nil && cycle.NextReset != nil {
-		if !snapshot.TokensNextResetTime.Equal(*cycle.NextReset) {
-			resetDetected = true
-		}
-	} else if snapshot.TokensNextResetTime != nil && cycle.NextReset == nil {
+	resetReason := ""
+	if cycle.NextReset != nil && snapshot.CapturedAt.After(cycle.NextReset.Add(2*time.Minute)) {
 		resetDetected = true
+		resetReason = "time-based (stored NextReset passed)"
+	}
+
+	// Reset detection method 2: API-based check
+	// Compare nextResetTime timestamps
+	if !resetDetected {
+		if snapshot.TokensNextResetTime != nil && cycle.NextReset != nil {
+			if !snapshot.TokensNextResetTime.Equal(*cycle.NextReset) {
+				resetDetected = true
+				resetReason = "api-based (NextReset changed)"
+			}
+		} else if snapshot.TokensNextResetTime != nil && cycle.NextReset == nil {
+			resetDetected = true
+			resetReason = "api-based (new NextReset appeared)"
+		}
 	}
 
 	if resetDetected {
+		// Determine the actual cycle end time:
+		// - If we have a stored NextReset and it's in the past, use it as cycle end
+		// - Otherwise use capturedAt (API-based detection)
+		cycleEndTime := snapshot.CapturedAt
+		if cycle.NextReset != nil && snapshot.CapturedAt.After(*cycle.NextReset) {
+			cycleEndTime = *cycle.NextReset
+		}
+
 		// Update delta from last snapshot before closing
 		if t.hasLastValues {
 			delta := currentValue - t.lastTokensValue
@@ -118,12 +140,12 @@ func (t *ZaiTracker) processTokensQuota(snapshot *api.ZaiSnapshot) error {
 			}
 		}
 
-		// Close old cycle
-		if err := t.store.CloseZaiCycle(quotaType, snapshot.CapturedAt, cycle.PeakValue, cycle.TotalDelta); err != nil {
+		// Close old cycle at the actual reset time
+		if err := t.store.CloseZaiCycle(quotaType, cycleEndTime, cycle.PeakValue, cycle.TotalDelta); err != nil {
 			return fmt.Errorf("failed to close cycle: %w", err)
 		}
 
-		// Create new cycle
+		// Create new cycle starting from capturedAt (when we actually detected it)
 		if _, err := t.store.CreateZaiCycle(quotaType, snapshot.CapturedAt, snapshot.TokensNextResetTime); err != nil {
 			return fmt.Errorf("failed to create new cycle: %w", err)
 		}
@@ -133,8 +155,10 @@ func (t *ZaiTracker) processTokensQuota(snapshot *api.ZaiSnapshot) error {
 
 		t.lastTokensValue = currentValue
 		t.logger.Info("Detected Z.ai tokens reset",
+			"reason", resetReason,
 			"oldNextReset", cycle.NextReset,
 			"newNextReset", snapshot.TokensNextResetTime,
+			"cycleEndTime", cycleEndTime,
 			"totalDelta", cycle.TotalDelta,
 		)
 		if t.onReset != nil {

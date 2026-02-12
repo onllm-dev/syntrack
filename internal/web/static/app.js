@@ -75,7 +75,7 @@ const State = {
   cyclesPage: 1,
   cyclesPageSize: 10,
   cyclesRange: 259200000,   // 3 days in ms (default)
-  cyclesGroup: 300000,      // 5 minutes in ms (default)
+  cyclesQuotaNames: [],     // dynamic quota column names
   // Sessions table state
   sessionsSort: { key: null, dir: 'desc' },
   sessionsPage: 1,
@@ -304,7 +304,6 @@ const renewalCategories = {
     { label: '5-Hour', groupBy: 'five_hour' },
     { label: 'Weekly', groupBy: 'seven_day' },
     { label: 'Sonnet', groupBy: 'seven_day_sonnet' },
-    { label: 'Monthly', groupBy: 'monthly_limit' },
     { label: 'Extra', groupBy: 'extra_usage' }
   ],
   synthetic: [
@@ -999,8 +998,6 @@ async function fetchCurrent() {
           const container = document.getElementById('quota-grid-anthropic');
           if (container && container.children.length === 0) {
             renderAnthropicQuotaCards(data.quotas, 'quota-grid-anthropic');
-            // Also populate cycle quota select dynamically
-            populateAnthropicCycleSelect(data.quotas);
           } else {
             data.quotas.forEach(q => updateAnthropicCard(q));
           }
@@ -1036,30 +1033,6 @@ async function fetchCurrent() {
   }
 }
 
-// ── Anthropic Cycle Select Population ──
-
-function populateAnthropicCycleSelect(quotas) {
-  const select = document.getElementById('cycle-quota-select');
-  if (!select) return;
-
-  const provider = getCurrentProvider();
-  if (provider === 'anthropic') {
-    // Replace all options with Anthropic quota names
-    select.innerHTML = quotas.map(q => {
-      const displayName = q.displayName || anthropicDisplayNames[q.name] || q.name;
-      return `<option value="${q.name}">${displayName}</option>`;
-    }).join('');
-  } else if (provider === 'both') {
-    // Populate the Anthropic optgroup in "both" mode
-    const optgroup = document.getElementById('cycle-anthropic-optgroup');
-    if (optgroup) {
-      optgroup.innerHTML = quotas.map(q => {
-        const displayName = q.displayName || anthropicDisplayNames[q.name] || q.name;
-        return `<option value="${q.name}">${displayName}</option>`;
-      }).join('');
-    }
-  }
-}
 
 // ── Anthropic Session Table Header Updates ──
 
@@ -1764,45 +1737,29 @@ function buildChartOptions(colors, yMax) {
 
 // ── Cycles Table (client-side search/sort/paginate) ──
 
-async function fetchCycles(quotaType) {
+async function fetchCycles() {
   const provider = getCurrentProvider();
-  if (quotaType === undefined) {
-    const select = document.getElementById('cycle-quota-select');
-    quotaType = select ? select.value : (provider === 'anthropic' ? 'five_hour' : provider === 'zai' ? 'tokens' : 'subscription');
+
+  // Use cycle-overview endpoint to get all quotas in one view
+  // Determine the groupBy based on provider (use first available renewal category)
+  let groupBy = 'five_hour'; // default for Anthropic
+  if (provider === 'synthetic') {
+    groupBy = 'subscription';
+  } else if (provider === 'zai') {
+    groupBy = 'tokens';
+  } else if (provider === 'both') {
+    // Use anthropic by default for "both" mode
+    groupBy = 'five_hour';
   }
 
-  // In "both" mode, route the type to the correct provider param
-  let cycleUrl = `${API_BASE}/api/cycles?type=${quotaType}&${providerParam()}`;
-  if (provider === 'both') {
-    const zaiTypes = ['tokens', 'time'];
-    const anthropicTypes = ['five_hour', 'seven_day', 'seven_day_sonnet', 'monthly_limit', 'extra_usage'];
-    if (zaiTypes.includes(quotaType)) {
-      cycleUrl = `${API_BASE}/api/cycles?type=subscription&zaiType=${quotaType}&${providerParam()}`;
-    } else if (anthropicTypes.includes(quotaType)) {
-      cycleUrl = `${API_BASE}/api/cycles?type=${quotaType}&provider=anthropic`;
-    }
-  }
+  const url = `/api/cycle-overview?${providerParam()}&groupBy=${groupBy}&limit=200`;
 
   try {
-    const res = await authFetch(cycleUrl);
+    const res = await authFetch(url);
     if (!res.ok) throw new Error('Failed to fetch cycles');
     const data = await res.json();
-
-    if (provider === 'both') {
-      if (Array.isArray(data)) {
-        // Anthropic or single-provider response: already an array
-        State.allCyclesData = data;
-      } else {
-        // "both" response: { synthetic: [...], zai: [...] }
-        let merged = [];
-        if (data.synthetic) merged = merged.concat(data.synthetic.map(c => ({ ...c, _provider: 'Syn' })));
-        if (data.zai) merged = merged.concat(data.zai.map(c => ({ ...c, _provider: 'Z.ai' })));
-        merged.sort((a, b) => new Date(b.cycleStart).getTime() - new Date(a.cycleStart).getTime());
-        State.allCyclesData = merged;
-      }
-    } else {
-      State.allCyclesData = data || [];
-    }
+    State.allCyclesData = data.cycles || [];
+    State.cyclesQuotaNames = data.quotaNames || [];
     State.cyclesPage = 1;
     renderCyclesTable();
   } catch (err) {
@@ -1810,158 +1767,149 @@ async function fetchCycles(quotaType) {
   }
 }
 
-function getCycleComputedFields(cycle) {
-  const start = new Date(cycle.cycleStart);
-  const end = cycle.cycleEnd ? new Date(cycle.cycleEnd) : new Date();
-  const durationMins = Math.round((end - start) / 60000);
-  const rate = durationMins > 0 ? cycle.totalDelta / (durationMins / 60) : 0;
-  return { start, end, durationMins, durationStr: formatDurationMins(durationMins), rate, isActive: !cycle.cycleEnd };
-}
-
-function groupCyclesData(cycles, groupMs) {
-  if (!cycles.length) return [];
-  // Group cycles into time buckets based on their start time
-  const buckets = new Map();
-  cycles.forEach(c => {
-    const start = new Date(c.cycleStart).getTime();
-    const bucketKey = Math.floor(start / groupMs) * groupMs;
-    if (!buckets.has(bucketKey)) {
-      buckets.set(bucketKey, {
-        bucketStart: bucketKey,
-        bucketEnd: bucketKey + groupMs,
-        cycles: [],
-        peakRequests: 0,
-        totalDelta: 0,
-        firstCycleId: c.id,
-        cycleCount: 0,
-        earliestStart: c.cycleStart,
-        latestEnd: c.cycleEnd,
-        _provider: c._provider
-      });
-    }
-    const bucket = buckets.get(bucketKey);
-    bucket.cycles.push(c);
-    bucket.cycleCount++;
-    bucket.peakRequests = Math.max(bucket.peakRequests, c.peakRequests || c.peakUtilization || 0);
-    bucket.totalDelta += c.totalDelta;
-    if (new Date(c.cycleStart) < new Date(bucket.earliestStart)) bucket.earliestStart = c.cycleStart;
-    if (c.cycleEnd) {
-      if (!bucket.latestEnd || new Date(c.cycleEnd) > new Date(bucket.latestEnd)) bucket.latestEnd = c.cycleEnd;
-    } else {
-      bucket.latestEnd = null; // has an active cycle
-    }
-  });
-  return Array.from(buckets.values()).sort((a, b) => b.bucketStart - a.bucketStart);
-}
-
 function renderCyclesTable() {
+  const thead = document.getElementById('cycles-thead');
   const tbody = document.getElementById('cycles-tbody');
   const infoEl = document.getElementById('cycles-info');
   const paginationEl = document.getElementById('cycles-pagination');
-  if (!tbody) return;
+  if (!thead || !tbody) return;
 
-  const now = Date.now();
-  const rangeMs = State.cyclesRange;
-  const groupMs = State.cyclesGroup;
-  const cutoff = now - rangeMs;
+  const provider = getCurrentProvider();
+  const quotaNames = State.cyclesQuotaNames;
+  const usePercent = provider === 'anthropic';
+
+  // Build dynamic header (similar to Cycle Overview)
+  let headerHtml = `
+    <tr>
+      <th data-sort-key="id" role="button" tabindex="0">Cycle <span class="sort-arrow"></span></th>
+      <th data-sort-key="start" role="button" tabindex="0">Start <span class="sort-arrow"></span></th>
+      <th data-sort-key="end" role="button" tabindex="0">End <span class="sort-arrow"></span></th>
+      <th data-sort-key="duration" role="button" tabindex="0">Duration <span class="sort-arrow"></span></th>
+      <th data-sort-key="totalDelta" role="button" tabindex="0">Total Δ${usePercent ? ' %' : ''} <span class="sort-arrow"></span></th>`;
+
+  quotaNames.forEach(qn => {
+    const displayName = overviewQuotaDisplayNames[qn] || qn;
+    const suffix = usePercent ? ' %' : '';
+    headerHtml += `<th data-sort-key="cq_${qn}" role="button" tabindex="0">${displayName}${suffix} <span class="sort-arrow"></span></th>`;
+  });
+  headerHtml += '</tr>';
+  thead.innerHTML = headerHtml;
+
+  // Attach sort handlers to new headers and restore sort indicator
+  thead.querySelectorAll('th[data-sort-key]').forEach(th => {
+    th.addEventListener('click', () => handleTableSort('cycles', th));
+    th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTableSort('cycles', th); } });
+    if (State.cyclesSort.key === th.dataset.sortKey) {
+      th.setAttribute('data-sort-dir', State.cyclesSort.dir);
+    }
+  });
 
   // Filter by time range
-  let filtered = State.allCyclesData.filter(c =>
+  const now = Date.now();
+  const rangeMs = State.cyclesRange;
+  const cutoff = now - rangeMs;
+
+  let data = State.allCyclesData.filter(c =>
     new Date(c.cycleStart).getTime() >= cutoff || !c.cycleEnd
   );
 
-  // Group into time buckets
-  const grouped = groupCyclesData(filtered, groupMs);
-
-  // Compute display fields for each bucket
-  let data = grouped.map((bucket, i) => {
-    const start = new Date(bucket.earliestStart);
-    const end = bucket.latestEnd ? new Date(bucket.latestEnd) : new Date();
-    const durationMins = Math.round((end - start) / 60000);
-    const rate = durationMins > 0 ? bucket.totalDelta / (durationMins / 60) : 0;
-    const isActive = !bucket.latestEnd;
-    return {
-      ...bucket,
-      _display: {
-        id: bucket.cycleCount === 1 ? `#${bucket.firstCycleId}` : `${bucket.cycleCount} cycles`,
-        start,
-        end,
-        durationMins,
-        durationStr: formatDurationMins(durationMins),
-        rate,
-        isActive
-      }
-    };
-  });
-
   // Sort
   if (State.cyclesSort.key) {
-    const dir = State.cyclesSort.dir === 'asc' ? 1 : -1;
+    const { key, dir } = State.cyclesSort;
     data.sort((a, b) => {
       let va, vb;
-      switch (State.cyclesSort.key) {
-        case 'id': va = a.firstCycleId; vb = b.firstCycleId; break;
-        case 'start': va = a._display.start.getTime(); vb = b._display.start.getTime(); break;
-        case 'end': va = a._display.end.getTime(); vb = b._display.end.getTime(); break;
-        case 'duration': va = a._display.durationMins; vb = b._display.durationMins; break;
-        case 'peak': va = a.peakRequests; vb = b.peakRequests; break;
-        case 'total': va = a.totalDelta; vb = b.totalDelta; break;
-        case 'rate': va = a._display.rate; vb = b._display.rate; break;
-        case 'provider': va = a._provider || ''; vb = b._provider || ''; break;
-        default: va = 0; vb = 0;
+      if (key === 'id') { va = a.cycleId; vb = b.cycleId; }
+      else if (key === 'start') { va = a.cycleStart; vb = b.cycleStart; }
+      else if (key === 'end') { va = a.cycleEnd || ''; vb = b.cycleEnd || ''; }
+      else if (key === 'duration') {
+        va = a.cycleEnd ? new Date(a.cycleEnd) - new Date(a.cycleStart) : 0;
+        vb = b.cycleEnd ? new Date(b.cycleEnd) - new Date(b.cycleStart) : 0;
       }
-      return va > vb ? dir : va < vb ? -dir : 0;
+      else if (key === 'totalDelta') { va = a.totalDelta; vb = b.totalDelta; }
+      else if (key.startsWith('cq_')) {
+        const qn = key.slice(3);
+        va = getCrossQuotaPercent(a, qn);
+        vb = getCrossQuotaPercent(b, qn);
+      }
+      else { va = 0; vb = 0; }
+      if (va < vb) return dir === 'asc' ? -1 : 1;
+      if (va > vb) return dir === 'asc' ? 1 : -1;
+      return 0;
     });
   }
 
-  const total = data.length;
-  const pageSize = State.cyclesPageSize;
-  const totalPages = pageSize > 0 ? Math.max(1, Math.ceil(total / pageSize)) : 1;
-  if (State.cyclesPage > totalPages) State.cyclesPage = totalPages;
+  // Pagination
+  const pageSize = State.cyclesPageSize || 10;
+  const totalRows = data.length;
+  const totalPages = pageSize > 0 ? Math.ceil(totalRows / pageSize) : 1;
+  if (State.cyclesPage > totalPages) State.cyclesPage = totalPages || 1;
   const page = State.cyclesPage;
   const startIdx = pageSize > 0 ? (page - 1) * pageSize : 0;
   const pageData = pageSize > 0 ? data.slice(startIdx, startIdx + pageSize) : data;
 
-  if (infoEl) {
-    if (total === 0) {
-      infoEl.textContent = 'No results';
-    } else {
-      infoEl.textContent = `Showing ${startIdx + 1}-${Math.min(startIdx + pageData.length, total)} of ${total}`;
+  // Format value with rate: "45.2% [⚡5.2%/hr]"
+  const fmtCyclesWithRate = (val, durationHrs, suffix) => {
+    if (typeof val !== 'number') return '--';
+    const valStr = val.toFixed(1) + suffix;
+    if (durationHrs > 0) {
+      const rate = val / durationHrs;
+      return `${valStr} <span class="rate-indicator">[⚡${rate.toFixed(1)}${suffix}/hr]</span>`;
     }
-  }
+    return valStr;
+  };
 
-  const isBothCycles = getCurrentProvider() === 'both';
-  const cycleColSpan = isBothCycles ? 8 : 7;
+  const colCount = 5 + quotaNames.length;
 
-  // Determine if current cycles are Anthropic (values are percentages, not raw counts)
-  const cycleSelect = document.getElementById('cycle-quota-select');
-  const currentCycleType = cycleSelect ? cycleSelect.value : '';
-  const anthropicCycleTypes = ['five_hour', 'seven_day', 'seven_day_sonnet', 'monthly_limit', 'extra_usage'];
-  const isCyclePercent = getCurrentProvider() === 'anthropic' || anthropicCycleTypes.includes(currentCycleType);
-  const cycleSuffix = isCyclePercent ? '%' : '';
-
-  if (total === 0) {
-    tbody.innerHTML = `<tr><td colspan="${cycleColSpan}" class="empty-state">No polling data in this range.</td></tr>`;
+  if (pageData.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">No polling data in this range.</td></tr>`;
   } else {
     tbody.innerHTML = pageData.map(row => {
-      const d = row._display;
-      const providerCol = isBothCycles ? `<td><span class="badge">${row._provider || row.cycles?.[0]?._provider || '-'}</span></td>` : '';
-      return `<tr>
-        ${providerCol}
-        <td>${d.id}${d.isActive ? ' <span class="badge">Active</span>' : ''}</td>
-        <td>${d.start.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
-        <td>${row.latestEnd ? new Date(row.latestEnd).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Active'}</td>
-        <td>${d.durationStr}</td>
-        <td>${formatNumber(row.peakRequests)}${cycleSuffix}</td>
-        <td>${formatNumber(row.totalDelta)}${cycleSuffix}</td>
-        <td>${d.durationMins > 0 ? formatNumber(d.rate) + cycleSuffix + '/hr' : '-'}</td>
-      </tr>`;
+      const start = row.cycleStart || null;
+      const end = row.cycleEnd || null;
+      const startDate = start ? new Date(start) : null;
+      const endDate = end ? new Date(end) : null;
+      const durationMs = (startDate && endDate) ? endDate - startDate : 0;
+      const durationHrs = durationMs / 3600000;
+      const duration = durationMs > 0 ? formatDuration(Math.floor(durationMs / 1000)) : '--';
+      const suffix = usePercent ? '%' : '';
+
+      let html = `<tr>
+        <td>${row.cycleId}${!end ? ' <span class="badge">Active</span>' : ''}</td>
+        <td>${start ? formatDateTime(start) : '--'}</td>
+        <td>${end ? formatDateTime(end) : '<span class="badge">Active</span>'}</td>
+        <td>${duration}</td>
+        <td>${fmtCyclesWithRate(row.totalDelta, durationHrs, suffix)}</td>`;
+
+      quotaNames.forEach(qn => {
+        const pct = getCrossQuotaPercent(row, qn);
+        const cls = getThresholdClass(pct);
+        let cellVal = '--';
+        if (pct >= 0) {
+          if (usePercent) {
+            cellVal = pct.toFixed(1) + '%';
+          } else {
+            const cq = getCrossQuotaValue(row, qn);
+            cellVal = cq ? formatNumber(cq.value) : pct.toFixed(1) + '%';
+          }
+        }
+        html += `<td class="${cls}">${cellVal}</td>`;
+      });
+
+      html += '</tr>';
+      return html;
     }).join('');
   }
 
-  // Pagination
+  // Info
+  if (infoEl) {
+    const showStart = totalRows > 0 ? startIdx + 1 : 0;
+    const showEnd = pageSize > 0 ? Math.min(startIdx + pageSize, totalRows) : totalRows;
+    infoEl.textContent = `Showing ${showStart}-${showEnd} of ${totalRows}`;
+  }
+
+  // Pagination buttons
   if (paginationEl) {
-    paginationEl.innerHTML = (pageSize > 0 && totalPages > 1) ? renderPagination('cycles', page, totalPages) : '';
+    paginationEl.innerHTML = renderPagination('cycles', page, totalPages);
   }
 }
 
@@ -2130,14 +2078,22 @@ function renderSessionsTable() {
         const d = (end || 0) - (start || 0);
         return d >= 0 ? `+${d.toFixed(1)}%` : `${d.toFixed(1)}%`;
       };
+      // Format with delta inline: "45.2% (+12.3%)"
+      const fmtWithDelta = (start, max) => {
+        const pct = max != null ? max.toFixed(1) + '%' : '-';
+        if (start == null || max == null) return pct;
+        const d = max - start;
+        const delta = d >= 0 ? `+${d.toFixed(1)}%` : `${d.toFixed(1)}%`;
+        return `${pct} <span class="delta">(${delta})</span>`;
+      };
       const mainRow = `<tr class="session-row" role="button" tabindex="0" data-session-id="${session.id}">
         <td>${session.id.slice(0, 8)}${c.isActive ? ' <span class="badge">Active</span>' : ''}</td>
         <td>${c.start.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
         <td>${session.endedAt ? new Date(session.endedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Active'}</td>
         <td>${c.durationStr}</td>
-        <td>${fmtPct(session.maxSubRequests)}</td>
-        <td>${fmtPct(session.maxSearchRequests)}</td>
-        <td>${fmtPct(session.maxToolRequests)}</td>
+        <td>${fmtWithDelta(session.startSubRequests, session.maxSubRequests)}</td>
+        <td>${fmtWithDelta(session.startSearchRequests, session.maxSearchRequests)}</td>
+        <td>${fmtWithDelta(session.startToolRequests, session.maxToolRequests)}</td>
       </tr>`;
       const detailRow = `<tr class="session-detail-row ${isExpanded ? 'expanded' : ''}" data-detail-for="${session.id}">
         <td colspan="${colSpan}">
@@ -2504,13 +2460,6 @@ function setupRangeSelector() {
   });
 }
 
-function setupCycleSelector() {
-  const select = document.getElementById('cycle-quota-select');
-  if (select) {
-    select.addEventListener('change', (e) => fetchCycles(e.target.value));
-  }
-}
-
 function setupCycleFilters() {
   // Range pills
   const rangePills = document.getElementById('cycle-range-pills');
@@ -2522,21 +2471,7 @@ function setupCycleFilters() {
       pill.classList.add('active');
       State.cyclesRange = parseInt(pill.dataset.range, 10);
       State.cyclesPage = 1;
-      renderCyclesTable();
-    });
-  }
-
-  // Group pills
-  const groupPills = document.getElementById('cycle-group-pills');
-  if (groupPills) {
-    groupPills.addEventListener('click', (e) => {
-      const pill = e.target.closest('.filter-pill');
-      if (!pill) return;
-      groupPills.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
-      pill.classList.add('active');
-      State.cyclesGroup = parseInt(pill.dataset.group, 10);
-      State.cyclesPage = 1;
-      renderCyclesTable();
+      fetchCycles(); // Re-fetch with new range
     });
   }
 }
@@ -2668,10 +2603,14 @@ function renderOverviewTable() {
   headerHtml += '</tr>';
   thead.innerHTML = headerHtml;
 
-  // Attach sort handlers to new headers
+  // Attach sort handlers to new headers and restore sort indicator
   thead.querySelectorAll('th[data-sort-key]').forEach(th => {
     th.addEventListener('click', () => handleTableSort('overview', th));
     th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTableSort('overview', th); } });
+    // Restore sort indicator if this column is currently sorted
+    if (State.overviewSort.key === th.dataset.sortKey) {
+      th.setAttribute('data-sort-dir', State.overviewSort.dir);
+    }
   });
 
   let data = [...State.allOverviewData];
@@ -2710,6 +2649,17 @@ function renderOverviewTable() {
   const startIdx = pageSize > 0 ? (page - 1) * pageSize : 0;
   const pageData = pageSize > 0 ? data.slice(startIdx, startIdx + pageSize) : data;
 
+  // Format value with rate: "45.2% [⚡5.2%/hr]"
+  const fmtOverviewWithRate = (val, durationHrs, suffix) => {
+    if (typeof val !== 'number') return '--';
+    const valStr = val.toFixed(1) + suffix;
+    if (durationHrs > 0) {
+      const rate = val / durationHrs;
+      return `${valStr} <span class="rate-indicator">[⚡${rate.toFixed(1)}${suffix}/hr]</span>`;
+    }
+    return valStr;
+  };
+
   if (pageData.length === 0) {
     const colCount = 5 + quotaNames.length;
     tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">No completed cycles found for this period.</td></tr>`;
@@ -2719,14 +2669,17 @@ function renderOverviewTable() {
       const end = row.cycleEnd || null;
       const startDate = start ? new Date(start) : null;
       const endDate = end ? new Date(end) : null;
-      const duration = (startDate && endDate) ? formatDuration(Math.floor((endDate - startDate) / 1000)) : '--';
+      const durationMs = (startDate && endDate) ? endDate - startDate : 0;
+      const durationHrs = durationMs / 3600000;
+      const duration = durationMs > 0 ? formatDuration(Math.floor(durationMs / 1000)) : '--';
+      const suffix = usePercent ? '%' : '';
 
       let html = `<tr>
         <td>${row.cycleId}</td>
         <td>${start ? formatDateTime(start) : '--'}</td>
         <td>${end ? formatDateTime(end) : '<span class="badge">Active</span>'}</td>
         <td>${duration}</td>
-        <td>${typeof row.totalDelta === 'number' ? row.totalDelta.toFixed(1) + (usePercent ? '%' : '') : '--'}</td>`;
+        <td>${fmtOverviewWithRate(row.totalDelta, durationHrs, suffix)}</td>`;
 
       quotaNames.forEach(qn => {
         const pct = getCrossQuotaPercent(row, qn);
@@ -2811,11 +2764,7 @@ function setupTableControls() {
     });
   }
 
-  // Sort headers (cycles)
-  document.querySelectorAll('#cycles-table th[data-sort-key]').forEach(th => {
-    th.addEventListener('click', () => handleTableSort('cycles', th));
-    th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTableSort('cycles', th); } });
-  });
+  // Sort headers (cycles): attached dynamically in renderCyclesTable() since headers are dynamic
 
   // Sort headers (sessions)
   document.querySelectorAll('#sessions-table th[data-sort-key]').forEach(th => {
@@ -3737,7 +3686,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initTimezoneBadge();
   setupProviderSelector();
   setupRangeSelector();
-  setupCycleSelector();
   setupCycleFilters();
   setupPasswordToggle();
   setupTableControls();
@@ -3746,8 +3694,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupCardModals();
 
   if (document.getElementById('usage-chart') || document.getElementById('both-view')) {
-    const provider = getCurrentProvider();
-    const defaultCycleType = provider === 'both' ? 'subscription' : provider === 'anthropic' ? 'five_hour' : provider === 'zai' ? 'tokens' : 'subscription';
     initChart();
 
     // Critical path: fetch above-fold data in parallel
@@ -3759,7 +3705,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ]);
 
     // Below-fold: lazy-load when sections scroll into view
-    lazyLoadOnVisible('.cycles-section', () => fetchCycles(defaultCycleType));
+    lazyLoadOnVisible('.cycles-section', () => fetchCycles());
     lazyLoadOnVisible('.cycle-overview-section', () => fetchCycleOverview());
     lazyLoadOnVisible('.sessions-section', () => fetchSessions());
 
@@ -3777,6 +3723,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Update sessions table header for "both" mode
+    const provider = getCurrentProvider();
     if (provider === 'both') {
       const sessionsHead = document.querySelector('#sessions-table thead tr');
       if (sessionsHead) {

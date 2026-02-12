@@ -530,6 +530,21 @@ func run() error {
 		logger.Error("Session migration failed", "error", err)
 	}
 
+	// Run cycle migration to fix historical cycles with incorrect durations (runs once)
+	if results, err := db.RunCycleMigrationIfNeeded(logger); err != nil {
+		logger.Error("Cycle migration failed", "error", err)
+	} else if len(results) > 0 {
+		for _, r := range results {
+			logger.Info("Cycle migration result",
+				"provider", r.Provider,
+				"quotaType", r.QuotaType,
+				"cyclesFixed", r.CyclesFixed,
+				"cyclesCreated", r.CyclesCreated,
+				"snapshotsUsed", r.SnapshotsUsed,
+			)
+		}
+	}
+
 	// Auto-detect Anthropic token if not explicitly configured
 	if cfg.AnthropicToken == "" {
 		if token := api.DetectAnthropicToken(logger); token != "" {

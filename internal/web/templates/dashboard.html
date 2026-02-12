@@ -383,6 +383,7 @@
             </div>
             <div class="table-footer">
                 <span class="table-info" id="overview-info">Showing 0-0 of 0</span>
+                <span class="table-legend">⚡ = consumption rate per hour</span>
                 <div class="table-pagination" id="overview-pagination"></div>
             </div>
         </section>
@@ -397,30 +398,6 @@
                     Polling History
                 </h3>
                 <div class="cycles-filters-inline">
-                    <select class="quota-select" id="cycle-quota-select" aria-label="Select quota type">
-                        {{if eq .CurrentProvider "both"}}
-                        <optgroup label="Synthetic">
-                            <option value="subscription">Subscription</option>
-                            <option value="toolcall">Tool Calls</option>
-                        </optgroup>
-                        <optgroup label="Z.ai">
-                            <option value="tokens">Tokens</option>
-                            <option value="time">Time</option>
-                        </optgroup>
-                        {{if .HasAnthropic}}
-                        <optgroup label="Anthropic" id="cycle-anthropic-optgroup">
-                        </optgroup>
-                        {{end}}
-                        {{else if eq .CurrentProvider "anthropic"}}
-                        <!-- Anthropic cycle options populated dynamically by JS -->
-                        {{else if eq .CurrentProvider "zai"}}
-                        <option value="tokens">Tokens</option>
-                        <option value="time">Time</option>
-                        {{else}}
-                        <option value="subscription">Subscription</option>
-                        <option value="toolcall">Tool Calls</option>
-                        {{end}}
-                    </select>
                     <div class="filter-group">
                         <span class="filter-label">Range</span>
                         <div class="filter-pills" id="cycle-range-pills" role="group" aria-label="Time range">
@@ -429,15 +406,6 @@
                             <button class="filter-pill" data-range="604800000">7d</button>
                             <button class="filter-pill" data-range="1296000000">15d</button>
                             <button class="filter-pill" data-range="2592000000">30d</button>
-                        </div>
-                    </div>
-                    <div class="filter-group">
-                        <span class="filter-label">Group</span>
-                        <div class="filter-pills" id="cycle-group-pills" role="group" aria-label="Grouping interval">
-                            <button class="filter-pill" data-group="60000">1m</button>
-                            <button class="filter-pill active" data-group="300000">5m</button>
-                            <button class="filter-pill" data-group="1800000">30m</button>
-                            <button class="filter-pill" data-group="3600000">1h</button>
                         </div>
                     </div>
                     <select class="page-size-select" id="cycles-page-size" aria-label="Rows per page">
@@ -450,26 +418,25 @@
             </header>
             <div class="table-wrapper">
                 <table class="data-table" id="cycles-table">
-                    <thead>
+                    <thead id="cycles-thead">
                         <tr>
-                            <th data-sort-key="id" role="button" tabindex="0">Poll # <span class="sort-arrow"></span></th>
+                            <th data-sort-key="id" role="button" tabindex="0">Cycle <span class="sort-arrow"></span></th>
                             <th data-sort-key="start" role="button" tabindex="0">Start <span class="sort-arrow"></span></th>
                             <th data-sort-key="end" role="button" tabindex="0">End <span class="sort-arrow"></span></th>
                             <th data-sort-key="duration" role="button" tabindex="0">Duration <span class="sort-arrow"></span></th>
-                            <th data-sort-key="peak" role="button" tabindex="0">Peak <span class="sort-arrow"></span></th>
-                            <th data-sort-key="total" role="button" tabindex="0">Total <span class="sort-arrow"></span></th>
-                            <th data-sort-key="rate" role="button" tabindex="0">Rate <span class="sort-arrow"></span></th>
+                            <th data-sort-key="totalDelta" role="button" tabindex="0">Total Δ <span class="sort-arrow"></span></th>
                         </tr>
                     </thead>
                     <tbody id="cycles-tbody">
                         <tr>
-                            <td colspan="7" class="empty-state">No polling data yet. Tracking begins on first poll.</td>
+                            <td colspan="5" class="empty-state">No polling data yet. Tracking begins on first poll.</td>
                         </tr>
                     </tbody>
                 </table>
             </div>
             <div class="table-footer">
                 <span class="table-info" id="cycles-info">Showing 0-0 of 0</span>
+                <span class="table-legend">⚡ = consumption rate per hour</span>
                 <div class="table-pagination" id="cycles-pagination"></div>
             </div>
         </section>
@@ -502,9 +469,9 @@
                             <th data-sort-key="end" role="button" tabindex="0">Ended <span class="sort-arrow"></span></th>
                             <th data-sort-key="duration" role="button" tabindex="0">Duration <span class="sort-arrow"></span></th>
                             {{if eq .CurrentProvider "anthropic"}}
-                            <th data-sort-key="sub" role="button" tabindex="0" id="anth-session-col-0">5-Hour % <span class="sort-arrow"></span></th>
-                            <th data-sort-key="search" role="button" tabindex="0" id="anth-session-col-1">Weekly % <span class="sort-arrow"></span></th>
-                            <th data-sort-key="tool" role="button" tabindex="0" id="anth-session-col-2">Sonnet % <span class="sort-arrow"></span></th>
+                            <th data-sort-key="sub" role="button" tabindex="0" id="anth-session-col-0">5-Hour <span class="sort-arrow"></span></th>
+                            <th data-sort-key="search" role="button" tabindex="0" id="anth-session-col-1">Weekly <span class="sort-arrow"></span></th>
+                            <th data-sort-key="tool" role="button" tabindex="0" id="anth-session-col-2">Sonnet <span class="sort-arrow"></span></th>
                             {{else if eq .CurrentProvider "zai"}}
                             <th data-sort-key="snapshots" role="button" tabindex="0">Snapshots <span class="sort-arrow"></span></th>
                             {{else}}

@@ -68,7 +68,9 @@ func (t *AnthropicTracker) Process(snapshot *api.AnthropicSnapshot) error {
 }
 
 // processQuota handles cycle detection and tracking for a single Anthropic quota.
-// Reset detection: ResetsAt timestamp changes (like Z.ai tokens quota).
+// Reset detection uses two methods:
+// 1. Time-based: If the stored cycle's ResetsAt has passed, the cycle should have ended
+// 2. API-based: If the API's ResetsAt differs significantly from stored (>10 min tolerance)
 func (t *AnthropicTracker) processQuota(quota api.AnthropicQuota, capturedAt time.Time) error {
 	quotaName := quota.Name
 	currentUtil := quota.Utilization
@@ -99,25 +101,47 @@ func (t *AnthropicTracker) processQuota(quota api.AnthropicQuota, capturedAt tim
 		return nil
 	}
 
-	// Check for reset: compare ResetsAt timestamps with 10-minute tolerance.
+	// Reset detection method 1: Time-based check
+	// If the stored cycle's ResetsAt has passed, the quota has reset (even if app was offline).
+	// Use a small grace period (2 min) to account for clock drift and API delays.
+	resetDetected := false
+	resetReason := ""
+	if cycle.ResetsAt != nil && capturedAt.After(cycle.ResetsAt.Add(2*time.Minute)) {
+		resetDetected = true
+		resetReason = "time-based (stored ResetsAt passed)"
+	}
+
+	// Reset detection method 2: API-based check
+	// Compare ResetsAt timestamps with 10-minute tolerance.
 	// Anthropic's resets_at jitters by up to ±1 second on each API response
 	// (e.g., 22:59:59.709 vs 23:00:00.313), sometimes crossing minute
 	// boundaries. Real resets shift by ≥5 hours (the shortest quota window),
 	// so any change <10 minutes is guaranteed to be API jitter.
-	resetDetected := false
-	if quota.ResetsAt != nil && cycle.ResetsAt != nil {
-		diff := quota.ResetsAt.Sub(*cycle.ResetsAt)
-		if diff < 0 {
-			diff = -diff
-		}
-		if diff > 10*time.Minute {
+	if !resetDetected {
+		if quota.ResetsAt != nil && cycle.ResetsAt != nil {
+			diff := quota.ResetsAt.Sub(*cycle.ResetsAt)
+			if diff < 0 {
+				diff = -diff
+			}
+			if diff > 10*time.Minute {
+				resetDetected = true
+				resetReason = "api-based (ResetsAt changed)"
+			}
+		} else if quota.ResetsAt != nil && cycle.ResetsAt == nil {
 			resetDetected = true
+			resetReason = "api-based (new ResetsAt appeared)"
 		}
-	} else if quota.ResetsAt != nil && cycle.ResetsAt == nil {
-		resetDetected = true
 	}
 
 	if resetDetected {
+		// Determine the actual cycle end time:
+		// - If we have a stored ResetsAt and it's in the past, use it as cycle end
+		// - Otherwise use capturedAt (API-based detection)
+		cycleEndTime := capturedAt
+		if cycle.ResetsAt != nil && capturedAt.After(*cycle.ResetsAt) {
+			cycleEndTime = *cycle.ResetsAt
+		}
+
 		// Update delta from last snapshot before closing
 		if t.hasLast {
 			if lastUtil, ok := t.lastValues[quotaName]; ok {
@@ -131,12 +155,12 @@ func (t *AnthropicTracker) processQuota(quota api.AnthropicQuota, capturedAt tim
 			}
 		}
 
-		// Close old cycle
-		if err := t.store.CloseAnthropicCycle(quotaName, capturedAt, cycle.PeakUtilization, cycle.TotalDelta); err != nil {
+		// Close old cycle at the actual reset time
+		if err := t.store.CloseAnthropicCycle(quotaName, cycleEndTime, cycle.PeakUtilization, cycle.TotalDelta); err != nil {
 			return fmt.Errorf("failed to close cycle: %w", err)
 		}
 
-		// Create new cycle
+		// Create new cycle starting from capturedAt (when we actually detected it)
 		if _, err := t.store.CreateAnthropicCycle(quotaName, capturedAt, quota.ResetsAt); err != nil {
 			return fmt.Errorf("failed to create new cycle: %w", err)
 		}
@@ -150,8 +174,10 @@ func (t *AnthropicTracker) processQuota(quota api.AnthropicQuota, capturedAt tim
 		}
 		t.logger.Info("Detected Anthropic quota reset",
 			"quota", quotaName,
+			"reason", resetReason,
 			"oldResetsAt", cycle.ResetsAt,
 			"newResetsAt", quota.ResetsAt,
+			"cycleEndTime", cycleEndTime,
 			"totalDelta", cycle.TotalDelta,
 		)
 		if t.onReset != nil {
