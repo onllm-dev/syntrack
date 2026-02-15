@@ -250,6 +250,42 @@ git push && git push --tags
 
 The workflow builds, tests, and publishes binaries automatically.
 
+### Docker Container Registry
+
+The workflow at `.github/workflows/docker-publish.yml` automatically builds and publishes multi-platform Docker images to GitHub Container Registry (GHCR) when a release is published.
+
+**Features:**
+- Multi-architecture support: `linux/amd64` and `linux/arm64`
+- Published to `ghcr.io/kquinsland/onwatch`
+- Tagged with version numbers and `latest`
+- Uses Docker buildx with QEMU for cross-platform builds
+- Implements GitHub Actions cache for faster builds
+
+**Tags generated:**
+- `ghcr.io/kquinsland/onwatch:latest` - Latest release
+- `ghcr.io/kquinsland/onwatch:vX.Y.Z` - Specific version (e.g., v2.10.0)
+- `ghcr.io/kquinsland/onwatch:X.Y` - Major.minor (e.g., 2.10)
+- `ghcr.io/kquinsland/onwatch:X` - Major version (e.g., 2)
+
+**Workflow triggers:**
+- Automatically on release publication
+- After the `release.yml` workflow creates a GitHub release
+
+**Usage:**
+```bash
+# Pull the latest image
+docker pull ghcr.io/kquinsland/onwatch:latest
+
+# Or a specific version
+docker pull ghcr.io/kquinsland/onwatch:vX.Y.Z
+
+# Run it
+docker run -d --name onwatch -p 9211:9211 \
+  -v onwatch-data:/data \
+  --env-file .env \
+  ghcr.io/kquinsland/onwatch:latest
+```
+
 ---
 
 ## Dependencies
