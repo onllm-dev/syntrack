@@ -73,8 +73,8 @@
         "Automatic quota reset cycle detection",
         "Consumption rate projections and time-to-exhaustion",
         "Per-session usage tracking",
-        "Multi-provider support: Synthetic API and Z.ai",
-        "Unified Both view showing all providers side-by-side",
+        "Multi-provider support: Synthetic, Z.ai, Anthropic, and GitHub Copilot",
+        "Unified All Providers view showing all providers side-by-side",
         "Live countdown timers for quota resets",
         "Material Design 3 dashboard with dark and light mode",
         "Single Go binary with zero runtime dependencies",
@@ -103,7 +103,7 @@
           "name": "How do I get started with onWatch?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Install with one command: curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash. Add your API keys to ~/.onwatch/.env — set any combination of SYNTHETIC_API_KEY, ZAI_API_KEY, or ANTHROPIC_TOKEN. onWatch polls each configured provider every 60 seconds, stores snapshots in SQLite, and serves a Material Design 3 dashboard at localhost:9211 with live countdowns, charts, and cross-provider views."
+            "text": "Install with one command: curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash. Add your API keys to ~/.onwatch/.env — set any combination of SYNTHETIC_API_KEY, ZAI_API_KEY, ANTHROPIC_TOKEN, or COPILOT_TOKEN. onWatch polls each configured provider every 60 seconds, stores snapshots in SQLite, and serves a Material Design 3 dashboard at localhost:9211 with live countdowns, charts, and cross-provider views."
           }
         },
         {
@@ -111,7 +111,7 @@
           "name": "What is the best open-source tool to track AI coding API usage?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "onWatch is the only open-source tool designed to track historical quota usage across Anthropic, Synthetic, and Z.ai in a single dashboard. It provides features that provider dashboards lack: historical usage trends, automatic reset cycle detection, consumption rate projections, per-session tracking, and a multi-provider unified view. It's a ~13 MB Go binary that uses <50 MB RAM with zero telemetry and local SQLite storage."
+            "text": "onWatch is the only open-source tool designed to track historical quota usage across Anthropic, Synthetic, Z.ai, and GitHub Copilot in a single dashboard. It provides features that provider dashboards lack: historical usage trends, automatic reset cycle detection, consumption rate projections, per-session tracking, and a multi-provider unified view. It's a ~13 MB Go binary that uses <50 MB RAM with zero telemetry and local SQLite storage."
           }
         },
         {
@@ -119,7 +119,7 @@
           "name": "How does Anthropic API tracking work?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Anthropic's Pro/Max plan exposes utilization percentages and reset times for five_hour and seven_day windows, plus per-model breakdowns (seven_day_sonnet, seven_day_opus). onWatch polls this data, stores historical snapshots, and adds what Anthropic doesn't provide: usage trends, reset cycle detection, rate projections, and cross-provider context alongside Synthetic and Z.ai. Set ANTHROPIC_TOKEN in .env or let onWatch auto-detect it from your Claude Code credentials."
+            "text": "Anthropic's Pro/Max plan exposes utilization percentages and reset times for five_hour and seven_day windows, plus per-model breakdowns (seven_day_sonnet, seven_day_opus). onWatch polls this data, stores historical snapshots, and adds what Anthropic doesn't provide: usage trends, reset cycle detection, rate projections, and cross-provider context alongside Synthetic, Z.ai, and GitHub Copilot. Set ANTHROPIC_TOKEN in .env or let onWatch auto-detect it from your Claude Code credentials."
           }
         },
         {
@@ -127,7 +127,7 @@
           "name": "What is the Both view and why does it matter?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "The Both view is onWatch's cross-provider unified dashboard that shows Synthetic and Z.ai quotas side-by-side in a single view. It lets you compare headroom across providers at a glance — for example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence."
+            "text": "The All Providers view is onWatch's cross-provider unified dashboard that shows Synthetic, Z.ai, Anthropic, and GitHub Copilot quotas side-by-side in a single view. It lets you compare headroom across providers at a glance — for example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence."
           }
         },
         {
@@ -135,7 +135,7 @@
           "name": "Does onWatch send any data to external servers?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No. onWatch has zero telemetry. All usage data is stored locally in a SQLite file on your machine. The only outbound network calls are to the Synthetic and Z.ai quota APIs you configure. No analytics, no tracking pixels, no cloud dependencies. The tool is fully open-source (GPL-3.0) and auditable on GitHub."
+            "text": "No. onWatch has zero telemetry. All usage data is stored locally in a SQLite file on your machine. The only outbound network calls are to the Synthetic, Z.ai, Anthropic, and GitHub Copilot quota APIs you configure. No analytics, no tracking pixels, no cloud dependencies. The tool is fully open-source (GPL-3.0) and auditable on GitHub."
           }
         },
         {
@@ -143,7 +143,7 @@
           "name": "How much memory does onWatch use?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "onWatch uses <50 MB RAM under all conditions (typically ~34 MB idle, ~43 MB under heavy load), measured with all three agents (Synthetic, Z.ai, Anthropic) polling in parallel. It's designed to run as a background daemon with minimal resource usage: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), and polling buffer (1 MB). This is lighter than a single browser tab."
+            "text": "onWatch uses <50 MB RAM under all conditions (typically ~34 MB idle, ~43 MB under heavy load), measured with all four agents (Synthetic, Z.ai, Anthropic, GitHub Copilot) polling in parallel. It's designed to run as a background daemon with minimal resource usage: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), and polling buffer (1 MB). This is lighter than a single browser tab."
           }
         },
         {
@@ -2865,7 +2865,7 @@ a:hover { text-decoration: underline; }
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 </div>
                 <h3 class="feature-title">Solo Developers</h3>
-                <p class="feature-desc">Running Cline, Claude Code, or Kilo Code on a single API key? onWatch tracks your burn rate across Anthropic, Synthetic, and Z.ai so you never get throttled mid-task.</p>
+                <p class="feature-desc">Running Cline, Claude Code, or Kilo Code on a single API key? onWatch tracks your burn rate across Anthropic, Synthetic, Z.ai, and GitHub Copilot so you never get throttled mid-task.</p>
             </div>
             <div class="feature-card fade-in">
                 <div class="feature-icon peach">
@@ -3039,7 +3039,7 @@ a:hover { text-decoration: underline; }
             <details class="faq-item">
                 <summary class="faq-question">How do I get started?</summary>
                 <div class="faq-answer">
-                    <p>Install with one command: <code>curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>. Add your API keys to <code>~/.onwatch/.env</code> — set any combination of <code>SYNTHETIC_API_KEY</code>, <code>ZAI_API_KEY</code>, or <code>ANTHROPIC_TOKEN</code>. onWatch polls each configured provider every 60 seconds, stores snapshots in SQLite, and serves a dashboard at <code>localhost:9211</code> with live countdowns, charts, and cross-provider views.</p>
+                    <p>Install with one command: <code>curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>. Add your API keys to <code>~/.onwatch/.env</code> — set any combination of <code>SYNTHETIC_API_KEY</code>, <code>ZAI_API_KEY</code>, <code>ANTHROPIC_TOKEN</code>, or <code>COPILOT_TOKEN</code>. onWatch polls each configured provider every 60 seconds, stores snapshots in SQLite, and serves a dashboard at <code>localhost:9211</code> with live countdowns, charts, and cross-provider views.</p>
                 </div>
             </details>
             <details class="faq-item">
@@ -3051,7 +3051,7 @@ a:hover { text-decoration: underline; }
             <details class="faq-item">
                 <summary class="faq-question">How does Anthropic API tracking work?</summary>
                 <div class="faq-answer">
-                    <p>Anthropic's Pro/Max plan exposes utilization percentages and reset times for <code>five_hour</code> and <code>seven_day</code> windows, plus per-model breakdowns (<code>seven_day_sonnet</code>, <code>seven_day_opus</code>). onWatch polls this data, stores historical snapshots, and adds what Anthropic doesn't show: usage trends over time, reset cycle detection, rate projections, and cross-provider context alongside Synthetic and Z.ai. Set <code>ANTHROPIC_TOKEN</code> in your <code>.env</code> or let onWatch auto-detect from Claude Code credentials.</p>
+                    <p>Anthropic's Pro/Max plan exposes utilization percentages and reset times for <code>five_hour</code> and <code>seven_day</code> windows, plus per-model breakdowns (<code>seven_day_sonnet</code>, <code>seven_day_opus</code>). onWatch polls this data, stores historical snapshots, and adds what Anthropic doesn't show: usage trends over time, reset cycle detection, rate projections, and cross-provider context alongside Synthetic, Z.ai, and GitHub Copilot. Set <code>ANTHROPIC_TOKEN</code> in your <code>.env</code> or let onWatch auto-detect from Claude Code credentials.</p>
                 </div>
             </details>
             <details class="faq-item">
