@@ -312,6 +312,24 @@ onWatch provides Docker support with a distroless runtime image (~10-12 MB). The
 
 ### Quick Start
 
+**Using pre-built images from GitHub Container Registry:**
+
+Multi-arch images (linux/amd64, linux/arm64) are automatically built and published on each release:
+
+```bash
+# Pull and run the latest release
+docker run -d --name onwatch -p 9211:9211 \
+  -v onwatch-data:/data \
+  -e SYNTHETIC_API_KEY=your_key_here \
+  ghcr.io/kquinsland/onwatch:latest
+
+# Or use a specific version
+docker run -d --name onwatch -p 9211:9211 \
+  -v onwatch-data:/data \
+  --env-file .env \
+  ghcr.io/kquinsland/onwatch:2.10.0
+```
+
 **Docker Compose (recommended):**
 ```bash
 git clone https://github.com/onllm-dev/onwatch.git && cd onwatch
