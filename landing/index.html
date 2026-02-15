@@ -2189,7 +2189,7 @@ a:hover { text-decoration: underline; }
                 <code><span class="install-prefix">$</span> curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>
                 <span class="copy-hint">Copy</span>
             </div>
-            <p class="hero-meta"><span id="hero-version">v2.9.0</span> &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; <50 MB RAM &middot; ~13 MB Binary</p>
+            <p class="hero-meta"><span id="hero-version">v2.10.0</span> &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; <50 MB RAM &middot; ~13 MB Binary</p>
         </div>
 
         <!-- Dashboard Mockup -->
@@ -2439,7 +2439,7 @@ a:hover { text-decoration: underline; }
     <div class="container">
         <div class="fade-in" style="text-align:center;margin-bottom:40px;">
             <div class="section-label">Providers</div>
-            <h2 class="section-title">Three providers, one dashboard</h2>
+            <h2 class="section-title">Four providers, one dashboard</h2>
             <p class="section-desc" style="margin-left:auto;margin-right:auto;">Each provider has different quotas, reset cycles, and gotchas. onWatch handles the complexity.</p>
         </div>
         <div class="provider-grid fade-in">
@@ -2487,6 +2487,21 @@ a:hover { text-decoration: underline; }
                     <li><strong>Tool Calls</strong> — daily limit</li>
                 </ul>
                 <div class="provider-card-note">Normalizes Z.ai's confusing field names (usage = limit, currentValue = used).</div>
+            </div>
+            <!-- GitHub Copilot -->
+            <div class="provider-card provider-card--copilot">
+                <div class="provider-card-head">
+                    <div class="provider-card-icon" style="background:#6e40c9;">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z" fill="#fff"/></svg>
+                    </div>
+                    <div class="provider-card-name">GitHub Copilot <span style="font-size:0.7em;background:#6e40c9;color:#fff;padding:2px 6px;border-radius:4px;margin-left:6px;">Beta</span></div>
+                </div>
+                <ul class="provider-card-quotas">
+                    <li><strong>premium_interactions</strong> — monthly limit (300-1500)</li>
+                    <li><strong>chat</strong> — unlimited</li>
+                    <li><strong>completions</strong> — unlimited</li>
+                </ul>
+                <div class="provider-card-note">Uses GitHub PAT with copilot scope. Monthly reset cycle detection.</div>
             </div>
         </div>
         <!-- Cross-provider banner -->
@@ -2647,12 +2662,14 @@ a:hover { text-decoration: underline; }
                         <th scope="col">Synthetic</th>
                         <th scope="col">Z.ai</th>
                         <th scope="col">Anthropic</th>
+                        <th scope="col">Copilot</th>
                         <th scope="col" class="highlight-col">onWatch</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
                         <td>Current quota usage</td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
                         <td><span class="check" aria-label="Yes">&#10003;</span></td>
                         <td><span class="check" aria-label="Yes">&#10003;</span></td>
                         <td><span class="check" aria-label="Yes">&#10003;</span></td>
@@ -2663,6 +2680,7 @@ a:hover { text-decoration: underline; }
                         <td><span class="check" aria-label="Yes">&#10003;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="check" aria-label="Yes">&#10003;</span></td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
@@ -2670,10 +2688,12 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="check" aria-label="Yes">&#10003;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
                         <td>Reset cycle detection &amp; history</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
@@ -2684,10 +2704,12 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
                         <td>Usage rate &amp; projections</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
@@ -2698,10 +2720,12 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
                         <td>Cross-provider unified view</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
@@ -2712,10 +2736,12 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
                         <td>Email &amp; push alerts</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
@@ -2726,10 +2752,12 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
                         <td>OAuth token auto-refresh</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
@@ -2740,6 +2768,7 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
@@ -2747,10 +2776,12 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
                         <td>Open source &amp; self-hosted</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
