@@ -16,6 +16,8 @@ onWatch fills the gap between "current usage snapshot" and the historical, per-c
 [![Website](https://img.shields.io/badge/onwatch.onllm.dev-7C3AED?style=for-the-badge&logo=globe&logoColor=white)](https://onwatch.onllm.dev)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/prakersh)
 
+[![Star History Chart](https://api.star-history.com/svg?repos=onllm-dev/onwatch&type=Timeline)](https://star-history.com/#onllm-dev/onwatch&Timeline)
+
 ![Anthropic Dashboard — Light Mode](./docs/screenshots/anthropic-light.png)
 
 > Powered by [onllm.dev](https://onllm.dev) | [Landing Page](https://onwatch.onllm.dev)
