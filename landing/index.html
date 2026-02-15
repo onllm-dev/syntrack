@@ -371,6 +371,24 @@ a:hover { text-decoration: underline; }
 .nav-cta:hover { opacity: 0.9; text-decoration: none; }
 .nav-cta svg { width: 16px; height: 16px; }
 
+.nav-support {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-decoration: none;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.nav-support:hover { color: #FFDD00; border-color: #FFDD00; text-decoration: none; }
+.nav-support svg { width: 14px; height: 14px; }
+
 .nav-install-cmd {
   display: flex;
   align-items: center;
@@ -2008,6 +2026,23 @@ a:hover { text-decoration: underline; }
 }
 .footer-link:hover { color: var(--accent-teal); text-decoration: none; }
 
+.footer-support {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.footer-support:hover { color: #FFDD00; border-color: #FFDD00; text-decoration: none; }
+.footer-support svg { width: 14px; height: 14px; }
+
 .footer-copy {
   font-size: 12px;
   color: var(--text-muted);
@@ -2052,6 +2087,7 @@ a:hover { text-decoration: underline; }
   .hero-desc { font-size: 16px; }
   .nav-links .nav-link { display: none; }
   .nav-install-cmd { display: none; }
+  .nav-support { display: none; }
   .features-grid { grid-template-columns: 1fr; }
   .mockup-cards { grid-template-columns: 1fr; }
   .providers-grid { gap: 16px; flex-direction: column; }
@@ -2149,6 +2185,10 @@ a:hover { text-decoration: underline; }
             <a href="https://github.com/onllm-dev/onwatch" class="nav-cta" target="_blank" rel="noopener noreferrer">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
                 GitHub
+            </a>
+            <a href="https://buymeacoffee.com/prakersh" class="nav-support" target="_blank" rel="noopener noreferrer" title="Support onWatch">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+                Support
             </a>
         </div>
     </div>
@@ -3251,6 +3291,10 @@ a:hover { text-decoration: underline; }
                 <a href="https://github.com/onllm-dev/onwatch" class="footer-link" target="_blank" rel="noopener noreferrer">GitHub</a>
                 <a href="https://github.com/onllm-dev/onwatch/releases" class="footer-link" target="_blank" rel="noopener noreferrer">Releases</a>
                 <a href="https://github.com/onllm-dev/onwatch/blob/main/LICENSE" class="footer-link" target="_blank" rel="noopener noreferrer">GPL-3.0 License</a>
+                <a href="https://buymeacoffee.com/prakersh" class="footer-support" target="_blank" rel="noopener noreferrer">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+                    Buy Me a Coffee
+                </a>
             </div>
             <div class="footer-copy">Powered by <a href="https://onllm.dev" target="_blank" rel="noopener noreferrer" style="color:var(--accent-teal);">onllm.dev</a> &middot; Built with <a href="https://www.chartjs.org/" target="_blank" rel="noopener noreferrer" style="color:var(--text-muted);">Chart.js</a> &middot; <a href="https://pkg.go.dev/modernc.org/sqlite" target="_blank" rel="noopener noreferrer" style="color:var(--text-muted);">modernc.org/sqlite</a></div>
         </div>

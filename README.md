@@ -14,6 +14,7 @@ onWatch fills the gap between "current usage snapshot" and the historical, per-c
 [![Go 1.25+](https://img.shields.io/badge/Go-1.25+-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://go.dev)
 [![Platform](https://img.shields.io/badge/macOS%20%7C%20Linux%20%7C%20Windows-orange?style=for-the-badge&logo=apple&logoColor=white)](#quick-start)
 [![Website](https://img.shields.io/badge/onwatch.onllm.dev-7C3AED?style=for-the-badge&logo=globe&logoColor=white)](https://onwatch.onllm.dev)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/prakersh)
 
 ![Anthropic Dashboard — Light Mode](./docs/screenshots/anthropic-light.png)
 
@@ -422,6 +423,14 @@ See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for build instructions, cross-compilat
 ## License
 
 GNU General Public License v3.0. See [LICENSE](LICENSE).
+
+---
+
+## Support
+
+If onWatch saves you time, consider buying me a coffee:
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/prakersh)
 
 ---
 
