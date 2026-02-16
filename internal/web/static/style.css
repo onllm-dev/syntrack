@@ -1744,6 +1744,14 @@ button, input, select { font-family: inherit; }
   text-decoration: underline;
 }
 
+.footer-support {
+  color: var(--text-muted);
+}
+.footer-support:hover {
+  color: #FFDD00;
+  opacity: 1;
+}
+
 .footer-update {
   display: inline-flex;
   align-items: center;
