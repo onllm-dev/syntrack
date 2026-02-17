@@ -85,7 +85,9 @@ go test -race ./...     # ALWAYS before commit
 go test -race -cover ./... && go vet ./...  # Must pass
 ```
 
-**Style:** `gofmt`/`govet`, error wrap `fmt.Errorf("x: %w", err)`, conventional commits (`feat:`/`fix:`/`test:`).
+**Style:** `gofmt`/`govet`, error wrap `fmt.Errorf("x: %w", err)`, conventional commits (`feat:`/`fix:`/`test:`). Use `-` (hyphen), not `—` (em-dash) in text.
+
+**Container Detection:** `IsDockerEnvironment()` must detect ALL container runtimes - Docker (`/.dockerenv`), Kubernetes (`KUBERNETES_SERVICE_HOST`, `/var/run/secrets/kubernetes.io/serviceaccount`), and explicit (`DOCKER_CONTAINER` env). Containers always run in foreground mode (no daemon fork).
 
 **Temp files:** All in `temp/` (gitignored). Release screenshots only in `docs/screenshots/`.
 
@@ -121,4 +123,5 @@ Dashboard thresholds (defaults, customizable via `/settings`): green (0-49%), ye
 | Copilot store | `internal/store/copilot_store.go` |
 | Copilot tracker | `internal/tracker/copilot_tracker.go` |
 | Copilot agent | `internal/agent/copilot_agent.go` |
+| Container detection | `internal/config/config.go:IsDockerEnvironment()` |
 | Design system | `design-system/onwatch/MASTER.md` |
