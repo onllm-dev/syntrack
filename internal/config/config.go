@@ -418,16 +418,24 @@ func (c *Config) LogWriter() (io.Writer, error) {
 	return file, nil
 }
 
-// IsDockerEnvironment detects if running inside a Docker container.
-// Checks for the presence of /.dockerenv (created by Docker) or the
-// DOCKER_CONTAINER environment variable (set by some container runtimes).
+// IsDockerEnvironment detects if running inside a container (Docker, Kubernetes, etc.).
+// Checks for Docker indicators (/.dockerenv, DOCKER_CONTAINER env var) and
+// Kubernetes indicators (KUBERNETES_SERVICE_HOST env var, service account mount).
 func (c *Config) IsDockerEnvironment() bool {
-	// Check for /.dockerenv file (standard Docker indicator)
+	// Check for /.dockerenv file (Docker-specific indicator)
 	if _, err := os.Stat("/.dockerenv"); err == nil {
 		return true
 	}
 	// Check for DOCKER_CONTAINER environment variable
 	if os.Getenv("DOCKER_CONTAINER") != "" {
+		return true
+	}
+	// Check for Kubernetes environment (containerd/CRI-O don't create /.dockerenv)
+	if os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+		return true
+	}
+	// Check for Kubernetes service account mount (present in all k8s pods)
+	if _, err := os.Stat("/var/run/secrets/kubernetes.io/serviceaccount"); err == nil {
 		return true
 	}
 	return false
