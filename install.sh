@@ -406,6 +406,11 @@ append_zai_to_env() {
     printf '\n# Z.ai API key (https://www.z.ai/api-keys)\nZAI_API_KEY=%s\n\n# Z.ai base URL\nZAI_BASE_URL=%s\n' "$key" "$base_url" >> "$env_file"
 }
 
+append_codex_to_env() {
+    local token="$1" env_file="${INSTALL_DIR}/.env"
+    printf '\n# Codex OAuth token\nCODEX_TOKEN=%s\n' "$token" >> "$env_file"
+}
+
 # ─── Collect Z.ai Key + Base URL ────────────────────────────────────
 # Shared between fresh setup and add-provider flow
 collect_zai_config() {
@@ -431,6 +436,17 @@ collect_zai_config() {
 
     # Return both values separated by newline
     printf '%s\n%s' "$_zai_key" "$_zai_base_url"
+}
+
+# Shared between fresh setup and add-provider flow
+collect_codex_config() {
+    local _codex_token=""
+
+    printf "\n  ${BOLD}Codex Token Setup${NC}\n" >&2
+    printf "  ${DIM}Provide your Codex OAuth access token from ~/.codex/auth.json.${NC}\n\n" >&2
+
+    _codex_token=$(prompt_secret "Codex token" validate_nonempty)
+    printf '%s' "$_codex_token"
 }
 
 # Shared between fresh setup and add-provider flow
@@ -528,6 +544,13 @@ has_anthropic_key() {
     [[ -n "$val" && "$val" != "your_token_here" ]]
 }
 
+# Check if Codex token is configured
+has_codex_key() {
+    local val
+    val=$(env_get CODEX_TOKEN)
+    [[ -n "$val" && "$val" != "your_codex_token_here" ]]
+}
+
 # Append Anthropic config to existing .env
 append_anthropic_to_env() {
     local key="$1"
@@ -555,18 +578,19 @@ interactive_setup() {
         SETUP_USERNAME="${SETUP_USERNAME:-admin}"
         SETUP_PASSWORD=""  # Don't show existing password
 
-        local has_syn=false has_zai=false has_anth=false
+        local has_syn=false has_zai=false has_anth=false has_codex=false
         has_synthetic_key && has_syn=true
         has_zai_key && has_zai=true
         has_anthropic_key && has_anth=true
+        has_codex_key && has_codex=true
 
-        if $has_syn && $has_zai && $has_anth; then
+        if $has_syn && $has_zai && $has_anth && $has_codex; then
             # All providers configured — nothing to do
             info "Existing .env found — all providers configured"
             return
         fi
 
-        if ! $has_syn && ! $has_zai && ! $has_anth; then
+        if ! $has_syn && ! $has_zai && ! $has_anth && ! $has_codex; then
             # .env exists but no keys at all — run full setup
             warn "Existing .env found but no API keys configured"
             info "Running interactive setup..."

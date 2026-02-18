@@ -8,7 +8,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_SCRIPT="${SCRIPT_DIR}/install.sh"
+INSTALL_SCRIPT="${SCRIPT_DIR}/../install.sh"
 TEST_DIR=""
 PASS=0
 FAIL=0
@@ -155,6 +155,16 @@ test_anthropic_only_manual_help() {
     assert_eq "ANTHROPIC_TOKEN" "sk-ant-help-test"
 }
 
+test_codex_only_manual() {
+    setup && source_functions
+    detect_codex_token() { return 1; }
+    run_setup "4\ncodex-test-token-123\nadmin\ntestpass\n9211\n60\n"
+    assert_unset "SYNTHETIC_API_KEY" && \
+    assert_unset "ZAI_API_KEY" && \
+    assert_unset "ANTHROPIC_TOKEN" && \
+    assert_eq "CODEX_TOKEN" "codex-test-token-123"
+}
+
 test_anthropic_auto_detected_accepted() {
     setup && source_functions
     detect_anthropic_token() { printf 'auto-detected-token-12345'; }
@@ -220,9 +230,24 @@ ONWATCH_ADMIN_USER=admin
 ONWATCH_ADMIN_PASS=existingpass
 ONWATCH_PORT=9211
 EOF
-    run_setup "y\nzai_upgrade_123\nY\nN\n"
+    run_setup "y\nzai_upgrade_123\nY\nN\nN\n"
     assert_eq "SYNTHETIC_API_KEY" "syn_existing_key" && \
     assert_set "ZAI_API_KEY"
+}
+
+test_upgrade_add_codex() {
+    setup && source_functions
+    detect_anthropic_token() { return 1; }
+    detect_codex_token() { return 1; }
+    cat > "${TEST_DIR}/.env" <<EOF
+SYNTHETIC_API_KEY=syn_existing_key
+ONWATCH_ADMIN_USER=admin
+ONWATCH_ADMIN_PASS=existingpass
+ONWATCH_PORT=9211
+EOF
+    run_setup "N\nN\nN\ny\ncodex-upgrade-token-123\n"
+    assert_eq "SYNTHETIC_API_KEY" "syn_existing_key" && \
+    assert_set "CODEX_TOKEN"
 }
 
 test_upgrade_all_configured_skips() {
@@ -231,6 +256,7 @@ test_upgrade_all_configured_skips() {
 SYNTHETIC_API_KEY=syn_full_key
 ZAI_API_KEY=zai_full_key
 ANTHROPIC_TOKEN=anth_full_token
+CODEX_TOKEN=codex_full_token
 ONWATCH_ADMIN_USER=admin
 ONWATCH_ADMIN_PASS=pass
 ONWATCH_PORT=9211
@@ -238,7 +264,8 @@ EOF
     run_setup ""
     assert_eq "SYNTHETIC_API_KEY" "syn_full_key" && \
     assert_eq "ZAI_API_KEY" "zai_full_key" && \
-    assert_eq "ANTHROPIC_TOKEN" "anth_full_token"
+    assert_eq "ANTHROPIC_TOKEN" "anth_full_token" && \
+    assert_eq "CODEX_TOKEN" "codex_full_token"
 }
 
 test_upgrade_auto_detect_anthropic() {
@@ -328,6 +355,7 @@ run_test test_zai_only_default_url
 run_test test_zai_only_custom_url
 run_test test_anthropic_only_manual_direct
 run_test test_anthropic_only_manual_help
+run_test test_codex_only_manual
 run_test test_anthropic_auto_detected_accepted
 run_test test_anthropic_auto_rejected_manual
 run_test test_multiple_syn_and_anth
@@ -336,6 +364,7 @@ run_test test_multiple_all_three
 run_test test_all_available_choice5
 run_test test_custom_port_and_interval
 run_test test_upgrade_add_zai
+run_test test_upgrade_add_codex
 run_test test_upgrade_all_configured_skips
 run_test test_upgrade_auto_detect_anthropic
 run_test test_has_anthropic_key_rejects_placeholder

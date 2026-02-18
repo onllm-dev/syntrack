@@ -51,6 +51,8 @@ function getCurrentProvider() {
   if (anthropicGrid) return 'anthropic';
   const copilotGrid = document.getElementById('quota-grid-copilot');
   if (copilotGrid) return 'copilot';
+  const codexGrid = document.getElementById('quota-grid-codex');
+  if (codexGrid) return 'codex';
   const grid = document.getElementById('quota-grid');
   return (grid && grid.dataset.provider) || 'synthetic';
 }
@@ -65,6 +67,7 @@ const State = {
   chartSyn: null,
   chartZai: null,
   chartAnth: null,
+  chartCodex: null,
   modalChart: null,
   countdownInterval: null,
   refreshInterval: null,
@@ -306,6 +309,26 @@ const copilotDisplayNames = {
   completions: 'Completions'
 };
 
+const codexDisplayNames = {
+  five_hour: '5-Hour Limit',
+  seven_day: 'Weekly All-Model'
+};
+
+const codexSessionLabels = {
+  sub: '5-Hour Limit',
+  search: 'Weekly All-Model'
+};
+
+// Codex chart colors keyed by quota name
+const codexChartColorMap = {
+  five_hour: { border: '#0EA5E9', bg: 'rgba(14, 165, 233, 0.08)' },
+  seven_day: { border: '#22C55E', bg: 'rgba(34, 197, 94, 0.08)' }
+};
+const codexChartColorFallback = [
+  { border: '#F97316', bg: 'rgba(249, 115, 22, 0.08)' },
+  { border: '#A855F7', bg: 'rgba(168, 85, 247, 0.08)' }
+];
+
 // Copilot quota icons (mapped by key)
 const copilotQuotaIcons = {
   premium_interactions: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>', // layers
@@ -345,6 +368,10 @@ const renewalCategories = {
     { label: 'Premium', groupBy: 'premium_interactions' },
     { label: 'Chat', groupBy: 'chat' },
     { label: 'Completions', groupBy: 'completions' }
+  ],
+  codex: [
+    { label: '5-Hour', groupBy: 'five_hour' },
+    { label: 'Weekly', groupBy: 'seven_day' }
   ]
 };
 
@@ -882,6 +909,243 @@ async function loadCopilotModalCycles(quotaName) {
   } catch (err) { /* modal cycles error — non-critical */ }
 }
 
+// ── Codex Dynamic Card Rendering ──
+
+function renderCodexQuotaCards(quotas, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.innerHTML = quotas.map((q, i) => {
+    const icon = anthropicQuotaIcons[q.name] || '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>';
+    const displayName = q.displayName || codexDisplayNames[q.name] || q.name;
+    const utilPct = (q.utilization || 0).toFixed(1);
+    const status = q.status || 'healthy';
+    const statusCfg = statusConfig[status] || statusConfig.healthy;
+    const countdownId = `countdown-codex-${q.name}`;
+    const progressId = `progress-codex-${q.name}`;
+    const percentId = `percent-codex-${q.name}`;
+    const statusId = `status-codex-${q.name}`;
+    const resetId = `reset-codex-${q.name}`;
+
+    return `<article class="quota-card codex-card" data-quota="${q.name}" data-provider="codex" role="button" tabindex="0" aria-label="View ${displayName} details" style="animation-delay: ${i * 60}ms">
+      <header class="card-header">
+        <h2 class="quota-title">
+          <svg class="quota-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${icon}</svg>
+          ${displayName}
+        </h2>
+        <span class="countdown" id="${countdownId}">${q.timeUntilResetSeconds > 0 ? formatDuration(q.timeUntilResetSeconds) : '--:--'}</span>
+      </header>
+      <div class="progress-stats">
+        <span class="usage-percent" id="${percentId}">${utilPct}%</span>
+        <span class="usage-fraction">Utilization</span>
+      </div>
+      <div class="progress-wrapper">
+        <div class="progress-bar" role="progressbar" aria-valuenow="${Math.round(q.utilization || 0)}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-fill" id="${progressId}" style="width: ${utilPct}%" data-status="${status}"></div>
+        </div>
+      </div>
+      <footer class="card-footer">
+        <span class="status-badge" id="${statusId}" data-status="${status}">
+          <svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${statusCfg.icon}"/></svg>
+          ${statusCfg.label}
+        </span>
+        <span class="reset-time" id="${resetId}">${q.resetsAt ? 'Resets: ' + formatDateTime(q.resetsAt) : ''}</span>
+      </footer>
+    </article>`;
+  }).join('');
+
+  container.querySelectorAll('.quota-card[role="button"]').forEach(card => {
+    const handler = () => {
+      const providerCol = card.closest('.provider-column');
+      const providerOverride = providerCol ? providerCol.dataset.provider : 'codex';
+      openCodexModal(card.dataset.quota, providerOverride);
+    };
+    card.addEventListener('click', handler);
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
+    });
+  });
+}
+
+function updateCodexCard(quota) {
+  const key = `codex-${quota.name}`;
+  const prev = State.currentQuotas[key];
+  State.currentQuotas[key] = {
+    percent: quota.utilization || 0,
+    usage: quota.utilization || 0,
+    limit: 100,
+    status: quota.status || 'healthy',
+    renewsAt: quota.resetsAt,
+    timeUntilReset: quota.timeUntilReset,
+    timeUntilResetSeconds: quota.timeUntilResetSeconds || 0,
+    name: quota.name,
+    displayName: quota.displayName
+  };
+
+  const progressEl = document.getElementById(`progress-codex-${quota.name}`);
+  const percentEl = document.getElementById(`percent-codex-${quota.name}`);
+  const statusEl = document.getElementById(`status-codex-${quota.name}`);
+  const resetEl = document.getElementById(`reset-codex-${quota.name}`);
+  const countdownEl = document.getElementById(`countdown-codex-${quota.name}`);
+
+  const utilPct = (quota.utilization || 0).toFixed(1);
+  const status = quota.status || 'healthy';
+
+  if (progressEl) {
+    progressEl.style.width = `${utilPct}%`;
+    progressEl.setAttribute('data-status', status);
+  }
+  if (percentEl) {
+    const oldVal = prev ? prev.percent : 0;
+    if (Math.abs(oldVal - quota.utilization) > 0.2) {
+      animateValue(percentEl, oldVal, quota.utilization, 400, v => `${v.toFixed(1)}%`);
+    } else {
+      percentEl.textContent = `${utilPct}%`;
+    }
+  }
+  if (statusEl) {
+    const config = statusConfig[status] || statusConfig.healthy;
+    statusEl.setAttribute('data-status', status);
+    statusEl.innerHTML = `<svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${config.icon}"/></svg>${config.label}`;
+  }
+  if (resetEl) {
+    resetEl.textContent = quota.resetsAt ? `Resets: ${formatDateTime(quota.resetsAt)}` : '';
+  }
+  if (countdownEl) {
+    if (quota.timeUntilResetSeconds > 0) {
+      countdownEl.textContent = formatDuration(quota.timeUntilResetSeconds);
+      countdownEl.classList.toggle('imminent', quota.timeUntilResetSeconds < 1800);
+      countdownEl.style.display = '';
+    } else {
+      countdownEl.style.display = 'none';
+    }
+  }
+}
+
+function openCodexModal(quotaName, providerOverride) {
+  const key = `codex-${quotaName}`;
+  const data = State.currentQuotas[key];
+  if (!data) return;
+
+  const modal = document.getElementById('detail-modal');
+  const titleEl = document.getElementById('modal-title');
+  const bodyEl = document.getElementById('modal-body');
+  if (!modal || !bodyEl) return;
+
+  const displayName = data.displayName || codexDisplayNames[quotaName] || quotaName;
+  titleEl.textContent = displayName;
+
+  const statusCfg = statusConfig[data.status] || statusConfig.healthy;
+  const timeLeft = data.timeUntilResetSeconds > 0 ? formatDuration(data.timeUntilResetSeconds) : 'N/A';
+
+  bodyEl.innerHTML = `
+    <div class="modal-kpi-row">
+      <div class="modal-kpi">
+        <div class="modal-kpi-value">${data.percent.toFixed(1)}%</div>
+        <div class="modal-kpi-label">Utilization</div>
+      </div>
+      <div class="modal-kpi">
+        <div class="modal-kpi-value"><span class="status-badge" data-status="${data.status}"><svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${statusCfg.icon}"/></svg>${statusCfg.label}</span></div>
+        <div class="modal-kpi-label">Status</div>
+      </div>
+      <div class="modal-kpi">
+        <div class="modal-kpi-value">${timeLeft}</div>
+        <div class="modal-kpi-label">Until Reset</div>
+      </div>
+    </div>
+    <h3 class="modal-section-title">Usage History</h3>
+    <div class="modal-chart-container">
+      <canvas id="modal-chart"></canvas>
+    </div>
+    <h3 class="modal-section-title">Recent Cycles</h3>
+    <div class="table-wrapper">
+      <table class="data-table" id="modal-cycles-table">
+        <thead><tr><th>Cycle</th><th>Duration</th><th>Peak %</th><th>Total %</th></tr></thead>
+        <tbody id="modal-cycles-tbody"><tr><td colspan="4" class="empty-state">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  `;
+
+  modal.hidden = false;
+  document.getElementById('modal-close').focus();
+
+  loadCodexModalChart(quotaName);
+  loadCodexModalCycles(quotaName);
+}
+
+async function loadCodexModalChart(quotaName) {
+  const ctx = document.getElementById('modal-chart');
+  if (!ctx || typeof Chart === 'undefined') return;
+  if (State.modalChart) { State.modalChart.destroy(); State.modalChart = null; }
+
+  const activeRange = document.querySelector('.range-btn[data-range].active');
+  const range = activeRange ? activeRange.dataset.range : '6h';
+
+  try {
+    const res = await authFetch(`${API_BASE}/api/history?range=${range}&provider=codex`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) return;
+
+    const colors = getThemeColors();
+    const chartData = data.map(d => d[quotaName] || 0);
+    const maxVal = Math.max(...chartData, 0);
+    const yMax = maxVal <= 0 ? 10 : maxVal < 5 ? 10 : Math.min(Math.max(Math.ceil((maxVal * 1.2) / 5) * 5, 10), 100);
+
+    State.modalChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        datasets: [(() => { const c = codexChartColorMap[quotaName] || { border: '#0EA5E9', bg: 'rgba(14, 165, 233, 0.08)' }; return {
+          label: codexDisplayNames[quotaName] || quotaName,
+          data: chartData,
+          borderColor: c.border,
+          backgroundColor: c.bg,
+          fill: true, tension: 0.3, borderWidth: 2.5, pointRadius: 0, pointHoverRadius: 5
+        }; })()]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { backgroundColor: colors.surfaceContainer, titleColor: colors.onSurface, bodyColor: colors.text, borderColor: colors.outline, borderWidth: 1, callbacks: { label: c => `${c.parsed.y.toFixed(1)}%` } }
+        },
+        scales: {
+          x: { grid: { color: colors.grid, drawBorder: false }, ticks: { color: colors.text, maxTicksLimit: 6 } },
+          y: { grid: { color: colors.grid, drawBorder: false }, ticks: { color: colors.text, callback: v => v + '%' }, min: 0, max: yMax }
+        }
+      }
+    });
+  } catch (err) { /* modal chart error — non-critical */ }
+}
+
+async function loadCodexModalCycles(quotaName) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/cycles?type=${quotaName}&provider=codex`);
+    if (!res.ok) return;
+    const cycles = await res.json();
+    const tbody = document.getElementById('modal-cycles-tbody');
+    if (!tbody) return;
+    const recent = cycles.slice(0, 5);
+    if (recent.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No cycles yet.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = recent.map(cycle => {
+      const start = new Date(cycle.cycleStart);
+      const end = cycle.cycleEnd ? new Date(cycle.cycleEnd) : new Date();
+      const durationMins = Math.round((end - start) / 60000);
+      const isActive = !cycle.cycleEnd;
+      return `<tr>
+        <td>#${cycle.id}${isActive ? ' <span class="badge">Active</span>' : ''}</td>
+        <td>${formatDurationMins(durationMins)}</td>
+        <td>${formatNumber(cycle.peakUtilization || 0)}%</td>
+        <td>${formatNumber(cycle.totalDelta || 0)}%</td>
+      </tr>`;
+    }).join('');
+  } catch (err) { /* modal cycles error — non-critical */ }
+}
+
 // ── Utilities ──
 
 function formatDuration(seconds) {
@@ -1313,6 +1577,14 @@ async function fetchCurrent() {
             data.copilot.quotas.forEach(q => updateCopilotCard(q));
           }
         }
+        if (data.codex && data.codex.quotas) {
+          const container = document.getElementById('quota-grid-codex-both');
+          if (container && container.children.length === 0) {
+            renderCodexQuotaCards(data.codex.quotas, 'quota-grid-codex-both');
+          } else {
+            data.codex.quotas.forEach(q => updateCodexCard(q));
+          }
+        }
       } else if (provider === 'copilot') {
         // Copilot response: { capturedAt: ..., quotas: [...] }
         if (data.quotas) {
@@ -1336,6 +1608,16 @@ async function fetchCurrent() {
           if (State.anthropicSessionQuotas.length === 0) {
             State.anthropicSessionQuotas = data.quotas.map(q => q.name).sort().slice(0, 3);
             updateAnthropicSessionHeaders();
+          }
+        }
+      } else if (provider === 'codex') {
+        // Codex response: { capturedAt: ..., quotas: [...] }
+        if (data.quotas) {
+          const container = document.getElementById('quota-grid-codex');
+          if (container && container.children.length === 0) {
+            renderCodexQuotaCards(data.quotas, 'quota-grid-codex');
+          } else {
+            data.quotas.forEach(q => updateCodexCard(q));
           }
         }
       } else if (provider === 'zai') {
@@ -1600,6 +1882,23 @@ function renderBothInsights(data, statsEl, cardsEl) {
         </div>`
       ).join('')}</div>
       <div class="insights-cards">${buildInsightCardsHTML(copilotInsights)}</div>
+    </div>`;
+  }
+
+  // Codex box
+  if (data.codex) {
+    const codexStats = data.codex.stats || [];
+    let codexInsights = (data.codex.insights || []).filter(i => !i.key || !expandedHidden.has(i.key));
+    html += `<div class="provider-insights-box" data-provider="codex">
+      <h4 class="provider-insights-label">Codex</h4>
+      <div class="insights-stats">${codexStats.map(s =>
+        `<div class="insight-stat">
+          <div class="insight-stat-value">${s.value}</div>
+          <div class="insight-stat-label">${s.label}</div>
+          ${s.sublabel ? `<div class="insight-stat-sublabel">${s.sublabel}</div>` : ''}
+        </div>`
+      ).join('')}</div>
+      <div class="insights-cards">${buildInsightCardsHTML(codexInsights)}</div>
     </div>`;
   }
 
@@ -1948,6 +2247,32 @@ async function fetchHistory(range) {
       return;
     }
 
+    if (provider === 'codex') {
+      // Codex history: array of { capturedAt, five_hour, seven_day, ... }
+      const quotaKeys = new Set();
+      data.forEach(d => {
+        Object.keys(d).forEach(k => { if (k !== 'capturedAt') quotaKeys.add(k); });
+      });
+      const sortedKeys = [...quotaKeys].sort();
+      let fallbackIdx = 0;
+      State.chart.data.datasets = sortedKeys.map((key) => {
+        const color = codexChartColorMap[key] || codexChartColorFallback[fallbackIdx++ % codexChartColorFallback.length];
+        return {
+          label: codexDisplayNames[key] || key,
+          data: data.map(d => d[key] || 0),
+          borderColor: color.border,
+          backgroundColor: color.bg,
+          fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4,
+          hidden: State.hiddenQuotas.has(key)
+        };
+      });
+      State.chart.data.labels = data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+      State.chartYMax = computeYMax(State.chart.data.datasets, State.chart);
+      State.chart.options.scales.y.max = State.chartYMax;
+      State.chart.update();
+      return;
+    }
+
     if (provider === 'zai') {
       while (State.chart.data.datasets.length > 3) State.chart.data.datasets.pop();
       if (State.chart.data.datasets.length < 3) {
@@ -1997,6 +2322,8 @@ function updateBothCharts(data) {
   if (!container) return;
 
   const hasAnthData = data.anthropic && Array.isArray(data.anthropic) && data.anthropic.length > 0;
+  const hasCodexData = data.codex && Array.isArray(data.codex) && data.codex.length > 0;
+
   // Create multi-chart layout if not exists
   if (!container.classList.contains('both-charts')) {
     container.classList.add('both-charts');
@@ -2007,12 +2334,20 @@ function updateBothCharts(data) {
     if (hasAnthData) {
       html += `<div class="chart-half"><h4 class="chart-half-label">Anthropic</h4><canvas id="usage-chart-anth"></canvas></div>`;
     }
+    if (hasCodexData) {
+      html += `<div class="chart-half"><h4 class="chart-half-label">Codex</h4><canvas id="usage-chart-codex"></canvas></div>`;
+    }
     container.innerHTML = html;
     // Hide the original single chart canvas
     const origCanvas = document.getElementById('usage-chart');
     if (origCanvas) origCanvas.style.display = 'none';
-  } else if (hasAnthData && !document.getElementById('usage-chart-anth')) {
-    container.insertAdjacentHTML('beforeend', '<div class="chart-half"><h4 class="chart-half-label">Anthropic</h4><canvas id="usage-chart-anth"></canvas></div>');
+  } else {
+    if (hasAnthData && !document.getElementById('usage-chart-anth')) {
+      container.insertAdjacentHTML('beforeend', '<div class="chart-half"><h4 class="chart-half-label">Anthropic</h4><canvas id="usage-chart-anth"></canvas></div>');
+    }
+    if (hasCodexData && !document.getElementById('usage-chart-codex')) {
+      container.insertAdjacentHTML('beforeend', '<div class="chart-half"><h4 class="chart-half-label">Codex</h4><canvas id="usage-chart-codex"></canvas></div>');
+    }
   }
 
   const style = getComputedStyle(document.documentElement);
@@ -2087,6 +2422,44 @@ function updateBothCharts(data) {
       options: buildChartOptions(colors, computeYMax(anthDatasets))
     });
   }
+
+  // Codex chart (dynamic dataset count)
+  const codexCanvas = document.getElementById('usage-chart-codex');
+  if (codexCanvas && hasCodexData) {
+    if (State.chartCodex) State.chartCodex.destroy();
+    const codexData = data.codex;
+    const quotaKeys = new Set();
+    codexData.forEach(d => {
+      Object.keys(d).forEach(k => { if (k !== 'capturedAt') quotaKeys.add(k); });
+    });
+    const sortedKeys = [...quotaKeys].sort();
+    const codexDatasets = (() => {
+      let fi = 0;
+      return sortedKeys.map((key) => {
+        const color = codexChartColorMap[key] || codexChartColorFallback[fi++ % codexChartColorFallback.length];
+        return {
+          label: codexDisplayNames[key] || key,
+          data: codexData.map(d => d[key] || 0),
+          borderColor: color.border,
+          backgroundColor: color.bg,
+          fill: true,
+          tension: 0.4,
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 4
+        };
+      });
+    })();
+
+    State.chartCodex = new Chart(codexCanvas, {
+      type: 'line',
+      data: {
+        labels: codexData.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        datasets: codexDatasets
+      },
+      options: buildChartOptions(colors, computeYMax(codexDatasets))
+    });
+  }
 }
 
 function buildChartOptions(colors, yMax) {
@@ -2154,7 +2527,7 @@ function renderCyclesTable() {
 
   const provider = getCurrentProvider();
   const quotaNames = State.cyclesQuotaNames;
-  const usePercent = provider === 'anthropic' || provider === 'copilot';
+  const usePercent = provider === 'anthropic' || provider === 'copilot' || provider === 'codex';
 
   // Build dynamic header (similar to Cycle Overview)
   let headerHtml = `
@@ -2302,11 +2675,12 @@ async function fetchSessions() {
     const provider = getCurrentProvider();
 
     if (provider === 'both') {
-      // "both" response: { synthetic: [...], zai: [...], anthropic: [...] }
+      // "both" response: { synthetic: [...], zai: [...], anthropic: [...], codex: [...] }
       let merged = [];
       if (data.synthetic) merged = merged.concat(data.synthetic.map(s => ({ ...s, _provider: 'Syn' })));
       if (data.zai) merged = merged.concat(data.zai.map(s => ({ ...s, _provider: 'Z.ai' })));
       if (data.anthropic) merged = merged.concat(data.anthropic.map(s => ({ ...s, _provider: 'Anth' })));
+      if (data.codex) merged = merged.concat(data.codex.map(s => ({ ...s, _provider: 'Codex' })));
       merged.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
       State.allSessionsData = merged;
     } else {
@@ -2349,7 +2723,8 @@ function renderSessionsTable() {
   const isBoth = provider === 'both';
   const isZai = provider === 'zai';
   const isAnthropic = provider === 'anthropic';
-  const colSpan = isBoth ? 6 : isZai ? 5 : 7;
+  const isCodex = provider === 'codex';
+  const colSpan = isBoth ? 6 : isZai ? 5 : isCodex ? 6 : 7;
 
   let data = State.allSessionsData.map((s, i) => ({ ...s, _computed: getSessionComputedFields(s), _index: i }));
 
@@ -2489,6 +2864,61 @@ function renderSessionsTable() {
               <div class="detail-item">
                 <span class="detail-label">${lbl2}</span>
                 <span class="detail-value">${fmtPct(session.startToolRequests)} &rarr; ${fmtPct(session.maxToolRequests)} (${fmtDelta(session.startToolRequests, session.maxToolRequests)})</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Snapshots</span>
+                <span class="detail-value">${session.snapshotCount || 0}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Snapshots/min</span>
+                <span class="detail-value">${c.snapshotsPerMin.toFixed(2)}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Duration</span>
+                <span class="detail-value">${c.durationStr}</span>
+              </div>
+            </div>
+          </div>
+        </td>
+      </tr>`;
+      return mainRow + detailRow;
+    }).join('');
+  } else if (isCodex) {
+    // Codex: show Session, Start, End, Duration, 5-Hour, Weekly
+    tbody.innerHTML = pageData.map(session => {
+      const c = session._computed;
+      const isExpanded = State.expandedSessionId === session.id;
+      const fmtPct = (v) => v != null ? v.toFixed(1) + '%' : '-';
+      const fmtDelta = (start, end) => {
+        const d = (end || 0) - (start || 0);
+        return d >= 0 ? `+${d.toFixed(1)}%` : `${d.toFixed(1)}%`;
+      };
+      const fmtWithDelta = (start, max) => {
+        const pct = max != null ? max.toFixed(1) + '%' : '-';
+        if (start == null || max == null) return pct;
+        const d = max - start;
+        const delta = d >= 0 ? `+${d.toFixed(1)}%` : `${d.toFixed(1)}%`;
+        return `${pct} <span class="delta">(${delta})</span>`;
+      };
+      const mainRow = `<tr class="session-row" role="button" tabindex="0" data-session-id="${session.id}">
+        <td>${session.id.slice(0, 8)}${c.isActive ? ' <span class="badge">Active</span>' : ''}</td>
+        <td>${c.start.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+        <td>${session.endedAt ? new Date(session.endedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Active'}</td>
+        <td>${c.durationStr}</td>
+        <td>${fmtWithDelta(session.startSubRequests, session.maxSubRequests)}</td>
+        <td>${fmtWithDelta(session.startSearchRequests, session.maxSearchRequests)}</td>
+      </tr>`;
+      const detailRow = `<tr class="session-detail-row ${isExpanded ? 'expanded' : ''}" data-detail-for="${session.id}">
+        <td colspan="${colSpan}">
+          <div class="session-detail-content">
+            <div class="session-detail-grid">
+              <div class="detail-item">
+                <span class="detail-label">${codexSessionLabels.sub}</span>
+                <span class="detail-value">${fmtPct(session.startSubRequests)} &rarr; ${fmtPct(session.maxSubRequests)} (${fmtDelta(session.startSubRequests, session.maxSubRequests)})</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">${codexSessionLabels.search}</span>
+                <span class="detail-value">${fmtPct(session.startSearchRequests)} &rarr; ${fmtPct(session.maxSearchRequests)} (${fmtDelta(session.startSearchRequests, session.maxSearchRequests)})</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">Snapshots</span>
@@ -2876,7 +3306,9 @@ function getOverviewCategories() {
     return [
       ...renewalCategories.anthropic || [],
       ...renewalCategories.synthetic || [],
-      ...renewalCategories.zai || []
+      ...renewalCategories.zai || [],
+      ...renewalCategories.copilot || [],
+      ...renewalCategories.codex || []
     ];
   }
   return renewalCategories[provider] || [];
@@ -2961,7 +3393,7 @@ function renderOverviewTable() {
 
   const quotaNames = State.overviewQuotaNames;
   const overviewProv = getOverviewProvider();
-  const usePercent = overviewProv === 'anthropic';
+  const usePercent = overviewProv === 'anthropic' || overviewProv === 'codex';
 
   // Build dynamic header
   let headerHtml = `
@@ -3536,6 +3968,7 @@ function populateProviderToggles(visibility) {
     { key: 'anthropic', name: 'Anthropic', desc: 'Claude Code usage tracking' },
     { key: 'synthetic', name: 'Synthetic', desc: 'Synthetic API quota monitoring' },
     { key: 'zai', name: 'Z.ai', desc: 'Z.ai API usage tracking' },
+    { key: 'codex', name: 'Codex', desc: 'Codex API usage tracking' },
   ];
 
   container.innerHTML = '';
@@ -3939,6 +4372,10 @@ const _overrideQuotasByProvider = {
     { key: 'seven_day_sonnet', label: 'Weekly Sonnet' },
     { key: 'monthly_limit', label: 'Monthly Limit' },
   ],
+  codex: [
+    { key: 'five_hour', label: '5-Hour Limit' },
+    { key: 'seven_day', label: 'Weekly All-Model' },
+  ],
   synthetic: [
     { key: 'subscription', label: 'Subscription' },
     { key: 'search', label: 'Search Queries' },
@@ -4008,6 +4445,7 @@ function addOverrideRow(quotaKey, provider, warning, critical, isAbsolute) {
   row.innerHTML = `
     <select class="settings-input override-provider-select" style="flex:1">
       <option value="anthropic" ${provider === 'anthropic' ? 'selected' : ''}>Anthropic</option>
+      <option value="codex" ${provider === 'codex' ? 'selected' : ''}>Codex</option>
       <option value="synthetic" ${provider === 'synthetic' ? 'selected' : ''}>Synthetic</option>
       <option value="zai" ${provider === 'zai' ? 'selected' : ''}>Z.ai</option>
     </select>

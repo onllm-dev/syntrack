@@ -127,6 +127,11 @@ func TestServer_ServesStaticCSS(t *testing.T) {
 		t.Errorf("Expected text/css content type, got %s", contentType)
 	}
 
+	cacheControl := resp.Header.Get("Cache-Control")
+	if cacheControl != "public, max-age=31536000, immutable" {
+		t.Errorf("Expected immutable cache for CSS, got %s", cacheControl)
+	}
+
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), "onWatch") {
 		t.Error("Expected CSS to contain 'onWatch'")
@@ -160,6 +165,11 @@ func TestServer_ServesStaticJS(t *testing.T) {
 	contentType := resp.Header.Get("Content-Type")
 	if contentType != "application/javascript" {
 		t.Errorf("Expected application/javascript content type, got %s", contentType)
+	}
+
+	cacheControl := resp.Header.Get("Cache-Control")
+	if cacheControl != "no-cache" {
+		t.Errorf("Expected no-cache for app.js, got %s", cacheControl)
 	}
 
 	body, _ := io.ReadAll(resp.Body)
@@ -225,6 +235,11 @@ func TestServer_EmbeddedAssets(t *testing.T) {
 	}{
 		{"/static/style.css", "onWatch"},
 		{"/static/app.js", "onWatch"},
+		{"/static/app.js", "const codexChartColorMap ="},
+		{"/static/app.js", "if (data.codex) merged = merged.concat"},
+		{"/static/app.js", "...renewalCategories.codex || []"},
+		{"/static/app.js", "key: 'codex', name: 'Codex'"},
+		{"/static/app.js", "<option value=\"codex\""},
 	}
 
 	for _, tt := range tests {

@@ -312,6 +312,26 @@ func removePIDFile() {
 	os.Remove(pidFile)
 }
 
+// primeCodexTokenFromAuth primes CODEX_TOKEN env var from Codex auth file
+// when it is not explicitly set. This allows config validation to pass for
+// auth-file-only setups.
+func primeCodexTokenFromAuth(logger *slog.Logger) bool {
+	if strings.TrimSpace(os.Getenv("CODEX_TOKEN")) != "" {
+		return false
+	}
+
+	token := api.DetectCodexToken(logger)
+	if token == "" {
+		return false
+	}
+
+	if err := os.Setenv("CODEX_TOKEN", token); err != nil {
+		return false
+	}
+
+	return true
+}
+
 // daemonize re-executes the current binary as a detached background process.
 // The parent writes the child's PID to .onwatch.pid and exits.
 func daemonize(cfg *config.Config) error {
@@ -394,10 +414,14 @@ func run() error {
 	}
 
 	// Memory tuning: GOMEMLIMIT triggers MADV_DONTNEED which actually shrinks RSS.
-	// Without this, Go uses MADV_FREE on macOS — pages are reclaimable but still
+	// Without this, Go uses MADV_FREE on macOS - pages are reclaimable but still
 	// counted in RSS, causing a permanent ratchet effect.
 	debug.SetMemoryLimit(40 * 1024 * 1024) // 40 MiB soft limit
 	debug.SetGCPercent(50)                 // GC at 50% heap growth (default 100)
+
+	// Prime Codex token from auth file before config validation.
+	// This preserves startup when Codex is configured via auth.json only.
+	codexAutoPrimed := primeCodexTokenFromAuth(slog.Default())
 
 	// Phase 3: Parse flags and load config
 	cfg, err := config.Load()
@@ -554,6 +578,20 @@ func run() error {
 		}
 	}
 
+	if codexAutoPrimed {
+		cfg.CodexAutoToken = true
+		logger.Info("Auto-detected Codex token from Codex credentials")
+	}
+
+	// Auto-detect Codex token if not explicitly configured and not already primed
+	if cfg.CodexToken == "" {
+		if token := api.DetectCodexToken(logger); token != "" {
+			cfg.CodexToken = token
+			cfg.CodexAutoToken = true
+			logger.Info("Auto-detected Codex token from Codex credentials")
+		}
+	}
+
 	// Create API clients based on configured providers
 	var syntheticClient *api.Client
 	var zaiClient *api.ZaiClient
@@ -578,6 +616,16 @@ func run() error {
 	if cfg.HasProvider("copilot") {
 		copilotClient = api.NewCopilotClient(cfg.CopilotToken, logger)
 		logger.Info("Copilot API client configured")
+	}
+
+	var codexClient *api.CodexClient
+	if cfg.HasProvider("codex") {
+		codexCreds := api.DetectCodexCredentials(logger)
+		codexClient = api.NewCodexClient(cfg.CodexToken, logger)
+		if codexCreds != nil && codexCreds.AccountID != "" {
+			codexClient.SetAccountID(codexCreds.AccountID)
+		}
+		logger.Info("Codex API client configured")
 	}
 
 	// Create components
@@ -638,6 +686,21 @@ func run() error {
 		copilotAg = agent.NewCopilotAgent(copilotClient, db, copilotTr, cfg.PollInterval, logger, copilotSm)
 	}
 
+	// Create Codex tracker
+	var codexTr *tracker.CodexTracker
+	if cfg.HasProvider("codex") {
+		codexTr = tracker.NewCodexTracker(db, logger)
+	}
+
+	var codexAg *agent.CodexAgent
+	if codexClient != nil {
+		codexSm := agent.NewSessionManager(db, "codex", idleTimeout, logger)
+		codexAg = agent.NewCodexAgent(codexClient, db, codexTr, cfg.PollInterval, logger, codexSm)
+		codexAg.SetTokenRefresh(func() string {
+			return api.DetectCodexToken(logger)
+		})
+	}
+
 	// Create notification engine
 	notifier := notify.New(db, logger)
 	notifier.SetEncryptionKey(deriveEncryptionKey(cfg.AdminPassHash))
@@ -657,6 +720,9 @@ func run() error {
 	}
 	if copilotAg != nil {
 		copilotAg.SetNotifier(notifier)
+	}
+	if codexAg != nil {
+		codexAg.SetNotifier(notifier)
 	}
 
 	// Wire polling checks — agents skip poll when telemetry disabled
@@ -688,6 +754,9 @@ func run() error {
 	if copilotAg != nil {
 		copilotAg.SetPollingCheck(func() bool { return isPollingEnabled("copilot") })
 	}
+	if codexAg != nil {
+		codexAg.SetPollingCheck(func() bool { return isPollingEnabled("codex") })
+	}
 
 	// Wire reset callbacks to trackers
 	tr.SetOnReset(func(quotaName string) {
@@ -708,6 +777,11 @@ func run() error {
 			notifier.Check(notify.QuotaStatus{Provider: "copilot", QuotaKey: quotaName, ResetOccurred: true})
 		})
 	}
+	if codexTr != nil {
+		codexTr.SetOnReset(func(quotaName string) {
+			notifier.Check(notify.QuotaStatus{Provider: "codex", QuotaKey: quotaName, ResetOccurred: true})
+		})
+	}
 
 	handler := web.NewHandler(db, tr, logger, nil, cfg, zaiTr)
 	handler.SetVersion(version)
@@ -717,6 +791,9 @@ func run() error {
 	}
 	if copilotTr != nil {
 		handler.SetCopilotTracker(copilotTr)
+	}
+	if codexTr != nil {
+		handler.SetCodexTracker(codexTr)
 	}
 	updater := update.NewUpdater(version, logger)
 	handler.SetUpdater(updater)
@@ -735,7 +812,7 @@ func run() error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// Start agents in goroutines (staggered to avoid SQLite contention on session creation)
-	agentErr := make(chan error, 4)
+	agentErr := make(chan error, 5)
 	if ag != nil {
 		go func() {
 			defer func() {
@@ -799,7 +876,23 @@ func run() error {
 		}()
 	}
 
-	if ag == nil && zaiAg == nil && anthropicAg == nil && copilotAg == nil {
+	if codexAg != nil {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("Codex agent panicked", "panic", r)
+					agentErr <- fmt.Errorf("codex agent panic: %v", r)
+				}
+			}()
+			time.Sleep(800 * time.Millisecond) // stagger to avoid SQLite BUSY
+			logger.Info("Starting Codex agent", "interval", cfg.PollInterval)
+			if err := codexAg.Run(ctx); err != nil {
+				agentErr <- fmt.Errorf("codex agent error: %w", err)
+			}
+		}()
+	}
+
+	if ag == nil && zaiAg == nil && anthropicAg == nil && copilotAg == nil && codexAg == nil {
 		logger.Info("No agents configured")
 	}
 
@@ -1179,6 +1272,13 @@ func printBanner(cfg *config.Config, version string) {
 	if cfg.HasProvider("copilot") {
 		fmt.Println("║  API:       github.com/copilot (β)   ║")
 	}
+	if cfg.HasProvider("codex") {
+		if cfg.CodexAutoToken {
+			fmt.Println("║  API:       codex (auto-detect)      ║")
+		} else {
+			fmt.Println("║  API:       api.openai.com/codex     ║")
+		}
+	}
 
 	fmt.Printf("║  Polling:   every %s              ║\n", cfg.PollInterval)
 	fmt.Printf("║  Dashboard: http://localhost:%d    ║\n", cfg.Port)
@@ -1206,6 +1306,13 @@ func printBanner(cfg *config.Config, version string) {
 	}
 	if cfg.HasProvider("copilot") {
 		fmt.Printf("Copilot Token:     %s\n", redactAPIKey(cfg.CopilotToken))
+	}
+	if cfg.HasProvider("codex") {
+		label := "Codex Token:       "
+		if cfg.CodexAutoToken {
+			label = "Codex (auto):      "
+		}
+		fmt.Printf("%s%s\n", label, redactAPIKey(cfg.CodexToken))
 	}
 	fmt.Println()
 }
@@ -1235,6 +1342,7 @@ func printHelp() {
 	fmt.Println("  ZAI_BASE_URL           Z.ai base URL (default: https://api.z.ai/api)")
 	fmt.Println("  ANTHROPIC_TOKEN         Anthropic token (auto-detected if not set)")
 	fmt.Println("  COPILOT_TOKEN           GitHub Copilot token (PAT with copilot scope)")
+	fmt.Println("  CODEX_TOKEN             Codex token (auto-detected from Codex auth if not set)")
 	fmt.Println("  ONWATCH_POLL_INTERVAL   Polling interval in seconds")
 	fmt.Println("  ONWATCH_PORT            Dashboard HTTP port")
 	fmt.Println("  ONWATCH_ADMIN_USER      Dashboard admin username")

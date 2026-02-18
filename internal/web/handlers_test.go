@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -1502,6 +1503,27 @@ func TestHandler_Dashboard_PreservesProviderQueryParam(t *testing.T) {
 	}
 }
 
+func TestHandler_Dashboard_CodexSessionHeaders(t *testing.T) {
+	cfg := createTestConfigWithCodex()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/?provider=codex", nil)
+	rr := httptest.NewRecorder()
+	h.Dashboard(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "5-Hour Limit") {
+		t.Error("expected codex-specific 5-Hour Limit session column")
+	}
+	if !strings.Contains(body, "Weekly All-Model") {
+		t.Error("expected codex-specific Weekly All-Model session column")
+	}
+}
+
 // Mock Data Tests
 
 func TestHandler_Current_SyntheticWithMockData(t *testing.T) {
@@ -1835,7 +1857,7 @@ func TestHandler_History_EmptyDB_ReturnsEmptyArrays_Both(t *testing.T) {
 		t.Fatalf("failed to parse JSON: %v", err)
 	}
 
-	for _, key := range []string{"synthetic", "zai"} {
+	for _, key := range []string{"synthetic", "zai", "anthropic", "copilot", "codex"} {
 		val, ok := response[key]
 		if !ok {
 			continue
@@ -1870,11 +1892,23 @@ func createTestConfigWithAll() *config.Config {
 		ZaiAPIKey:       "zai_test_key",
 		ZaiBaseURL:      "https://api.z.ai/api",
 		AnthropicToken:  "test_anthropic_token",
+		CodexToken:      "codex_test_token",
 		PollInterval:    60 * time.Second,
 		Port:            9211,
 		AdminUser:       "admin",
 		AdminPass:       "test",
 		DBPath:          "./test.db",
+	}
+}
+
+func createTestConfigWithCodex() *config.Config {
+	return &config.Config{
+		CodexToken:   "codex_test_token",
+		PollInterval: 60 * time.Second,
+		Port:         9211,
+		AdminUser:    "admin",
+		AdminPass:    "test",
+		DBPath:       "./test.db",
 	}
 }
 
@@ -1890,6 +1924,21 @@ func TestHandler_SetAnthropicTracker(t *testing.T) {
 
 	if h.anthropicTracker == nil {
 		t.Error("expected anthropicTracker to be set")
+	}
+}
+
+func TestHandler_SetCodexTracker(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithCodex()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	tr := tracker.NewCodexTracker(s, nil)
+	h.SetCodexTracker(tr)
+
+	if h.codexTracker == nil {
+		t.Error("expected codexTracker to be set")
 	}
 }
 
@@ -2169,6 +2218,355 @@ func TestHandler_Insights_WithAnthropicProvider(t *testing.T) {
 	}
 }
 
+func TestHandler_Current_WithCodexProvider(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	capturedAt := time.Now().UTC()
+	resetsAt := capturedAt.Add(5 * time.Hour)
+	snapshot := &api.CodexSnapshot{
+		CapturedAt: capturedAt,
+		PlanType:   "plus",
+		Quotas: []api.CodexQuota{
+			{Name: "five_hour", Utilization: 42.5, ResetsAt: &resetsAt},
+			{Name: "seven_day", Utilization: 18.0, ResetsAt: &resetsAt},
+		},
+		RawJSON: `{"plan_type":"plus"}`,
+	}
+	if _, err := s.InsertCodexSnapshot(snapshot); err != nil {
+		t.Fatalf("failed to insert codex snapshot: %v", err)
+	}
+
+	cfg := createTestConfigWithCodex()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/current?provider=codex", nil)
+	rr := httptest.NewRecorder()
+	h.Current(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if response["planType"] != "plus" {
+		t.Errorf("expected planType plus, got %v", response["planType"])
+	}
+
+	quotas, ok := response["quotas"].([]interface{})
+	if !ok {
+		t.Fatal("expected quotas array")
+	}
+	if len(quotas) != 2 {
+		t.Fatalf("expected 2 codex quotas, got %d", len(quotas))
+	}
+
+	q0, ok := quotas[0].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected first quota to be a map")
+	}
+	if q0["displayName"] != "5-Hour Limit" {
+		t.Errorf("expected 5-Hour Limit displayName, got %v", q0["displayName"])
+	}
+}
+
+func TestHandler_History_WithCodexProvider(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	capturedAt := time.Now().UTC()
+	snap := &api.CodexSnapshot{
+		CapturedAt: capturedAt,
+		Quotas: []api.CodexQuota{
+			{Name: "five_hour", Utilization: 22.0},
+			{Name: "seven_day", Utilization: 11.5},
+		},
+		RawJSON: `{"ok":true}`,
+	}
+	if _, err := s.InsertCodexSnapshot(snap); err != nil {
+		t.Fatalf("failed to insert codex snapshot: %v", err)
+	}
+
+	cfg := createTestConfigWithCodex()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/history?provider=codex&range=24h", nil)
+	rr := httptest.NewRecorder()
+	h.History(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response []map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if len(response) != 1 {
+		t.Fatalf("expected 1 history entry, got %d", len(response))
+	}
+	if _, ok := response[0]["capturedAt"]; !ok {
+		t.Error("expected capturedAt in codex history entry")
+	}
+	if _, ok := response[0]["five_hour"]; !ok {
+		t.Error("expected five_hour value in codex history entry")
+	}
+}
+
+func TestHandler_Cycles_WithCodexProvider(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	now := time.Now().UTC().Add(-5 * time.Hour)
+	resetsAt := now.Add(5 * time.Hour)
+	tkr := tracker.NewCodexTracker(s, nil)
+	for i, util := range []float64{10.0, 30.0, 55.0} {
+		snap := &api.CodexSnapshot{
+			CapturedAt: now.Add(time.Duration(i) * time.Minute),
+			Quotas: []api.CodexQuota{
+				{Name: "five_hour", Utilization: util, ResetsAt: &resetsAt},
+			},
+			RawJSON: `{"ok":true}`,
+		}
+		if _, err := s.InsertCodexSnapshot(snap); err != nil {
+			t.Fatalf("failed to insert codex snapshot: %v", err)
+		}
+		if err := tkr.Process(snap); err != nil {
+			t.Fatalf("failed to process codex snapshot: %v", err)
+		}
+	}
+
+	cfg := createTestConfigWithCodex()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cycles?provider=codex&type=five_hour", nil)
+	rr := httptest.NewRecorder()
+	h.Cycles(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response []map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if len(response) != 1 {
+		t.Fatalf("expected 1 cycle row, got %d", len(response))
+	}
+	if response[0]["quotaName"] != "five_hour" {
+		t.Errorf("expected quotaName five_hour, got %v", response[0]["quotaName"])
+	}
+	if _, ok := response[0]["peakUtilization"]; !ok {
+		t.Error("expected peakUtilization in codex cycle entry")
+	}
+}
+
+func TestHandler_Cycles_CodexInvalidType(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithCodex()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cycles?provider=codex&type=invalid", nil)
+	rr := httptest.NewRecorder()
+	h.Cycles(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rr.Code)
+	}
+}
+
+func TestHandler_Summary_WithCodexProvider(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	now := time.Now().UTC()
+	resetsAt := now.Add(4 * time.Hour)
+	tkr := tracker.NewCodexTracker(s, nil)
+	for i, util := range []float64{20.0, 40.0} {
+		snap := &api.CodexSnapshot{
+			CapturedAt: now.Add(time.Duration(i) * time.Minute),
+			Quotas:     []api.CodexQuota{{Name: "five_hour", Utilization: util, ResetsAt: &resetsAt}},
+			RawJSON:    `{"ok":true}`,
+		}
+		if _, err := s.InsertCodexSnapshot(snap); err != nil {
+			t.Fatalf("failed to insert codex snapshot: %v", err)
+		}
+		if err := tkr.Process(snap); err != nil {
+			t.Fatalf("failed to process codex snapshot: %v", err)
+		}
+	}
+
+	cfg := createTestConfigWithCodex()
+	h := NewHandler(s, nil, nil, nil, cfg)
+	h.SetCodexTracker(tkr)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/summary?provider=codex", nil)
+	rr := httptest.NewRecorder()
+	h.Summary(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	if _, ok := response["five_hour"]; !ok {
+		t.Error("expected five_hour summary")
+	}
+}
+
+func TestHandler_Insights_CodexEmptyDB(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithCodex()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/insights?provider=codex", nil)
+	rr := httptest.NewRecorder()
+	h.Insights(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response insightsResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	if len(response.Insights) == 0 {
+		t.Fatal("expected at least one insight")
+	}
+	if response.Insights[0].Title != "Getting Started" {
+		t.Errorf("expected Getting Started insight, got %q", response.Insights[0].Title)
+	}
+}
+
+func TestHandler_Providers_WithCodexOnly(t *testing.T) {
+	cfg := createTestConfigWithCodex()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/providers", nil)
+	rr := httptest.NewRecorder()
+	h.Providers(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	providers, ok := response["providers"].([]interface{})
+	if !ok {
+		t.Fatal("expected providers array")
+	}
+	if len(providers) != 1 {
+		t.Fatalf("expected 1 provider, got %d", len(providers))
+	}
+	if providers[0] != "codex" {
+		t.Errorf("expected codex provider, got %v", providers[0])
+	}
+}
+
+func TestHandler_Current_BothIncludesCodex(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	snap := &api.CodexSnapshot{
+		CapturedAt: time.Now().UTC(),
+		Quotas:     []api.CodexQuota{{Name: "five_hour", Utilization: 25.0}},
+		RawJSON:    `{"ok":true}`,
+	}
+	if _, err := s.InsertCodexSnapshot(snap); err != nil {
+		t.Fatalf("failed to insert codex snapshot: %v", err)
+	}
+
+	cfg := createTestConfigWithAll()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/current?provider=both", nil)
+	rr := httptest.NewRecorder()
+	h.Current(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	if _, ok := response["codex"]; !ok {
+		t.Error("expected codex field in both response")
+	}
+}
+
+func TestHandler_CycleOverview_Codex(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithCodex()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cycle-overview?provider=codex", nil)
+	rr := httptest.NewRecorder()
+	h.CycleOverview(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	if response["provider"] != "codex" {
+		t.Errorf("expected provider codex, got %v", response["provider"])
+	}
+	if response["groupBy"] != "five_hour" {
+		t.Errorf("expected default groupBy five_hour, got %v", response["groupBy"])
+	}
+}
+
+func TestHandler_CodexUtilStatus(t *testing.T) {
+	tests := []struct {
+		util   float64
+		status string
+	}{
+		{0, "healthy"},
+		{49.9, "healthy"},
+		{50, "warning"},
+		{79.9, "warning"},
+		{80, "danger"},
+		{94.9, "danger"},
+		{95, "critical"},
+		{100, "critical"},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("util_%.0f", tt.util), func(t *testing.T) {
+			got := codexUtilStatus(tt.util)
+			if got != tt.status {
+				t.Errorf("codexUtilStatus(%.1f) = %q, want %q", tt.util, got, tt.status)
+			}
+		})
+	}
+}
+
 func TestHandler_Providers_WithAnthropicOnly(t *testing.T) {
 	cfg := createTestConfigWithAnthropic()
 	h := NewHandler(nil, nil, nil, nil, cfg)
@@ -2220,9 +2618,9 @@ func TestHandler_Providers_WithAllProviders_IncludesBoth(t *testing.T) {
 		t.Fatal("expected providers array")
 	}
 
-	// Should have synthetic, zai, anthropic, both = 4
-	if len(providers) != 4 {
-		t.Errorf("expected 4 providers (synthetic, zai, anthropic, both), got %d: %v", len(providers), providers)
+	// Should have synthetic, zai, anthropic, codex, both = 5
+	if len(providers) != 5 {
+		t.Errorf("expected 5 providers (synthetic, zai, anthropic, codex, both), got %d: %v", len(providers), providers)
 	}
 }
 
@@ -2322,6 +2720,7 @@ func TestHandler_Insights_AnthropicEmptyDB(t *testing.T) {
 func TestHandler_Login_GET_RendersForm(t *testing.T) {
 	cfg := createTestConfigWithSynthetic()
 	h := NewHandler(nil, nil, nil, nil, cfg)
+	h.SetVersion("2.10.1")
 
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	rr := httptest.NewRecorder()
@@ -2333,6 +2732,14 @@ func TestHandler_Login_GET_RendersForm(t *testing.T) {
 	ct := rr.Header().Get("Content-Type")
 	if !strings.Contains(ct, "text/html") {
 		t.Errorf("expected text/html, got %s", ct)
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "/static/app.js?v=2.10.1") {
+		t.Fatalf("expected login page to include versioned app.js URL, body=%s", body)
+	}
+	if !regexp.MustCompile(`/static/app\.js\?v=[^"\s]+`).MatchString(body) {
+		t.Fatalf("expected login page to include non-empty app.js version token, body=%s", body)
 	}
 }
 
@@ -2897,13 +3304,13 @@ type mockNotifier struct {
 	reloadCalled bool
 }
 
-func (m *mockNotifier) Reload() error              { m.reloadCalled = true; return nil }
-func (m *mockNotifier) ConfigureSMTP() error        { return nil }
-func (m *mockNotifier) ConfigurePush() error        { return nil }
-func (m *mockNotifier) SendTestEmail() error        { return m.sendTestErr }
-func (m *mockNotifier) SendTestPush() error         { return nil }
-func (m *mockNotifier) SetEncryptionKey(_ string)   {}
-func (m *mockNotifier) GetVAPIDPublicKey() string   { return "" }
+func (m *mockNotifier) Reload() error             { m.reloadCalled = true; return nil }
+func (m *mockNotifier) ConfigureSMTP() error      { return nil }
+func (m *mockNotifier) ConfigurePush() error      { return nil }
+func (m *mockNotifier) SendTestEmail() error      { return m.sendTestErr }
+func (m *mockNotifier) SendTestPush() error       { return nil }
+func (m *mockNotifier) SetEncryptionKey(_ string) {}
+func (m *mockNotifier) GetVAPIDPublicKey() string { return "" }
 
 func TestHandler_SMTPTest_Success(t *testing.T) {
 	cfg := createTestConfigWithSynthetic()
@@ -3082,6 +3489,111 @@ func TestHandler_CycleOverview_Both(t *testing.T) {
 	}
 	if _, ok := response["zai"]; !ok {
 		t.Error("expected zai field in 'both' response")
+	}
+}
+
+func TestHandler_Sessions_BothIncludesCodex(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithAll()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	if err := s.CreateSession("codex-session", time.Now().Add(-30*time.Minute), 60, "codex", 12.0, 8.0, 0); err != nil {
+		t.Fatalf("failed to create codex session: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/sessions?provider=both", nil)
+	rr := httptest.NewRecorder()
+	h.Sessions(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string][]map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	codexSessions, ok := response["codex"]
+	if !ok {
+		t.Fatal("expected codex field in both sessions response")
+	}
+	if len(codexSessions) != 1 {
+		t.Fatalf("expected 1 codex session, got %d", len(codexSessions))
+	}
+	if codexSessions[0]["id"] != "codex-session" {
+		t.Fatalf("expected codex session id codex-session, got %v", codexSessions[0]["id"])
+	}
+}
+
+func TestHandler_CycleOverview_BothIncludesCodex(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithAll()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cycle-overview?provider=both", nil)
+	rr := httptest.NewRecorder()
+	h.CycleOverview(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	codexRaw, ok := response["codex"]
+	if !ok {
+		t.Fatal("expected codex field in both cycle overview response")
+	}
+	codex, ok := codexRaw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected codex overview to be object, got %T", codexRaw)
+	}
+	if codex["provider"] != "codex" {
+		t.Fatalf("expected codex provider field, got %v", codex["provider"])
+	}
+	if codex["groupBy"] != "five_hour" {
+		t.Fatalf("expected codex default groupBy five_hour, got %v", codex["groupBy"])
+	}
+}
+
+func TestHandler_CycleOverview_BothCodexRespectsGroupByFallback(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithAll()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cycle-overview?provider=both&groupBy=seven_day", nil)
+	rr := httptest.NewRecorder()
+	h.CycleOverview(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	codexRaw, ok := response["codex"]
+	if !ok {
+		t.Fatal("expected codex field in both cycle overview response")
+	}
+	codex, ok := codexRaw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected codex overview to be object, got %T", codexRaw)
+	}
+	if codex["groupBy"] != "seven_day" {
+		t.Fatalf("expected codex groupBy seven_day from generic groupBy fallback, got %v", codex["groupBy"])
 	}
 }
 
@@ -3324,6 +3836,29 @@ func TestHandler_Dashboard_WithProviderParam(t *testing.T) {
 	}
 }
 
+func TestHandler_Dashboard_AppJSVersionedURL_Rendered(t *testing.T) {
+	cfg := createTestConfigWithAll()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+	h.SetVersion("2.10.1")
+
+	req := httptest.NewRequest(http.MethodGet, "/?provider=both", nil)
+	rr := httptest.NewRecorder()
+	h.Dashboard(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	body := rr.Body.String()
+	if !strings.Contains(body, "/static/app.js?v=2.10.1") {
+		t.Fatalf("expected versioned app.js URL, body=%s", body)
+	}
+
+	if strings.Contains(body, "/static/app.js?v=") && !strings.Contains(body, "/static/app.js?v=2.10.1") {
+		t.Fatalf("expected app.js version token to match 2.10.1, body=%s", body)
+	}
+}
+
 func TestHandler_Dashboard_NotFound_For_NonRootPath(t *testing.T) {
 	cfg := createTestConfigWithSynthetic()
 	h := NewHandler(nil, nil, nil, nil, cfg)
@@ -3391,7 +3926,7 @@ func TestHandler_parseInsightsRange(t *testing.T) {
 		{"1d", 24 * time.Hour},
 		{"7d", 7 * 24 * time.Hour},
 		{"30d", 30 * 24 * time.Hour},
-		{"", 7 * 24 * time.Hour},       // default
+		{"", 7 * 24 * time.Hour},        // default
 		{"invalid", 7 * 24 * time.Hour}, // default
 	}
 
@@ -3422,8 +3957,8 @@ func TestHandler_MaxBytesReader_RejectsLargeBody(t *testing.T) {
 	largePayload := fmt.Sprintf(`{"timezone":"%s"}`, largeValue)
 
 	tests := []struct {
-		name   string
-		method string
+		name    string
+		method  string
 		handler func(http.ResponseWriter, *http.Request)
 	}{
 		{

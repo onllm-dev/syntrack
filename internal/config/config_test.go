@@ -551,6 +551,28 @@ func TestConfig_AvailableProviders_Empty(t *testing.T) {
 	}
 }
 
+func TestConfig_HasProvider_Codex(t *testing.T) {
+	cfg := &Config{CodexToken: "oauth_access_token"}
+	if !cfg.HasProvider("codex") {
+		t.Error("HasProvider('codex') should be true when CodexToken is set")
+	}
+}
+
+func TestConfig_AvailableProviders_IncludesCodex(t *testing.T) {
+	cfg := &Config{CodexToken: "oauth_access_token"}
+	providers := cfg.AvailableProviders()
+	if len(providers) != 1 || providers[0] != "codex" {
+		t.Fatalf("AvailableProviders() = %v, want [codex]", providers)
+	}
+}
+
+func TestConfig_HasMultipleProviders_WithCodex(t *testing.T) {
+	cfg := &Config{CodexToken: "oauth_access_token", SyntheticAPIKey: "syn_test"}
+	if !cfg.HasMultipleProviders() {
+		t.Fatal("HasMultipleProviders() should be true for codex + synthetic")
+	}
+}
+
 func TestConfig_HasProvider_Unknown(t *testing.T) {
 	cfg := &Config{
 		SyntheticAPIKey: "syn_test",

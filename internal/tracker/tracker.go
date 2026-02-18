@@ -242,7 +242,7 @@ func (t *Tracker) UsageSummary(quotaType string) (*Summary, error) {
 	// Calculate stats from completed cycles
 	if len(history) > 0 {
 		var totalDelta float64
-		summary.TrackingSince = history[0].CycleStart
+		summary.TrackingSince = history[len(history)-1].CycleStart
 
 		for _, cycle := range history {
 			totalDelta += cycle.TotalDelta

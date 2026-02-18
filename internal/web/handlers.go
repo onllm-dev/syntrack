@@ -55,6 +55,7 @@ type Handler struct {
 	zaiTracker       *tracker.ZaiTracker
 	anthropicTracker *tracker.AnthropicTracker
 	copilotTracker   *tracker.CopilotTracker
+	codexTracker     *tracker.CodexTracker
 	updater          *update.Updater
 	notifier         Notifier
 	logger           *slog.Logger
@@ -127,6 +128,11 @@ func (h *Handler) SetAnthropicTracker(t *tracker.AnthropicTracker) {
 // SetCopilotTracker sets the Copilot tracker for usage summary enrichment.
 func (h *Handler) SetCopilotTracker(t *tracker.CopilotTracker) {
 	h.copilotTracker = t
+}
+
+// SetCodexTracker sets the Codex tracker for usage summary enrichment.
+func (h *Handler) SetCodexTracker(t *tracker.CodexTracker) {
+	h.codexTracker = t
 }
 
 // SetUpdater sets the updater for self-update functionality.
@@ -420,6 +426,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 	hasAnthropic := h.config != nil && h.config.HasProvider("anthropic")
 	hasCopilot := h.config != nil && h.config.HasProvider("copilot")
+	hasCodex := h.config != nil && h.config.HasProvider("codex")
 	data := map[string]interface{}{
 		"Title":           "Dashboard",
 		"Providers":       providers,
@@ -427,6 +434,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		"Version":         h.version,
 		"HasAnthropic":    hasAnthropic,
 		"HasCopilot":      hasCopilot,
+		"HasCodex":        hasCodex,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -456,6 +464,8 @@ func (h *Handler) Current(w http.ResponseWriter, r *http.Request) {
 		h.currentAnthropic(w, r)
 	case "copilot":
 		h.currentCopilot(w, r)
+	case "codex":
+		h.currentCodex(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -475,6 +485,9 @@ func (h *Handler) currentBoth(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.config.HasProvider("copilot") {
 		response["copilot"] = h.buildCopilotCurrent()
+	}
+	if h.config.HasProvider("codex") {
+		response["codex"] = h.buildCodexCurrent()
 	}
 	respondJSON(w, http.StatusOK, response)
 }
@@ -804,6 +817,8 @@ func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 		h.historyAnthropic(w, r)
 	case "copilot":
 		h.historyCopilot(w, r)
+	case "codex":
+		h.historyCodex(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -928,6 +943,28 @@ func (h *Handler) historyBoth(w http.ResponseWriter, r *http.Request) {
 				copData = append(copData, entry)
 			}
 			response["copilot"] = copData
+		}
+	}
+
+	if h.config.HasProvider("codex") && h.store != nil {
+		snapshots, err := h.store.QueryCodexRange(start, now)
+		if err == nil {
+			step := downsampleStep(len(snapshots), maxChartPoints)
+			last := len(snapshots) - 1
+			codexData := make([]map[string]interface{}, 0, min(len(snapshots), maxChartPoints))
+			for i, snap := range snapshots {
+				if step > 1 && i != 0 && i != last && i%step != 0 {
+					continue
+				}
+				entry := map[string]interface{}{
+					"capturedAt": snap.CapturedAt.Format(time.RFC3339),
+				}
+				for _, q := range snap.Quotas {
+					entry[q.Name] = q.Utilization
+				}
+				codexData = append(codexData, entry)
+			}
+			response["codex"] = codexData
 		}
 	}
 
@@ -1066,6 +1103,8 @@ func (h *Handler) Cycles(w http.ResponseWriter, r *http.Request) {
 		h.cyclesAnthropic(w, r)
 	case "copilot":
 		h.cyclesCopilot(w, r)
+	case "codex":
+		h.cyclesCodex(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -1128,6 +1167,26 @@ func (h *Handler) cyclesBoth(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		response["anthropic"] = anthCycles
+	}
+
+	if h.config.HasProvider("codex") {
+		codexType := r.URL.Query().Get("codexType")
+		if codexType == "" {
+			codexType = r.URL.Query().Get("type")
+		}
+		if codexType == "" {
+			codexType = "five_hour"
+		}
+		var codexCycles []map[string]interface{}
+		if active, err := h.store.QueryActiveCodexCycle(codexType); err == nil && active != nil {
+			codexCycles = append(codexCycles, codexCycleToMap(active))
+		}
+		if history, err := h.store.QueryCodexCycleHistory(codexType, 200); err == nil {
+			for _, c := range history {
+				codexCycles = append(codexCycles, codexCycleToMap(c))
+			}
+		}
+		response["codex"] = codexCycles
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -1292,6 +1351,8 @@ func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 		h.summaryAnthropic(w, r)
 	case "copilot":
 		h.summaryCopilot(w, r)
+	case "codex":
+		h.summaryCodex(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -1327,6 +1388,9 @@ func (h *Handler) summaryBoth(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.config.HasProvider("copilot") {
 		response["copilot"] = h.buildCopilotSummaryMap()
+	}
+	if h.config.HasProvider("codex") {
+		response["codex"] = h.buildCodexSummaryMap()
 	}
 	respondJSON(w, http.StatusOK, response)
 }
@@ -1631,6 +1695,9 @@ func (h *Handler) sessionsBoth(w http.ResponseWriter, r *http.Request) {
 	if h.config.HasProvider("copilot") {
 		response["copilot"] = buildSessionList("copilot")
 	}
+	if h.config.HasProvider("codex") {
+		response["codex"] = buildSessionList("codex")
+	}
 
 	respondJSON(w, http.StatusOK, response)
 }
@@ -1724,6 +1791,8 @@ func (h *Handler) Insights(w http.ResponseWriter, r *http.Request) {
 		h.insightsAnthropic(w, r, rangeDur)
 	case "copilot":
 		h.insightsCopilot(w, r, rangeDur)
+	case "codex":
+		h.insightsCodex(w, r, rangeDur)
 	default:
 	}
 }
@@ -1744,6 +1813,9 @@ func (h *Handler) insightsBoth(w http.ResponseWriter, r *http.Request, rangeDur 
 	}
 	if h.config.HasProvider("copilot") {
 		response["copilot"] = h.buildCopilotInsights(hidden, rangeDur)
+	}
+	if h.config.HasProvider("codex") {
+		response["codex"] = h.buildCodexInsights(hidden, rangeDur)
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -3497,8 +3569,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	errorMsg := loginErrors[errorCode] // empty string if not in whitelist
 
 	data := map[string]interface{}{
-		"Title": "Login",
-		"Error": errorMsg,
+		"Title":   "Login",
+		"Error":   errorMsg,
+		"Version": h.version,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -3719,6 +3792,8 @@ func (h *Handler) CycleOverview(w http.ResponseWriter, r *http.Request) {
 		h.cycleOverviewAnthropic(w, r)
 	case "copilot":
 		h.cycleOverviewCopilot(w, r)
+	case "codex":
+		h.cycleOverviewCodex(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -3928,6 +4003,36 @@ func (h *Handler) cycleOverviewBoth(w http.ResponseWriter, r *http.Request) {
 			response["copilot"] = map[string]interface{}{
 				"groupBy":    groupBy,
 				"provider":   "copilot",
+				"quotaNames": quotaNames,
+				"cycles":     cycleOverviewRowsToJSON(rows),
+			}
+		}
+	}
+
+	if h.config.HasProvider("codex") {
+		groupBy := r.URL.Query().Get("codexGroupBy")
+		if groupBy == "" {
+			groupBy = r.URL.Query().Get("groupBy")
+		}
+		if groupBy == "" {
+			groupBy = "five_hour"
+		}
+		if rows, err := h.store.QueryCodexCycleOverview(groupBy, limit); err == nil {
+			quotaNames := []string{}
+			for _, row := range rows {
+				if len(row.CrossQuotas) > 0 {
+					for _, cq := range row.CrossQuotas {
+						quotaNames = append(quotaNames, cq.Name)
+					}
+					break
+				}
+			}
+			if len(quotaNames) == 0 {
+				quotaNames = []string{"five_hour", "seven_day"}
+			}
+			response["codex"] = map[string]interface{}{
+				"groupBy":    groupBy,
+				"provider":   "codex",
 				"quotaNames": quotaNames,
 				"cycles":     cycleOverviewRowsToJSON(rows),
 			}
@@ -4352,6 +4457,306 @@ func copilotInsightSeverity(usagePercent float64) string {
 	default:
 		return "info"
 	}
+}
+
+// codexInsightSeverity returns an insight severity based on usage percentage for Codex.
+// Uses the same thresholds as codexUtilStatus for consistency.
+func codexInsightSeverity(util float64) string {
+	return codexUtilStatus(util)
+}
+
+// ── Codex Handlers ──
+
+func (h *Handler) currentCodex(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, h.buildCodexCurrent())
+}
+
+func (h *Handler) buildCodexCurrent() map[string]interface{} {
+	now := time.Now().UTC()
+	response := map[string]interface{}{
+		"capturedAt": now.Format(time.RFC3339),
+		"quotas":     []interface{}{},
+	}
+	if h.store == nil {
+		return response
+	}
+
+	latest, err := h.store.QueryLatestCodex()
+	if err != nil {
+		h.logger.Error("failed to query latest Codex snapshot", "error", err)
+		return response
+	}
+	if latest == nil {
+		return response
+	}
+
+	response["capturedAt"] = latest.CapturedAt.Format(time.RFC3339)
+	if latest.PlanType != "" {
+		response["planType"] = latest.PlanType
+	}
+
+	quotas := make([]map[string]interface{}, 0, len(latest.Quotas))
+	for _, q := range latest.Quotas {
+		qMap := map[string]interface{}{
+			"name":        q.Name,
+			"displayName": api.CodexDisplayName(q.Name),
+			"utilization": q.Utilization,
+			"status":      codexUtilStatus(q.Utilization),
+		}
+		if q.ResetsAt != nil {
+			timeUntilReset := time.Until(*q.ResetsAt)
+			qMap["resetsAt"] = q.ResetsAt.Format(time.RFC3339)
+			qMap["timeUntilReset"] = formatDuration(timeUntilReset)
+			qMap["timeUntilResetSeconds"] = int64(timeUntilReset.Seconds())
+		}
+		if h.codexTracker != nil {
+			if summary, err := h.codexTracker.UsageSummary(q.Name); err == nil && summary != nil {
+				qMap["currentRate"] = summary.CurrentRate
+				qMap["projectedUtil"] = summary.ProjectedUtil
+			}
+		}
+		quotas = append(quotas, qMap)
+	}
+	response["quotas"] = quotas
+	return response
+}
+
+func codexUtilStatus(util float64) string {
+	switch {
+	case util >= 95:
+		return "critical"
+	case util >= 80:
+		return "danger"
+	case util >= 50:
+		return "warning"
+	default:
+		return "healthy"
+	}
+}
+
+func (h *Handler) historyCodex(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+	duration, err := parseTimeRange(r.URL.Query().Get("range"))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	end := time.Now().UTC()
+	start := end.Add(-duration)
+	snapshots, err := h.store.QueryCodexRange(start, end)
+	if err != nil {
+		h.logger.Error("failed to query Codex history", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query history")
+		return
+	}
+	step := downsampleStep(len(snapshots), maxChartPoints)
+	last := len(snapshots) - 1
+	response := make([]map[string]interface{}, 0, min(len(snapshots), maxChartPoints))
+	for i, snap := range snapshots {
+		if step > 1 && i != 0 && i != last && i%step != 0 {
+			continue
+		}
+		entry := map[string]interface{}{"capturedAt": snap.CapturedAt.Format(time.RFC3339)}
+		for _, q := range snap.Quotas {
+			entry[q.Name] = q.Utilization
+		}
+		response = append(response, entry)
+	}
+	respondJSON(w, http.StatusOK, response)
+}
+
+func (h *Handler) cyclesCodex(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+
+	quotaName := r.URL.Query().Get("type")
+	if quotaName == "" {
+		quotaName = "five_hour"
+	}
+
+	validTypes := map[string]bool{
+		"five_hour": true,
+		"seven_day": true,
+	}
+	if !validTypes[quotaName] {
+		respondError(w, http.StatusBadRequest, fmt.Sprintf("invalid quota type: %s", quotaName))
+		return
+	}
+
+	response := []map[string]interface{}{}
+
+	active, err := h.store.QueryActiveCodexCycle(quotaName)
+	if err != nil {
+		h.logger.Error("failed to query active Codex cycle", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query cycles")
+		return
+	}
+	if active != nil {
+		response = append(response, codexCycleToMap(active))
+	}
+
+	history, err := h.store.QueryCodexCycleHistory(quotaName, 200)
+	if err != nil {
+		h.logger.Error("failed to query Codex cycle history", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query cycles")
+		return
+	}
+	for _, cycle := range history {
+		response = append(response, codexCycleToMap(cycle))
+	}
+
+	respondJSON(w, http.StatusOK, response)
+}
+
+func codexCycleToMap(cycle *store.CodexResetCycle) map[string]interface{} {
+	result := map[string]interface{}{
+		"id":              cycle.ID,
+		"quotaName":       cycle.QuotaName,
+		"cycleStart":      cycle.CycleStart.Format(time.RFC3339),
+		"cycleEnd":        nil,
+		"peakUtilization": cycle.PeakUtilization,
+		"totalDelta":      cycle.TotalDelta,
+	}
+	if cycle.CycleEnd != nil {
+		result["cycleEnd"] = cycle.CycleEnd.Format(time.RFC3339)
+	}
+	if cycle.ResetsAt != nil {
+		result["resetsAt"] = cycle.ResetsAt.Format(time.RFC3339)
+	}
+	return result
+}
+
+func (h *Handler) summaryCodex(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, h.buildCodexSummaryMap())
+}
+
+func (h *Handler) buildCodexSummaryMap() map[string]interface{} {
+	response := map[string]interface{}{}
+	if h.codexTracker == nil || h.store == nil {
+		return response
+	}
+	latest, err := h.store.QueryLatestCodex()
+	if err != nil || latest == nil {
+		return response
+	}
+	for _, q := range latest.Quotas {
+		if summary, err := h.codexTracker.UsageSummary(q.Name); err == nil && summary != nil {
+			response[q.Name] = buildCodexSummaryResponse(summary)
+		}
+	}
+	return response
+}
+
+func buildCodexSummaryResponse(summary *tracker.CodexSummary) map[string]interface{} {
+	result := map[string]interface{}{
+		"quotaName":       summary.QuotaName,
+		"currentUtil":     summary.CurrentUtil,
+		"currentRate":     summary.CurrentRate,
+		"projectedUtil":   summary.ProjectedUtil,
+		"completedCycles": summary.CompletedCycles,
+		"avgPerCycle":     summary.AvgPerCycle,
+		"peakCycle":       summary.PeakCycle,
+		"totalTracked":    summary.TotalTracked,
+		"trackingSince":   nil,
+	}
+	if summary.ResetsAt != nil {
+		result["resetsAt"] = summary.ResetsAt.Format(time.RFC3339)
+		result["timeUntilReset"] = formatDuration(summary.TimeUntilReset)
+	}
+	if !summary.TrackingSince.IsZero() {
+		result["trackingSince"] = summary.TrackingSince.Format(time.RFC3339)
+	}
+	return result
+}
+
+func (h *Handler) insightsCodex(w http.ResponseWriter, r *http.Request, rangeDur time.Duration) {
+	hidden := h.getHiddenInsightKeys()
+	respondJSON(w, http.StatusOK, h.buildCodexInsights(hidden, rangeDur))
+}
+
+func (h *Handler) buildCodexInsights(hidden map[string]bool, rangeDur time.Duration) insightsResponse {
+	resp := insightsResponse{Stats: []insightStat{}, Insights: []insightItem{}}
+	if h.store == nil {
+		return resp
+	}
+	latest, err := h.store.QueryLatestCodex()
+	if err != nil || latest == nil {
+		resp.Insights = append(resp.Insights, insightItem{Type: "info", Severity: "info", Title: "Getting Started", Desc: "Keep onWatch running to collect Codex usage data. Insights will appear after a few snapshots."})
+		return resp
+	}
+	quotaNames, _ := h.store.QueryAllCodexQuotaNames()
+	summaries := map[string]*tracker.CodexSummary{}
+	if h.codexTracker != nil {
+		for _, name := range quotaNames {
+			if s, err := h.codexTracker.UsageSummary(name); err == nil && s != nil {
+				summaries[name] = s
+			}
+		}
+	}
+	for _, q := range latest.Quotas {
+		resp.Stats = append(resp.Stats, insightStat{Value: fmt.Sprintf("%.0f%%", q.Utilization), Label: api.CodexDisplayName(q.Name)})
+		key := fmt.Sprintf("forecast_%s", q.Name)
+		if hidden[key] {
+			continue
+		}
+		s := summaries[q.Name]
+		if s != nil && s.CurrentRate > 0 {
+			resp.Insights = append(resp.Insights, insightItem{Key: key, Type: "forecast", Severity: codexInsightSeverity(q.Utilization), Title: fmt.Sprintf("%s Burn Rate", api.CodexDisplayName(q.Name)), Metric: fmt.Sprintf("%.1f%%/hr", s.CurrentRate), Desc: fmt.Sprintf("Currently at %.0f%%. At this rate, projected %.0f%% by reset.", q.Utilization, s.ProjectedUtil)})
+		} else {
+			resp.Insights = append(resp.Insights, insightItem{Key: key, Type: "current", Severity: codexInsightSeverity(q.Utilization), Title: fmt.Sprintf("%s Usage", api.CodexDisplayName(q.Name)), Metric: fmt.Sprintf("%.0f%%", q.Utilization), Desc: "Need more data to estimate burn rate."})
+		}
+	}
+	if !hidden["coverage"] {
+		snapCount := 0
+		since := time.Now().Add(-rangeDur)
+		if points, err := h.store.QueryCodexUtilizationSeries("five_hour", since); err == nil {
+			snapCount = len(points)
+		}
+		if snapCount > 0 {
+			resp.Insights = append(resp.Insights, insightItem{Key: "coverage", Type: "info", Severity: "info", Title: "Data Coverage", Metric: fmt.Sprintf("%d snapshots", snapCount), Desc: fmt.Sprintf("Tracking Codex usage with %d data points in selected range.", snapCount)})
+		}
+	}
+	return resp
+}
+
+func (h *Handler) cycleOverviewCodex(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"cycles": []interface{}{}})
+		return
+	}
+	groupBy := r.URL.Query().Get("groupBy")
+	if groupBy == "" {
+		groupBy = "five_hour"
+	}
+	rows, err := h.store.QueryCodexCycleOverview(groupBy, parseCycleOverviewLimit(r))
+	if err != nil {
+		h.logger.Error("failed to query Codex cycle overview", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query cycle overview")
+		return
+	}
+	quotaNames := []string{}
+	for _, row := range rows {
+		if len(row.CrossQuotas) > 0 {
+			for _, cq := range row.CrossQuotas {
+				quotaNames = append(quotaNames, cq.Name)
+			}
+			break
+		}
+	}
+	if len(quotaNames) == 0 {
+		quotaNames = []string{"five_hour", "seven_day"}
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"groupBy":    groupBy,
+		"provider":   "codex",
+		"quotaNames": quotaNames,
+		"cycles":     cycleOverviewRowsToJSON(rows),
+	})
 }
 
 // cycleOverviewCopilot returns Copilot cycle overview with cross-quota data.

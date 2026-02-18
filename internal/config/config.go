@@ -30,6 +30,10 @@ type Config struct {
 	// Copilot provider configuration
 	CopilotToken string // COPILOT_TOKEN (GitHub PAT with copilot scope)
 
+	// Codex provider configuration
+	CodexToken     string // CODEX_TOKEN or auto-detected
+	CodexAutoToken bool   // true if token was auto-detected
+
 	// Shared configuration
 	PollInterval       time.Duration // ONWATCH_POLL_INTERVAL (seconds → Duration)
 	Port               int           // ONWATCH_PORT
@@ -139,6 +143,9 @@ func loadFromEnvAndFlags(flags *flagValues) (*Config, error) {
 	// Copilot provider
 	cfg.CopilotToken = os.Getenv("COPILOT_TOKEN")
 
+	// Codex provider
+	cfg.CodexToken = strings.TrimSpace(os.Getenv("CODEX_TOKEN"))
+
 	// Poll Interval (seconds) — ONWATCH_* first, SYNTRACK_* fallback
 	if flags.interval > 0 {
 		cfg.PollInterval = time.Duration(flags.interval) * time.Second
@@ -246,8 +253,8 @@ func (c *Config) applyDefaults() {
 // Validate checks the configuration for errors.
 func (c *Config) Validate() error {
 	// At least one provider must be configured
-	if c.SyntheticAPIKey == "" && c.ZaiAPIKey == "" && c.AnthropicToken == "" && c.CopilotToken == "" {
-		return fmt.Errorf("at least one provider must be configured: set SYNTHETIC_API_KEY, ZAI_API_KEY, ANTHROPIC_TOKEN, or COPILOT_TOKEN")
+	if c.SyntheticAPIKey == "" && c.ZaiAPIKey == "" && c.AnthropicToken == "" && c.CopilotToken == "" && c.CodexToken == "" {
+		return fmt.Errorf("at least one provider must be configured: set SYNTHETIC_API_KEY, ZAI_API_KEY, ANTHROPIC_TOKEN, COPILOT_TOKEN, or CODEX_TOKEN")
 	}
 
 	// Validate Synthetic API key if provided
@@ -288,6 +295,9 @@ func (c *Config) AvailableProviders() []string {
 	if c.CopilotToken != "" {
 		providers = append(providers, "copilot")
 	}
+	if c.CodexToken != "" {
+		providers = append(providers, "codex")
+	}
 	return providers
 }
 
@@ -302,6 +312,8 @@ func (c *Config) HasProvider(name string) bool {
 		return c.AnthropicToken != ""
 	case "copilot":
 		return c.CopilotToken != ""
+	case "codex":
+		return c.CodexToken != ""
 	}
 	return false
 }
@@ -319,6 +331,9 @@ func (c *Config) HasMultipleProviders() bool {
 		count++
 	}
 	if c.CopilotToken != "" {
+		count++
+	}
+	if c.CodexToken != "" {
 		count++
 	}
 	return count > 1
