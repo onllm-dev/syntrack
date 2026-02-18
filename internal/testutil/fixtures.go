@@ -165,7 +165,7 @@ func AnthropicResponseJSON(fiveHour, sevenDay, sevenDaySonnet float64, fiveHourR
 	return string(data)
 }
 
-func strPtr(s string) *string    { return &s }
+func strPtr(s string) *string     { return &s }
 func floatPtr(f float64) *float64 { return &f }
 
 // DefaultAnthropicResponse returns a typical Anthropic response with moderate usage.
@@ -240,9 +240,9 @@ func AnthropicResponseNullQuotas() string {
 func CopilotResponseJSON(premiumRemaining, premiumEntitlement int, resetDateUTC string) string {
 	resp := map[string]interface{}{
 		"login":                "testuser",
-		"copilot_plan":        "individual_pro",
-		"access_type_sku":     "plus_monthly_subscriber_quota",
-		"quota_reset_date":    "2026-03-01",
+		"copilot_plan":         "individual_pro",
+		"access_type_sku":      "plus_monthly_subscriber_quota",
+		"quota_reset_date":     "2026-03-01",
 		"quota_reset_date_utc": resetDateUTC,
 		"quota_snapshots": map[string]interface{}{
 			"premium_interactions": map[string]interface{}{
@@ -309,5 +309,65 @@ func CopilotResponseWithReset() (before, after string) {
 
 	before = CopilotResponseJSON(200, 1500, resetBefore.Format(time.RFC3339))
 	after = CopilotResponseJSON(1500, 1500, resetAfter.Format(time.RFC3339))
+	return before, after
+}
+
+// --- MiniMax API Fixtures ---
+
+// MiniMaxResponseJSON returns a valid MiniMax remains response.
+func MiniMaxResponseJSON(modelName string, total, used int, startTime, endTime time.Time) string {
+	remains := total - used
+	if remains < 0 {
+		remains = 0
+	}
+	remainsTime := int64(time.Until(endTime).Seconds())
+	if remainsTime < 0 {
+		remainsTime = 0
+	}
+	resp := map[string]interface{}{
+		"base_resp": map[string]interface{}{
+			"status_code": 0,
+			"status_msg":  "",
+		},
+		"model_remains": []map[string]interface{}{
+			{
+				"model_name":                    modelName,
+				"start_time":                    startTime.UTC().Format(time.RFC3339),
+				"end_time":                      endTime.UTC().Format(time.RFC3339),
+				"remains_time":                  remainsTime,
+				"current_interval_total_count":  total,
+				"current_interval_usage_count":  used,
+				"current_interval_remain_count": remains,
+			},
+		},
+	}
+	data, _ := json.Marshal(resp)
+	return string(data)
+}
+
+// DefaultMiniMaxResponse returns a typical MiniMax response with moderate usage.
+func DefaultMiniMaxResponse() string {
+	now := time.Now().UTC()
+	return MiniMaxResponseJSON("MiniMax-M2", 200, 42, now.Add(-30*time.Minute), now.Add(90*time.Minute))
+}
+
+// MiniMaxResponseSequence returns n MiniMax responses with incrementing usage.
+func MiniMaxResponseSequence(n int) []string {
+	responses := make([]string, n)
+	now := time.Now().UTC()
+	start := now.Add(-30 * time.Minute)
+	end := now.Add(90 * time.Minute)
+	for i := range n {
+		used := 20 + i*10
+		responses[i] = MiniMaxResponseJSON("MiniMax-M2", 200, used, start, end)
+	}
+	return responses
+}
+
+// MiniMaxResponseWithReset returns two responses with different window boundaries.
+func MiniMaxResponseWithReset() (before, after string) {
+	now := time.Now().UTC()
+	before = MiniMaxResponseJSON("MiniMax-M2", 200, 180, now.Add(-90*time.Minute), now.Add(10*time.Minute))
+	after = MiniMaxResponseJSON("MiniMax-M2", 200, 5, now.Add(10*time.Minute), now.Add(130*time.Minute))
 	return before, after
 }

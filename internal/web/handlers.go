@@ -55,6 +55,7 @@ type Handler struct {
 	zaiTracker       *tracker.ZaiTracker
 	anthropicTracker *tracker.AnthropicTracker
 	copilotTracker   *tracker.CopilotTracker
+	miniMaxTracker   *tracker.MiniMaxTracker
 	updater          *update.Updater
 	notifier         Notifier
 	logger           *slog.Logger
@@ -127,6 +128,11 @@ func (h *Handler) SetAnthropicTracker(t *tracker.AnthropicTracker) {
 // SetCopilotTracker sets the Copilot tracker for usage summary enrichment.
 func (h *Handler) SetCopilotTracker(t *tracker.CopilotTracker) {
 	h.copilotTracker = t
+}
+
+// SetMiniMaxTracker sets the MiniMax tracker for usage summary enrichment.
+func (h *Handler) SetMiniMaxTracker(t *tracker.MiniMaxTracker) {
+	h.miniMaxTracker = t
 }
 
 // SetUpdater sets the updater for self-update functionality.
@@ -420,6 +426,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 	hasAnthropic := h.config != nil && h.config.HasProvider("anthropic")
 	hasCopilot := h.config != nil && h.config.HasProvider("copilot")
+	hasMiniMax := h.config != nil && h.config.HasProvider("minimax")
 	data := map[string]interface{}{
 		"Title":           "Dashboard",
 		"Providers":       providers,
@@ -427,6 +434,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		"Version":         h.version,
 		"HasAnthropic":    hasAnthropic,
 		"HasCopilot":      hasCopilot,
+		"HasMiniMax":      hasMiniMax,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -456,6 +464,8 @@ func (h *Handler) Current(w http.ResponseWriter, r *http.Request) {
 		h.currentAnthropic(w, r)
 	case "copilot":
 		h.currentCopilot(w, r)
+	case "minimax":
+		h.currentMiniMax(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -475,6 +485,9 @@ func (h *Handler) currentBoth(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.config.HasProvider("copilot") {
 		response["copilot"] = h.buildCopilotCurrent()
+	}
+	if h.config.HasProvider("minimax") {
+		response["minimax"] = h.buildMiniMaxCurrent()
 	}
 	respondJSON(w, http.StatusOK, response)
 }
@@ -804,6 +817,8 @@ func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 		h.historyAnthropic(w, r)
 	case "copilot":
 		h.historyCopilot(w, r)
+	case "minimax":
+		h.historyMiniMax(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -928,6 +943,30 @@ func (h *Handler) historyBoth(w http.ResponseWriter, r *http.Request) {
 				copData = append(copData, entry)
 			}
 			response["copilot"] = copData
+		}
+	}
+
+	if h.config.HasProvider("minimax") && h.store != nil {
+		snapshots, err := h.store.QueryMiniMaxRange(start, now)
+		if err == nil {
+			step := downsampleStep(len(snapshots), maxChartPoints)
+			last := len(snapshots) - 1
+			miniData := make([]map[string]interface{}, 0, min(len(snapshots), maxChartPoints))
+			for i, snap := range snapshots {
+				if step > 1 && i != 0 && i != last && i%step != 0 {
+					continue
+				}
+				entry := map[string]interface{}{
+					"capturedAt": snap.CapturedAt.Format(time.RFC3339),
+				}
+				for _, m := range snap.Models {
+					if m.Total > 0 {
+						entry[m.ModelName] = m.UsedPercent
+					}
+				}
+				miniData = append(miniData, entry)
+			}
+			response["minimax"] = miniData
 		}
 	}
 
@@ -1066,6 +1105,8 @@ func (h *Handler) Cycles(w http.ResponseWriter, r *http.Request) {
 		h.cyclesAnthropic(w, r)
 	case "copilot":
 		h.cyclesCopilot(w, r)
+	case "minimax":
+		h.cyclesMiniMax(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -1128,6 +1169,23 @@ func (h *Handler) cyclesBoth(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		response["anthropic"] = anthCycles
+	}
+
+	if h.config.HasProvider("minimax") {
+		model := r.URL.Query().Get("minimaxType")
+		if model == "" {
+			model = "MiniMax-M2"
+		}
+		var miniCycles []map[string]interface{}
+		if active, err := h.store.QueryActiveMiniMaxCycle(model); err == nil && active != nil {
+			miniCycles = append(miniCycles, miniMaxCycleToMap(active))
+		}
+		if history, err := h.store.QueryMiniMaxCycleHistory(model, 200); err == nil {
+			for _, c := range history {
+				miniCycles = append(miniCycles, miniMaxCycleToMap(c))
+			}
+		}
+		response["minimax"] = miniCycles
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -1292,6 +1350,8 @@ func (h *Handler) Summary(w http.ResponseWriter, r *http.Request) {
 		h.summaryAnthropic(w, r)
 	case "copilot":
 		h.summaryCopilot(w, r)
+	case "minimax":
+		h.summaryMiniMax(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -1327,6 +1387,9 @@ func (h *Handler) summaryBoth(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.config.HasProvider("copilot") {
 		response["copilot"] = h.buildCopilotSummaryMap()
+	}
+	if h.config.HasProvider("minimax") {
+		response["minimax"] = h.buildMiniMaxSummaryMap()
 	}
 	respondJSON(w, http.StatusOK, response)
 }
@@ -1724,6 +1787,8 @@ func (h *Handler) Insights(w http.ResponseWriter, r *http.Request) {
 		h.insightsAnthropic(w, r, rangeDur)
 	case "copilot":
 		h.insightsCopilot(w, r, rangeDur)
+	case "minimax":
+		h.insightsMiniMax(w, r, rangeDur)
 	default:
 	}
 }
@@ -1744,6 +1809,9 @@ func (h *Handler) insightsBoth(w http.ResponseWriter, r *http.Request, rangeDur 
 	}
 	if h.config.HasProvider("copilot") {
 		response["copilot"] = h.buildCopilotInsights(hidden, rangeDur)
+	}
+	if h.config.HasProvider("minimax") {
+		response["minimax"] = h.buildMiniMaxInsights(hidden, rangeDur)
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -3719,6 +3787,8 @@ func (h *Handler) CycleOverview(w http.ResponseWriter, r *http.Request) {
 		h.cycleOverviewAnthropic(w, r)
 	case "copilot":
 		h.cycleOverviewCopilot(w, r)
+	case "minimax":
+		h.cycleOverviewMiniMax(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -3928,6 +3998,37 @@ func (h *Handler) cycleOverviewBoth(w http.ResponseWriter, r *http.Request) {
 			response["copilot"] = map[string]interface{}{
 				"groupBy":    groupBy,
 				"provider":   "copilot",
+				"quotaNames": quotaNames,
+				"cycles":     cycleOverviewRowsToJSON(rows),
+			}
+		}
+	}
+
+	if h.config.HasProvider("minimax") {
+		groupBy := r.URL.Query().Get("minimaxGroupBy")
+		if groupBy == "" {
+			groupBy = "MiniMax-M2"
+		}
+		if rows, err := h.store.QueryMiniMaxCycleOverview(groupBy, limit); err == nil {
+			quotaNames := []string{}
+			for _, row := range rows {
+				if len(row.CrossQuotas) > 0 {
+					for _, cq := range row.CrossQuotas {
+						quotaNames = append(quotaNames, cq.Name)
+					}
+					break
+				}
+			}
+			if len(quotaNames) == 0 {
+				if names, err := h.store.QueryAllMiniMaxModelNames(); err == nil && len(names) > 0 {
+					quotaNames = names
+				} else {
+					quotaNames = []string{"MiniMax-M2"}
+				}
+			}
+			response["minimax"] = map[string]interface{}{
+				"groupBy":    groupBy,
+				"provider":   "minimax",
 				"quotaNames": quotaNames,
 				"cycles":     cycleOverviewRowsToJSON(rows),
 			}

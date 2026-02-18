@@ -414,6 +414,43 @@ func TestConfig_LoadsAnthropicFromEnv(t *testing.T) {
 	}
 }
 
+func TestConfig_LoadsMiniMaxFromEnv(t *testing.T) {
+	os.Setenv("MINIMAX_API_KEY", "minimax_test_key_123")
+	defer os.Clearenv()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	if cfg.MiniMaxAPIKey != "minimax_test_key_123" {
+		t.Errorf("MiniMaxAPIKey = %q, want %q", cfg.MiniMaxAPIKey, "minimax_test_key_123")
+	}
+}
+
+func TestConfig_OnlyMiniMaxProvider(t *testing.T) {
+	os.Setenv("MINIMAX_API_KEY", "minimax_test_key")
+	defer os.Clearenv()
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	providers := cfg.AvailableProviders()
+	if len(providers) != 1 || providers[0] != "minimax" {
+		t.Errorf("AvailableProviders() = %v, want [minimax]", providers)
+	}
+
+	if !cfg.HasProvider("minimax") {
+		t.Error("HasProvider('minimax') should be true")
+	}
+
+	if cfg.HasProvider("synthetic") {
+		t.Error("HasProvider('synthetic') should be false")
+	}
+}
+
 func TestConfig_OnlyAnthropicProvider(t *testing.T) {
 	os.Setenv("ANTHROPIC_TOKEN", "sk-ant-test-token")
 	defer os.Clearenv()
@@ -500,6 +537,21 @@ func TestConfig_HasMultipleProviders(t *testing.T) {
 			cfg:      Config{SyntheticAPIKey: "syn_test", ZaiAPIKey: "zai_test", AnthropicToken: "sk-ant-test"},
 			wantBoth: true,
 		},
+		{
+			name:     "minimax only",
+			cfg:      Config{MiniMaxAPIKey: "minimax_test"},
+			wantBoth: false,
+		},
+		{
+			name:     "synthetic and minimax",
+			cfg:      Config{SyntheticAPIKey: "syn_test", MiniMaxAPIKey: "minimax_test"},
+			wantBoth: true,
+		},
+		{
+			name:     "all providers",
+			cfg:      Config{SyntheticAPIKey: "syn_test", ZaiAPIKey: "zai_test", AnthropicToken: "sk-ant-test", CopilotToken: "ghp_test", MiniMaxAPIKey: "minimax_test"},
+			wantBoth: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -528,6 +580,20 @@ func TestConfig_RedactsAnthropicToken(t *testing.T) {
 	}
 	if !strings.Contains(str, "AnthropicToken:") {
 		t.Error("String() should contain AnthropicToken field")
+	}
+}
+
+func TestConfig_RedactsMiniMaxAPIKey(t *testing.T) {
+	cfg := &Config{
+		MiniMaxAPIKey: "minimax_secret_api_key_xyz123",
+	}
+
+	str := cfg.String()
+	if strings.Contains(str, "minimax_secret_api_key_xyz123") {
+		t.Error("String() should not contain full MiniMax API key")
+	}
+	if !strings.Contains(str, "MiniMaxAPIKey:") {
+		t.Error("String() should contain MiniMaxAPIKey field")
 	}
 }
 

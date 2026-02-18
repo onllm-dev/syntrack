@@ -30,6 +30,9 @@ type Config struct {
 	// Copilot provider configuration
 	CopilotToken string // COPILOT_TOKEN (GitHub PAT with copilot scope)
 
+	// MiniMax provider configuration
+	MiniMaxAPIKey string // MINIMAX_API_KEY
+
 	// Shared configuration
 	PollInterval       time.Duration // ONWATCH_POLL_INTERVAL (seconds → Duration)
 	Port               int           // ONWATCH_PORT
@@ -139,7 +142,10 @@ func loadFromEnvAndFlags(flags *flagValues) (*Config, error) {
 	// Copilot provider
 	cfg.CopilotToken = os.Getenv("COPILOT_TOKEN")
 
-	// Poll Interval (seconds) — ONWATCH_* first, SYNTRACK_* fallback
+	// MiniMax provider
+	cfg.MiniMaxAPIKey = os.Getenv("MINIMAX_API_KEY")
+
+	// Poll Interval (seconds) - ONWATCH_* first, SYNTRACK_* fallback
 	if flags.interval > 0 {
 		cfg.PollInterval = time.Duration(flags.interval) * time.Second
 	} else if env := envWithFallback("ONWATCH_POLL_INTERVAL", "SYNTRACK_POLL_INTERVAL"); env != "" {
@@ -246,8 +252,8 @@ func (c *Config) applyDefaults() {
 // Validate checks the configuration for errors.
 func (c *Config) Validate() error {
 	// At least one provider must be configured
-	if c.SyntheticAPIKey == "" && c.ZaiAPIKey == "" && c.AnthropicToken == "" && c.CopilotToken == "" {
-		return fmt.Errorf("at least one provider must be configured: set SYNTHETIC_API_KEY, ZAI_API_KEY, ANTHROPIC_TOKEN, or COPILOT_TOKEN")
+	if c.SyntheticAPIKey == "" && c.ZaiAPIKey == "" && c.AnthropicToken == "" && c.CopilotToken == "" && c.MiniMaxAPIKey == "" {
+		return fmt.Errorf("at least one provider must be configured: set SYNTHETIC_API_KEY, ZAI_API_KEY, ANTHROPIC_TOKEN, COPILOT_TOKEN, or MINIMAX_API_KEY")
 	}
 
 	// Validate Synthetic API key if provided
@@ -288,6 +294,9 @@ func (c *Config) AvailableProviders() []string {
 	if c.CopilotToken != "" {
 		providers = append(providers, "copilot")
 	}
+	if c.MiniMaxAPIKey != "" {
+		providers = append(providers, "minimax")
+	}
 	return providers
 }
 
@@ -302,6 +311,8 @@ func (c *Config) HasProvider(name string) bool {
 		return c.AnthropicToken != ""
 	case "copilot":
 		return c.CopilotToken != ""
+	case "minimax":
+		return c.MiniMaxAPIKey != ""
 	}
 	return false
 }
@@ -319,6 +330,9 @@ func (c *Config) HasMultipleProviders() bool {
 		count++
 	}
 	if c.CopilotToken != "" {
+		count++
+	}
+	if c.MiniMaxAPIKey != "" {
 		count++
 	}
 	return count > 1
@@ -356,6 +370,10 @@ func (c *Config) String() string {
 	// Redact Copilot token
 	copilotDisplay := redactAPIKey(c.CopilotToken, "ghp_")
 	fmt.Fprintf(&sb, "  CopilotToken: %s,\n", copilotDisplay)
+
+	// Redact MiniMax API key
+	miniMaxDisplay := redactAPIKey(c.MiniMaxAPIKey, "")
+	fmt.Fprintf(&sb, "  MiniMaxAPIKey: %s,\n", miniMaxDisplay)
 
 	fmt.Fprintf(&sb, "  PollInterval: %v,\n", c.PollInterval)
 	fmt.Fprintf(&sb, "  SessionIdleTimeout: %v,\n", c.SessionIdleTimeout)

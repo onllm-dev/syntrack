@@ -38,9 +38,10 @@ func main() {
 	synKey := flag.String("syn-key", "syn_test_e2e_key", "Expected Synthetic API key")
 	zaiKey := flag.String("zai-key", "zai_test_e2e_key", "Expected Z.ai API key")
 	anthToken := flag.String("anth-token", "anth_test_e2e_token", "Expected Anthropic OAuth token")
+	miniMaxKey := flag.String("minimax-key", "minimax_test_e2e_key", "Expected MiniMax API key")
 	flag.Parse()
 
-	srv := newStandaloneServer(*synKey, *zaiKey, *anthToken)
+	srv := newStandaloneServer(*synKey, *zaiKey, *anthToken, *miniMaxKey)
 
 	addr := fmt.Sprintf(":%d", *port)
 	ln, err := net.Listen("tcp", addr)
@@ -59,6 +60,7 @@ func main() {
 		log.Printf("  Synthetic key: %s", *synKey)
 		log.Printf("  Z.ai key:      %s", *zaiKey)
 		log.Printf("  Anthropic tok: %s", *anthToken)
+		log.Printf("  MiniMax key:   %s", *miniMaxKey)
 		if err := httpSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server error: %v", err)
 		}
@@ -99,9 +101,15 @@ type standaloneServer struct {
 	anthropicError     atomic.Int32
 	anthropicIdx       atomic.Int64
 	anthropicCount     atomic.Int64
+
+	miniMaxKey       string
+	miniMaxResponses []string
+	miniMaxError     atomic.Int32
+	miniMaxIdx       atomic.Int64
+	miniMaxCount     atomic.Int64
 }
 
-func newStandaloneServer(synKey, zaiKey, anthToken string) *standaloneServer {
+func newStandaloneServer(synKey, zaiKey, anthToken, miniMaxKey string) *standaloneServer {
 	srv := &standaloneServer{
 		mux:                http.NewServeMux(),
 		syntheticKey:       synKey,
@@ -110,11 +118,14 @@ func newStandaloneServer(synKey, zaiKey, anthToken string) *standaloneServer {
 		zaiResponses:       []string{testutil.DefaultZaiResponse()},
 		anthropicToken:     anthToken,
 		anthropicResponses: []string{testutil.DefaultAnthropicResponse()},
+		miniMaxKey:         miniMaxKey,
+		miniMaxResponses:   []string{testutil.DefaultMiniMaxResponse()},
 	}
 
 	srv.mux.HandleFunc("/v2/quotas", srv.handleSynthetic)
 	srv.mux.HandleFunc("/monitor/usage/quota/limit", srv.handleZai)
 	srv.mux.HandleFunc("/api/oauth/usage", srv.handleAnthropic)
+	srv.mux.HandleFunc("/v1/api/openplatform/coding_plan/remains", srv.handleMiniMax)
 	srv.mux.HandleFunc("/admin/scenario", srv.handleAdminScenario)
 	srv.mux.HandleFunc("/admin/error", srv.handleAdminError)
 	srv.mux.HandleFunc("/admin/requests", srv.handleAdminRequests)
@@ -213,6 +224,36 @@ func (s *standaloneServer) handleAnthropic(w http.ResponseWriter, r *http.Reques
 	fmt.Fprint(w, responses[respIdx])
 }
 
+func (s *standaloneServer) handleMiniMax(w http.ResponseWriter, r *http.Request) {
+	s.miniMaxCount.Add(1)
+
+	if errCode := s.miniMaxError.Load(); errCode > 0 {
+		w.WriteHeader(int(errCode))
+		fmt.Fprintf(w, `{"error": "injected error %d"}`, errCode)
+		return
+	}
+
+	s.mu.RLock()
+	expectedKey := s.miniMaxKey
+	responses := s.miniMaxResponses
+	s.mu.RUnlock()
+
+	if expectedKey != "" {
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer "+expectedKey {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"base_resp":{"status_code":1004,"status_msg":"unauthorized"}}`)
+			return
+		}
+	}
+
+	idx := s.miniMaxIdx.Add(1) - 1
+	respIdx := int(idx) % len(responses)
+
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprint(w, responses[respIdx])
+}
+
 func (s *standaloneServer) handleAdminScenario(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -248,6 +289,9 @@ func (s *standaloneServer) handleAdminScenario(w http.ResponseWriter, r *http.Re
 	case "anthropic":
 		s.anthropicResponses = payload.Responses
 		s.anthropicIdx.Store(0)
+	case "minimax":
+		s.miniMaxResponses = payload.Responses
+		s.miniMaxIdx.Store(0)
 	default:
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, `{"error": "unknown provider: %s"}`, payload.Provider)
@@ -287,6 +331,8 @@ func (s *standaloneServer) handleAdminError(w http.ResponseWriter, r *http.Reque
 		s.zaiError.Store(int32(payload.StatusCode))
 	case "anthropic":
 		s.anthropicError.Store(int32(payload.StatusCode))
+	case "minimax":
+		s.miniMaxError.Store(int32(payload.StatusCode))
 	default:
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, `{"error": "unknown provider: %s"}`, payload.Provider)
@@ -302,6 +348,7 @@ func (s *standaloneServer) handleAdminRequests(w http.ResponseWriter, _ *http.Re
 		"synthetic": s.syntheticCount.Load(),
 		"zai":       s.zaiCount.Load(),
 		"anthropic": s.anthropicCount.Load(),
+		"minimax":   s.miniMaxCount.Load(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -317,12 +364,15 @@ func (s *standaloneServer) handleAdminReset(w http.ResponseWriter, r *http.Reque
 	s.syntheticError.Store(0)
 	s.zaiError.Store(0)
 	s.anthropicError.Store(0)
+	s.miniMaxError.Store(0)
 	s.syntheticCount.Store(0)
 	s.zaiCount.Store(0)
 	s.anthropicCount.Store(0)
+	s.miniMaxCount.Store(0)
 	s.syntheticIdx.Store(0)
 	s.zaiIdx.Store(0)
 	s.anthropicIdx.Store(0)
+	s.miniMaxIdx.Store(0)
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(w, `{"ok": true}`)

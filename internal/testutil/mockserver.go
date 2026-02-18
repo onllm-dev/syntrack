@@ -36,17 +36,23 @@ type MockServer struct {
 	copilotResponses []string
 	copilotError     atomic.Int32
 
+	miniMaxKey       string
+	miniMaxResponses []string
+	miniMaxError     atomic.Int32
+
 	// Round-robin response indexes (atomic for thread safety)
-	syntheticIdx  atomic.Int64
-	zaiIdx        atomic.Int64
-	anthropicIdx  atomic.Int64
-	copilotIdx    atomic.Int64
+	syntheticIdx atomic.Int64
+	zaiIdx       atomic.Int64
+	anthropicIdx atomic.Int64
+	copilotIdx   atomic.Int64
+	miniMaxIdx   atomic.Int64
 
 	// Request counters (atomic for thread safety)
-	syntheticCount  atomic.Int64
-	zaiCount        atomic.Int64
-	anthropicCount  atomic.Int64
-	copilotCount    atomic.Int64
+	syntheticCount atomic.Int64
+	zaiCount       atomic.Int64
+	anthropicCount atomic.Int64
+	copilotCount   atomic.Int64
+	miniMaxCount   atomic.Int64
 }
 
 // MockOption configures a MockServer.
@@ -108,6 +114,20 @@ func WithCopilotResponses(responses []string) MockOption {
 	}
 }
 
+// WithMiniMaxKey sets the expected MiniMax API key.
+func WithMiniMaxKey(key string) MockOption {
+	return func(ms *MockServer) {
+		ms.miniMaxKey = key
+	}
+}
+
+// WithMiniMaxResponses sets the MiniMax response sequence.
+func WithMiniMaxResponses(responses []string) MockOption {
+	return func(ms *MockServer) {
+		ms.miniMaxResponses = responses
+	}
+}
+
 // NewMockServer creates a new mock server with the given options.
 // The server routes requests to the appropriate provider handler based on URL path.
 func NewMockServer(t *testing.T, opts ...MockOption) *MockServer {
@@ -132,12 +152,16 @@ func NewMockServer(t *testing.T, opts ...MockOption) *MockServer {
 	if ms.copilotToken != "" && len(ms.copilotResponses) == 0 {
 		ms.copilotResponses = []string{DefaultCopilotResponse()}
 	}
+	if ms.miniMaxKey != "" && len(ms.miniMaxResponses) == 0 {
+		ms.miniMaxResponses = []string{DefaultMiniMaxResponse()}
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v2/quotas", ms.handleSynthetic)
 	mux.HandleFunc("/monitor/usage/quota/limit", ms.handleZai)
 	mux.HandleFunc("/api/oauth/usage", ms.handleAnthropic)
 	mux.HandleFunc("/copilot_internal/user", ms.handleCopilot)
+	mux.HandleFunc("/v1/api/openplatform/coding_plan/remains", ms.handleMiniMax)
 	mux.HandleFunc("/admin/scenario", ms.handleAdminScenario)
 	mux.HandleFunc("/admin/error", ms.handleAdminError)
 	mux.HandleFunc("/admin/requests", ms.handleAdminRequests)
@@ -147,6 +171,7 @@ func NewMockServer(t *testing.T, opts ...MockOption) *MockServer {
 			r.URL.Path != "/monitor/usage/quota/limit" &&
 			r.URL.Path != "/api/oauth/usage" &&
 			r.URL.Path != "/copilot_internal/user" &&
+			r.URL.Path != "/v1/api/openplatform/coding_plan/remains" &&
 			!strings.HasPrefix(r.URL.Path, "/admin/") {
 			http.NotFound(w, r)
 		}
@@ -321,6 +346,45 @@ func (ms *MockServer) handleCopilot(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, responses[respIdx])
 }
 
+// handleMiniMax handles GET /v1/api/openplatform/coding_plan/remains
+func (ms *MockServer) handleMiniMax(w http.ResponseWriter, r *http.Request) {
+	ms.miniMaxCount.Add(1)
+
+	if errCode := ms.miniMaxError.Load(); errCode > 0 {
+		w.WriteHeader(int(errCode))
+		fmt.Fprintf(w, `{"error": "injected error %d"}`, errCode)
+		return
+	}
+
+	ms.mu.RLock()
+	expectedKey := ms.miniMaxKey
+	responses := ms.miniMaxResponses
+	ms.mu.RUnlock()
+
+	if expectedKey != "" {
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer "+expectedKey {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"base_resp":{"status_code":1004,"status_msg":"unauthorized"}}`)
+			return
+		}
+	}
+
+	if len(responses) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, DefaultMiniMaxResponse())
+		return
+	}
+
+	idx := ms.miniMaxIdx.Add(1) - 1
+	respIdx := int(idx) % len(responses)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, responses[respIdx])
+}
+
 // handleAdminScenario handles POST /admin/scenario to switch response sequences at runtime.
 func (ms *MockServer) handleAdminScenario(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -360,6 +424,9 @@ func (ms *MockServer) handleAdminScenario(w http.ResponseWriter, r *http.Request
 	case "copilot":
 		ms.copilotResponses = payload.Responses
 		ms.copilotIdx.Store(0)
+	case "minimax":
+		ms.miniMaxResponses = payload.Responses
+		ms.miniMaxIdx.Store(0)
 	default:
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, `{"error": "unknown provider: %s"}`, payload.Provider)
@@ -402,6 +469,8 @@ func (ms *MockServer) handleAdminError(w http.ResponseWriter, r *http.Request) {
 		ms.anthropicError.Store(int32(payload.StatusCode))
 	case "copilot":
 		ms.copilotError.Store(int32(payload.StatusCode))
+	case "minimax":
+		ms.miniMaxError.Store(int32(payload.StatusCode))
 	default:
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, `{"error": "unknown provider: %s"}`, payload.Provider)
@@ -419,6 +488,7 @@ func (ms *MockServer) handleAdminRequests(w http.ResponseWriter, _ *http.Request
 		"zai":       ms.zaiCount.Load(),
 		"anthropic": ms.anthropicCount.Load(),
 		"copilot":   ms.copilotCount.Load(),
+		"minimax":   ms.miniMaxCount.Load(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -460,6 +530,7 @@ func (ms *MockServer) ClearErrors() {
 	ms.zaiError.Store(0)
 	ms.anthropicError.Store(0)
 	ms.copilotError.Store(0)
+	ms.miniMaxError.Store(0)
 }
 
 // RequestCount returns the number of requests made to a provider.
@@ -473,6 +544,8 @@ func (ms *MockServer) RequestCount(provider string) int {
 		return int(ms.anthropicCount.Load())
 	case "copilot":
 		return int(ms.copilotCount.Load())
+	case "minimax":
+		return int(ms.miniMaxCount.Load())
 	}
 	return 0
 }

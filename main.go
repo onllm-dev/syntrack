@@ -557,6 +557,7 @@ func run() error {
 	// Create API clients based on configured providers
 	var syntheticClient *api.Client
 	var zaiClient *api.ZaiClient
+	var miniMaxClient *api.MiniMaxClient
 
 	if cfg.HasProvider("synthetic") {
 		syntheticClient = api.NewClient(cfg.SyntheticAPIKey, logger)
@@ -578,6 +579,11 @@ func run() error {
 	if cfg.HasProvider("copilot") {
 		copilotClient = api.NewCopilotClient(cfg.CopilotToken, logger)
 		logger.Info("Copilot API client configured")
+	}
+
+	if cfg.HasProvider("minimax") {
+		miniMaxClient = api.NewMiniMaxClient(cfg.MiniMaxAPIKey, logger)
+		logger.Info("MiniMax API client configured")
 	}
 
 	// Create components
@@ -638,6 +644,18 @@ func run() error {
 		copilotAg = agent.NewCopilotAgent(copilotClient, db, copilotTr, cfg.PollInterval, logger, copilotSm)
 	}
 
+	// Create MiniMax tracker
+	var miniMaxTr *tracker.MiniMaxTracker
+	if cfg.HasProvider("minimax") {
+		miniMaxTr = tracker.NewMiniMaxTracker(db, logger)
+	}
+
+	var miniMaxAg *agent.MiniMaxAgent
+	if miniMaxClient != nil {
+		miniMaxSm := agent.NewSessionManager(db, "minimax", idleTimeout, logger)
+		miniMaxAg = agent.NewMiniMaxAgent(miniMaxClient, db, miniMaxTr, cfg.PollInterval, logger, miniMaxSm)
+	}
+
 	// Create notification engine
 	notifier := notify.New(db, logger)
 	notifier.SetEncryptionKey(deriveEncryptionKey(cfg.AdminPassHash))
@@ -657,6 +675,9 @@ func run() error {
 	}
 	if copilotAg != nil {
 		copilotAg.SetNotifier(notifier)
+	}
+	if miniMaxAg != nil {
+		miniMaxAg.SetNotifier(notifier)
 	}
 
 	// Wire polling checks — agents skip poll when telemetry disabled
@@ -688,6 +709,9 @@ func run() error {
 	if copilotAg != nil {
 		copilotAg.SetPollingCheck(func() bool { return isPollingEnabled("copilot") })
 	}
+	if miniMaxAg != nil {
+		miniMaxAg.SetPollingCheck(func() bool { return isPollingEnabled("minimax") })
+	}
 
 	// Wire reset callbacks to trackers
 	tr.SetOnReset(func(quotaName string) {
@@ -708,6 +732,11 @@ func run() error {
 			notifier.Check(notify.QuotaStatus{Provider: "copilot", QuotaKey: quotaName, ResetOccurred: true})
 		})
 	}
+	if miniMaxTr != nil {
+		miniMaxTr.SetOnReset(func(quotaName string) {
+			notifier.Check(notify.QuotaStatus{Provider: "minimax", QuotaKey: quotaName, ResetOccurred: true})
+		})
+	}
 
 	handler := web.NewHandler(db, tr, logger, nil, cfg, zaiTr)
 	handler.SetVersion(version)
@@ -717,6 +746,9 @@ func run() error {
 	}
 	if copilotTr != nil {
 		handler.SetCopilotTracker(copilotTr)
+	}
+	if miniMaxTr != nil {
+		handler.SetMiniMaxTracker(miniMaxTr)
 	}
 	updater := update.NewUpdater(version, logger)
 	handler.SetUpdater(updater)
@@ -735,7 +767,7 @@ func run() error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// Start agents in goroutines (staggered to avoid SQLite contention on session creation)
-	agentErr := make(chan error, 4)
+	agentErr := make(chan error, 5)
 	if ag != nil {
 		go func() {
 			defer func() {
@@ -799,7 +831,23 @@ func run() error {
 		}()
 	}
 
-	if ag == nil && zaiAg == nil && anthropicAg == nil && copilotAg == nil {
+	if miniMaxAg != nil {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("MiniMax agent panicked", "panic", r)
+					agentErr <- fmt.Errorf("minimax agent panic: %v", r)
+				}
+			}()
+			time.Sleep(800 * time.Millisecond) // stagger to avoid SQLite BUSY
+			logger.Info("Starting MiniMax agent", "interval", cfg.PollInterval)
+			if err := miniMaxAg.Run(ctx); err != nil {
+				agentErr <- fmt.Errorf("minimax agent error: %w", err)
+			}
+		}()
+	}
+
+	if ag == nil && zaiAg == nil && anthropicAg == nil && copilotAg == nil && miniMaxAg == nil {
 		logger.Info("No agents configured")
 	}
 
@@ -1179,6 +1227,9 @@ func printBanner(cfg *config.Config, version string) {
 	if cfg.HasProvider("copilot") {
 		fmt.Println("║  API:       github.com/copilot (β)   ║")
 	}
+	if cfg.HasProvider("minimax") {
+		fmt.Println("║  API:       minimax.io/coding_plan   ║")
+	}
 
 	fmt.Printf("║  Polling:   every %s              ║\n", cfg.PollInterval)
 	fmt.Printf("║  Dashboard: http://localhost:%d    ║\n", cfg.Port)
@@ -1206,6 +1257,9 @@ func printBanner(cfg *config.Config, version string) {
 	}
 	if cfg.HasProvider("copilot") {
 		fmt.Printf("Copilot Token:     %s\n", redactAPIKey(cfg.CopilotToken))
+	}
+	if cfg.HasProvider("minimax") {
+		fmt.Printf("MiniMax API Key:   %s\n", redactAPIKey(cfg.MiniMaxAPIKey))
 	}
 	fmt.Println()
 }
@@ -1235,6 +1289,7 @@ func printHelp() {
 	fmt.Println("  ZAI_BASE_URL           Z.ai base URL (default: https://api.z.ai/api)")
 	fmt.Println("  ANTHROPIC_TOKEN         Anthropic token (auto-detected if not set)")
 	fmt.Println("  COPILOT_TOKEN           GitHub Copilot token (PAT with copilot scope)")
+	fmt.Println("  MINIMAX_API_KEY         MiniMax coding plan API key")
 	fmt.Println("  ONWATCH_POLL_INTERVAL   Polling interval in seconds")
 	fmt.Println("  ONWATCH_PORT            Dashboard HTTP port")
 	fmt.Println("  ONWATCH_ADMIN_USER      Dashboard admin username")
@@ -1261,7 +1316,7 @@ func printHelp() {
 	fmt.Println("  Use --db and --port to further isolate test from production.")
 	fmt.Println()
 	fmt.Println("Configure providers in .env file or environment variables.")
-	fmt.Println("At least one provider (Synthetic, Z.ai, Anthropic, or Copilot) must be configured.")
+	fmt.Println("At least one provider (Synthetic, Z.ai, Anthropic, Copilot, or MiniMax) must be configured.")
 }
 
 func redactAPIKey(key string) string {

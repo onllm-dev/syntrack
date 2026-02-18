@@ -52,6 +52,17 @@ func createTestConfigWithBoth() *config.Config {
 	}
 }
 
+func createTestConfigWithMiniMax() *config.Config {
+	return &config.Config{
+		MiniMaxAPIKey: "minimax_test_key",
+		PollInterval:  60 * time.Second,
+		Port:          9211,
+		AdminUser:     "admin",
+		AdminPass:     "test",
+		DBPath:        "./test.db",
+	}
+}
+
 func TestHandler_Dashboard_ReturnsHTML(t *testing.T) {
 	h := NewHandler(nil, nil, nil, nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -1870,6 +1881,8 @@ func createTestConfigWithAll() *config.Config {
 		ZaiAPIKey:       "zai_test_key",
 		ZaiBaseURL:      "https://api.z.ai/api",
 		AnthropicToken:  "test_anthropic_token",
+		CopilotToken:    "ghp_test_copilot",
+		MiniMaxAPIKey:   "minimax_test_key",
 		PollInterval:    60 * time.Second,
 		Port:            9211,
 		AdminUser:       "admin",
@@ -2198,6 +2211,35 @@ func TestHandler_Providers_WithAnthropicOnly(t *testing.T) {
 	}
 }
 
+func TestHandler_Providers_WithMiniMaxOnly(t *testing.T) {
+	cfg := createTestConfigWithMiniMax()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/providers", nil)
+	rr := httptest.NewRecorder()
+	h.Providers(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	providers, ok := response["providers"].([]interface{})
+	if !ok {
+		t.Fatal("expected providers array")
+	}
+	if len(providers) != 1 {
+		t.Errorf("expected 1 provider, got %d", len(providers))
+	}
+	if providers[0] != "minimax" {
+		t.Errorf("expected minimax provider, got %v", providers[0])
+	}
+}
+
 func TestHandler_Providers_WithAllProviders_IncludesBoth(t *testing.T) {
 	cfg := createTestConfigWithAll()
 	h := NewHandler(nil, nil, nil, nil, cfg)
@@ -2220,9 +2262,9 @@ func TestHandler_Providers_WithAllProviders_IncludesBoth(t *testing.T) {
 		t.Fatal("expected providers array")
 	}
 
-	// Should have synthetic, zai, anthropic, both = 4
-	if len(providers) != 4 {
-		t.Errorf("expected 4 providers (synthetic, zai, anthropic, both), got %d: %v", len(providers), providers)
+	// Should have synthetic, zai, anthropic, copilot, minimax, both = 6
+	if len(providers) != 6 {
+		t.Errorf("expected 6 providers (synthetic, zai, anthropic, copilot, minimax, both), got %d: %v", len(providers), providers)
 	}
 }
 
@@ -2897,13 +2939,13 @@ type mockNotifier struct {
 	reloadCalled bool
 }
 
-func (m *mockNotifier) Reload() error              { m.reloadCalled = true; return nil }
-func (m *mockNotifier) ConfigureSMTP() error        { return nil }
-func (m *mockNotifier) ConfigurePush() error        { return nil }
-func (m *mockNotifier) SendTestEmail() error        { return m.sendTestErr }
-func (m *mockNotifier) SendTestPush() error         { return nil }
-func (m *mockNotifier) SetEncryptionKey(_ string)   {}
-func (m *mockNotifier) GetVAPIDPublicKey() string   { return "" }
+func (m *mockNotifier) Reload() error             { m.reloadCalled = true; return nil }
+func (m *mockNotifier) ConfigureSMTP() error      { return nil }
+func (m *mockNotifier) ConfigurePush() error      { return nil }
+func (m *mockNotifier) SendTestEmail() error      { return m.sendTestErr }
+func (m *mockNotifier) SendTestPush() error       { return nil }
+func (m *mockNotifier) SetEncryptionKey(_ string) {}
+func (m *mockNotifier) GetVAPIDPublicKey() string { return "" }
 
 func TestHandler_SMTPTest_Success(t *testing.T) {
 	cfg := createTestConfigWithSynthetic()
@@ -3082,6 +3124,35 @@ func TestHandler_CycleOverview_Both(t *testing.T) {
 	}
 	if _, ok := response["zai"]; !ok {
 		t.Error("expected zai field in 'both' response")
+	}
+}
+
+func TestHandler_CycleOverview_Both_DefaultMiniMaxGroupBy_UsesMiniMaxM2(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	cfg := createTestConfigWithAll()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cycle-overview?provider=both", nil)
+	rr := httptest.NewRecorder()
+	h.CycleOverview(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	mini, ok := response["minimax"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected minimax field in both response")
+	}
+	if mini["groupBy"] != "MiniMax-M2" {
+		t.Fatalf("expected minimax groupBy MiniMax-M2, got %v", mini["groupBy"])
 	}
 }
 
@@ -3391,7 +3462,7 @@ func TestHandler_parseInsightsRange(t *testing.T) {
 		{"1d", 24 * time.Hour},
 		{"7d", 7 * 24 * time.Hour},
 		{"30d", 30 * 24 * time.Hour},
-		{"", 7 * 24 * time.Hour},       // default
+		{"", 7 * 24 * time.Hour},        // default
 		{"invalid", 7 * 24 * time.Hour}, // default
 	}
 
@@ -3422,8 +3493,8 @@ func TestHandler_MaxBytesReader_RejectsLargeBody(t *testing.T) {
 	largePayload := fmt.Sprintf(`{"timezone":"%s"}`, largeValue)
 
 	tests := []struct {
-		name   string
-		method string
+		name    string
+		method  string
 		handler func(http.ResponseWriter, *http.Request)
 	}{
 		{

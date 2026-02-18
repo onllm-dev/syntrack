@@ -609,6 +609,7 @@ func TestMockServer_AllProvidersSimultaneously(t *testing.T) {
 		WithZaiKey("zai_k"),
 		WithAnthropicToken("anth_t"),
 		WithCopilotToken("ghp_t"),
+		WithMiniMaxKey("minimax_k"),
 	)
 	defer ms.Close()
 
@@ -649,6 +650,15 @@ func TestMockServer_AllProvidersSimultaneously(t *testing.T) {
 	}
 	resp.Body.Close()
 
+	// MiniMax
+	req, _ = http.NewRequest("GET", ms.URL+"/v1/api/openplatform/coding_plan/remains", nil)
+	req.Header.Set("Authorization", "Bearer minimax_k")
+	resp, _ = http.DefaultClient.Do(req)
+	if resp.StatusCode != 200 {
+		t.Errorf("minimax: expected 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
 	if ms.RequestCount("synthetic") != 1 {
 		t.Errorf("expected 1 synthetic, got %d", ms.RequestCount("synthetic"))
 	}
@@ -660,5 +670,35 @@ func TestMockServer_AllProvidersSimultaneously(t *testing.T) {
 	}
 	if ms.RequestCount("copilot") != 1 {
 		t.Errorf("expected 1 copilot, got %d", ms.RequestCount("copilot"))
+	}
+	if ms.RequestCount("minimax") != 1 {
+		t.Errorf("expected 1 minimax, got %d", ms.RequestCount("minimax"))
+	}
+}
+
+func TestMockServer_DefaultMiniMaxRoute(t *testing.T) {
+	ms := NewMockServer(t, WithMiniMaxKey("minimax_test123"))
+	defer ms.Close()
+
+	req, _ := http.NewRequest("GET", ms.URL+"/v1/api/openplatform/coding_plan/remains", nil)
+	req.Header.Set("Authorization", "Bearer minimax_test123")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]interface{}
+	if err := json.Unmarshal(body, &result); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if _, ok := result["model_remains"]; !ok {
+		t.Error("response missing 'model_remains' key")
 	}
 }

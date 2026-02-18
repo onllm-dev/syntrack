@@ -51,6 +51,8 @@ function getCurrentProvider() {
   if (anthropicGrid) return 'anthropic';
   const copilotGrid = document.getElementById('quota-grid-copilot');
   if (copilotGrid) return 'copilot';
+  const miniMaxGrid = document.getElementById('quota-grid-minimax');
+  if (miniMaxGrid) return 'minimax';
   const grid = document.getElementById('quota-grid');
   return (grid && grid.dataset.provider) || 'synthetic';
 }
@@ -324,6 +326,22 @@ const copilotChartColorFallback = [
   { border: '#a371f7', bg: 'rgba(163, 113, 247, 0.08)' }
 ];
 
+// ── MiniMax display names/colors ──
+const miniMaxDisplayNames = {
+  'MiniMax-M2': 'MiniMax-M2',
+  'MiniMax-Text-01': 'MiniMax-Text-01'
+};
+
+const miniMaxChartColorMap = {
+  'MiniMax-M2': { border: '#0EA5E9', bg: 'rgba(14, 165, 233, 0.08)' },
+  'MiniMax-Text-01': { border: '#22C55E', bg: 'rgba(34, 197, 94, 0.08)' }
+};
+
+const miniMaxChartColorFallback = [
+  { border: '#A855F7', bg: 'rgba(168, 85, 247, 0.08)' },
+  { border: '#F97316', bg: 'rgba(249, 115, 22, 0.08)' }
+];
+
 // ── Renewal Categories for Cycle Overview ──
 
 const renewalCategories = {
@@ -345,6 +363,10 @@ const renewalCategories = {
     { label: 'Premium', groupBy: 'premium_interactions' },
     { label: 'Chat', groupBy: 'chat' },
     { label: 'Completions', groupBy: 'completions' }
+  ],
+  minimax: [
+    { label: 'M2', groupBy: 'MiniMax-M2' },
+    { label: 'Text-01', groupBy: 'MiniMax-Text-01' }
   ]
 };
 
@@ -360,7 +382,9 @@ const overviewQuotaDisplayNames = {
   extra_usage: 'Extra',
   premium_interactions: 'Premium',
   chat: 'Chat',
-  completions: 'Completions'
+  completions: 'Completions',
+  'MiniMax-M2': 'M2',
+  'MiniMax-Text-01': 'Text-01'
 };
 
 // ── Anthropic Dynamic Card Rendering ──
@@ -605,6 +629,119 @@ async function loadAnthropicModalCycles(quotaName) {
 }
 
 // ── Copilot Dynamic Card Rendering ──
+
+function renderMiniMaxQuotaCards(quotas, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.innerHTML = quotas.map((q, i) => {
+    const displayName = q.displayName || miniMaxDisplayNames[q.name] || q.name;
+    const usagePct = (q.usedPercent || 0).toFixed(1);
+    const status = q.status || 'healthy';
+    const statusCfg = statusConfig[status] || statusConfig.healthy;
+    const countdownId = `countdown-minimax-${q.name}`;
+    const progressId = `progress-minimax-${q.name}`;
+    const percentId = `percent-minimax-${q.name}`;
+    const fractionId = `fraction-minimax-${q.name}`;
+    const statusId = `status-minimax-${q.name}`;
+    const resetId = `reset-minimax-${q.name}`;
+
+    return `<article class="quota-card minimax-card" data-quota="${q.name}" data-provider="minimax" role="button" tabindex="0" aria-label="View ${displayName} details" style="animation-delay: ${i * 60}ms">
+      <header class="card-header">
+        <h2 class="quota-title">${displayName}</h2>
+        <span class="countdown" id="${countdownId}">${q.timeUntilResetSeconds > 0 ? formatDuration(q.timeUntilResetSeconds) : '--:--'}</span>
+      </header>
+      <div class="progress-stats">
+        <span class="usage-percent" id="${percentId}">${usagePct}%</span>
+        <span class="usage-fraction" id="${fractionId}">${formatNumber(q.used)} / ${formatNumber(q.total)}</span>
+      </div>
+      <div class="progress-wrapper">
+        <div class="progress-bar" role="progressbar" aria-valuenow="${Math.round(q.usedPercent || 0)}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-fill" id="${progressId}" style="width: ${usagePct}%" data-status="${status}"></div>
+        </div>
+      </div>
+      <footer class="card-footer">
+        <span class="status-badge" id="${statusId}" data-status="${status}">
+          <svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${statusCfg.icon}"/></svg>
+          ${statusCfg.label}
+        </span>
+        <span class="reset-time" id="${resetId}">${q.resetAt ? 'Resets: ' + formatDateTime(q.resetAt) : ''}</span>
+      </footer>
+    </article>`;
+  }).join('');
+
+  container.querySelectorAll('.quota-card[role="button"]').forEach(card => {
+    const handler = () => {
+      const providerCol = card.closest('.provider-column');
+      const providerOverride = providerCol ? providerCol.dataset.provider : 'minimax';
+      openModal(card.dataset.quota, providerOverride);
+    };
+    card.addEventListener('click', handler);
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
+    });
+  });
+}
+
+function updateMiniMaxCard(quota) {
+  const key = `minimax-${quota.name}`;
+  const prev = State.currentQuotas[key];
+  State.currentQuotas[key] = {
+    percent: quota.usedPercent || 0,
+    usage: quota.used,
+    limit: quota.total,
+    remain: quota.remain,
+    status: quota.status || 'healthy',
+    renewsAt: quota.resetAt,
+    timeUntilReset: quota.timeUntilReset,
+    timeUntilResetSeconds: quota.timeUntilResetSeconds || 0,
+    name: quota.name,
+    displayName: quota.displayName
+  };
+
+  const progressEl = document.getElementById(`progress-minimax-${quota.name}`);
+  const percentEl = document.getElementById(`percent-minimax-${quota.name}`);
+  const fractionEl = document.getElementById(`fraction-minimax-${quota.name}`);
+  const statusEl = document.getElementById(`status-minimax-${quota.name}`);
+  const resetEl = document.getElementById(`reset-minimax-${quota.name}`);
+  const countdownEl = document.getElementById(`countdown-minimax-${quota.name}`);
+
+  const usagePct = (quota.usedPercent || 0).toFixed(1);
+  const status = quota.status || 'healthy';
+
+  if (progressEl) {
+    progressEl.style.width = `${usagePct}%`;
+    progressEl.setAttribute('data-status', status);
+  }
+  if (percentEl) {
+    const oldVal = prev ? prev.percent : 0;
+    if (Math.abs(oldVal - (quota.usedPercent || 0)) > 0.2) {
+      animateValue(percentEl, oldVal, quota.usedPercent || 0, 400, v => `${v.toFixed(1)}%`);
+    } else {
+      percentEl.textContent = `${usagePct}%`;
+    }
+  }
+  if (fractionEl) {
+    fractionEl.textContent = `${formatNumber(quota.used)} / ${formatNumber(quota.total)}`;
+  }
+  if (statusEl) {
+    const config = statusConfig[status] || statusConfig.healthy;
+    statusEl.setAttribute('data-status', status);
+    statusEl.innerHTML = `<svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${config.icon}"/></svg>${config.label}`;
+  }
+  if (resetEl) {
+    resetEl.textContent = quota.resetAt ? `Resets: ${formatDateTime(quota.resetAt)}` : '';
+  }
+  if (countdownEl) {
+    if (quota.timeUntilResetSeconds > 0) {
+      countdownEl.textContent = formatDuration(quota.timeUntilResetSeconds);
+      countdownEl.classList.toggle('imminent', quota.timeUntilResetSeconds < 1800);
+      countdownEl.style.display = '';
+    } else {
+      countdownEl.style.display = 'none';
+    }
+  }
+}
 
 function renderCopilotQuotaCards(quotas, containerId) {
   const container = document.getElementById(containerId);
@@ -1313,6 +1450,14 @@ async function fetchCurrent() {
             data.copilot.quotas.forEach(q => updateCopilotCard(q));
           }
         }
+        if (data.minimax && data.minimax.quotas) {
+          const container = document.getElementById('quota-grid-minimax-both');
+          if (container && container.children.length === 0) {
+            renderMiniMaxQuotaCards(data.minimax.quotas, 'quota-grid-minimax-both');
+          } else {
+            data.minimax.quotas.forEach(q => updateMiniMaxCard(q));
+          }
+        }
       } else if (provider === 'copilot') {
         // Copilot response: { capturedAt: ..., quotas: [...] }
         if (data.quotas) {
@@ -1321,6 +1466,15 @@ async function fetchCurrent() {
             renderCopilotQuotaCards(data.quotas, 'quota-grid-copilot');
           } else {
             data.quotas.forEach(q => updateCopilotCard(q));
+          }
+        }
+      } else if (provider === 'minimax') {
+        if (data.quotas) {
+          const container = document.getElementById('quota-grid-minimax');
+          if (container && container.children.length === 0) {
+            renderMiniMaxQuotaCards(data.quotas, 'quota-grid-minimax');
+          } else {
+            data.quotas.forEach(q => updateMiniMaxCard(q));
           }
         }
       } else if (provider === 'anthropic') {
@@ -1775,19 +1929,31 @@ function initChart() {
 
   // Map dataset indices to quota types for visibility toggle
   const provider = getCurrentProvider();
-  const quotaMap = provider === 'zai'
-    ? ['tokensLimit', 'timeLimit', 'toolCalls']
-    : ['subscription', 'search', 'toolCalls'];
+  let quotaMap = ['subscription', 'search', 'toolCalls'];
+  if (provider === 'zai') {
+    quotaMap = ['tokensLimit', 'timeLimit', 'toolCalls'];
+  } else if (provider === 'copilot') {
+    quotaMap = ['premium_interactions', 'chat', 'completions'];
+  } else if (provider === 'minimax') {
+    quotaMap = ['MiniMax-M2', 'MiniMax-Text-01'];
+  }
+
+  const defaultDatasets = provider === 'minimax'
+    ? [
+        { label: 'M2', data: [], borderColor: miniMaxChartColorMap['MiniMax-M2'].border, backgroundColor: miniMaxChartColorMap['MiniMax-M2'].bg, fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, hidden: State.hiddenQuotas.has('MiniMax-M2') },
+        { label: 'Text-01', data: [], borderColor: miniMaxChartColorMap['MiniMax-Text-01'].border, backgroundColor: miniMaxChartColorMap['MiniMax-Text-01'].bg, fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, hidden: State.hiddenQuotas.has('MiniMax-Text-01') }
+      ]
+    : [
+        { label: 'Subscription', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-subscription').trim() || '#0D9488', backgroundColor: 'rgba(13, 148, 136, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, hidden: State.hiddenQuotas.has('subscription') },
+        { label: 'Search', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-search').trim() || '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, hidden: State.hiddenQuotas.has('search') },
+        { label: 'Tool Calls', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-toolcalls').trim() || '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, hidden: State.hiddenQuotas.has('toolCalls') }
+      ];
 
   State.chart = new Chart(ctx, {
     type: 'line',
     data: {
       labels: [],
-      datasets: [
-        { label: 'Subscription', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-subscription').trim() || '#0D9488', backgroundColor: 'rgba(13, 148, 136, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, hidden: State.hiddenQuotas.has('subscription') },
-        { label: 'Search', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-search').trim() || '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, hidden: State.hiddenQuotas.has('search') },
-        { label: 'Tool Calls', data: [], borderColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-toolcalls').trim() || '#3B82F6', backgroundColor: 'rgba(59, 130, 246, 0.06)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4, hidden: State.hiddenQuotas.has('toolCalls') }
-      ]
+      datasets: defaultDatasets
     },
     options: {
       responsive: true,
@@ -1881,10 +2047,22 @@ async function fetchHistory(range) {
     const provider = getCurrentProvider();
 
     if (provider === 'both') {
-      // "both" response: { synthetic: [...], zai: [...] }
+      // "both" response: { synthetic: [...], zai: [...], anthropic: [...], copilot: [...], minimax: [...] }
       updateBothCharts(data);
       return;
     }
+
+    // Normalize flat history format to array-of-quotas format for dynamic providers.
+    const normalizeDynamicHistory = (rows) => {
+      if (!Array.isArray(rows)) return [];
+      return rows.map(row => {
+        if (Array.isArray(row.quotas)) return row;
+        const quotas = Object.keys(row)
+          .filter(k => k !== 'capturedAt')
+          .map(name => ({ name, usagePercent: row[name], usedPercent: row[name] }));
+        return { capturedAt: row.capturedAt, quotas };
+      });
+    };
 
     if (!State.chart) initChart();
     if (!State.chart) return;
@@ -1918,22 +2096,27 @@ async function fetchHistory(range) {
       return;
     }
 
-    if (provider === 'copilot') {
-      // Copilot history: array of { capturedAt, quotas: [...] } → transform to flat object
-      // Extract quota keys and build datasets
+    if (provider === 'copilot' || provider === 'minimax') {
+      const isCopilot = provider === 'copilot';
+      const displayNames = isCopilot ? copilotDisplayNames : miniMaxDisplayNames;
+      const colorMap = isCopilot ? copilotChartColorMap : miniMaxChartColorMap;
+      const fallbackColors = isCopilot ? copilotChartColorFallback : miniMaxChartColorFallback;
+      const valueField = isCopilot ? 'usagePercent' : 'usedPercent';
+
+      const normalized = normalizeDynamicHistory(data);
       const quotaKeys = new Set();
-      data.forEach(d => {
+      normalized.forEach(d => {
         if (d.quotas) d.quotas.forEach(q => quotaKeys.add(q.name));
       });
       const sortedKeys = [...quotaKeys].sort();
       let fallbackIdx = 0;
       State.chart.data.datasets = sortedKeys.map((key) => {
-        const color = copilotChartColorMap[key] || copilotChartColorFallback[fallbackIdx++ % copilotChartColorFallback.length];
+        const color = colorMap[key] || fallbackColors[fallbackIdx++ % fallbackColors.length];
         return {
-          label: copilotDisplayNames[key] || key,
-          data: data.map(d => {
+          label: displayNames[key] || key,
+          data: normalized.map(d => {
             const q = d.quotas ? d.quotas.find(q => q.name === key) : null;
-            return q ? (q.usagePercent || 0) : 0;
+            return q ? (q[valueField] || 0) : 0;
           }),
           borderColor: color.border,
           backgroundColor: color.bg,
@@ -1941,7 +2124,7 @@ async function fetchHistory(range) {
           hidden: State.hiddenQuotas.has(key)
         };
       });
-      State.chart.data.labels = data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+      State.chart.data.labels = normalized.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
       State.chartYMax = computeYMax(State.chart.data.datasets, State.chart);
       State.chart.options.scales.y.max = State.chartYMax;
       State.chart.update();
@@ -1997,6 +2180,7 @@ function updateBothCharts(data) {
   if (!container) return;
 
   const hasAnthData = data.anthropic && Array.isArray(data.anthropic) && data.anthropic.length > 0;
+  const hasMiniData = data.minimax && Array.isArray(data.minimax) && data.minimax.length > 0;
   // Create multi-chart layout if not exists
   if (!container.classList.contains('both-charts')) {
     container.classList.add('both-charts');
@@ -2007,12 +2191,17 @@ function updateBothCharts(data) {
     if (hasAnthData) {
       html += `<div class="chart-half"><h4 class="chart-half-label">Anthropic</h4><canvas id="usage-chart-anth"></canvas></div>`;
     }
+    if (hasMiniData) {
+      html += `<div class="chart-half"><h4 class="chart-half-label">MiniMax</h4><canvas id="usage-chart-minimax"></canvas></div>`;
+    }
     container.innerHTML = html;
     // Hide the original single chart canvas
     const origCanvas = document.getElementById('usage-chart');
     if (origCanvas) origCanvas.style.display = 'none';
   } else if (hasAnthData && !document.getElementById('usage-chart-anth')) {
     container.insertAdjacentHTML('beforeend', '<div class="chart-half"><h4 class="chart-half-label">Anthropic</h4><canvas id="usage-chart-anth"></canvas></div>');
+  } else if (hasMiniData && !document.getElementById('usage-chart-minimax')) {
+    container.insertAdjacentHTML('beforeend', '<div class="chart-half"><h4 class="chart-half-label">MiniMax</h4><canvas id="usage-chart-minimax"></canvas></div>');
   }
 
   const style = getComputedStyle(document.documentElement);
@@ -2087,6 +2276,41 @@ function updateBothCharts(data) {
       options: buildChartOptions(colors, computeYMax(anthDatasets))
     });
   }
+
+  // MiniMax chart (dynamic dataset count)
+  const miniCanvas = document.getElementById('usage-chart-minimax');
+  if (miniCanvas && hasMiniData) {
+    const miniData = data.minimax;
+    const quotaKeys = new Set();
+    miniData.forEach(d => {
+      Object.keys(d).forEach(k => { if (k !== 'capturedAt') quotaKeys.add(k); });
+    });
+    const sortedKeys = [...quotaKeys].sort();
+    let fi = 0;
+    const miniDatasets = sortedKeys.map((key) => {
+      const color = miniMaxChartColorMap[key] || miniMaxChartColorFallback[fi++ % miniMaxChartColorFallback.length];
+      return {
+        label: miniMaxDisplayNames[key] || key,
+        data: miniData.map(d => d[key] || 0),
+        borderColor: color.border,
+        backgroundColor: color.bg,
+        fill: true,
+        tension: 0.4,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+      };
+    });
+    const chartMini = new Chart(miniCanvas, {
+      type: 'line',
+      data: {
+        labels: miniData.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        datasets: miniDatasets,
+      },
+      options: buildChartOptions(colors, computeYMax(miniDatasets)),
+    });
+    State.chartMiniMax = chartMini;
+  }
 }
 
 function buildChartOptions(colors, yMax) {
@@ -2125,6 +2349,10 @@ async function fetchCycles() {
     groupBy = 'subscription';
   } else if (provider === 'zai') {
     groupBy = 'tokens';
+  } else if (provider === 'copilot') {
+    groupBy = 'premium_interactions';
+  } else if (provider === 'minimax') {
+    groupBy = 'MiniMax-M2';
   } else if (provider === 'both') {
     // Use anthropic by default for "both" mode
     groupBy = 'five_hour';
@@ -2872,11 +3100,12 @@ function setupPasswordToggle() {
 function getOverviewCategories() {
   const provider = getCurrentProvider();
   if (provider === 'both') {
-    // Merge all categories
     return [
-      ...renewalCategories.anthropic || [],
-      ...renewalCategories.synthetic || [],
-      ...renewalCategories.zai || []
+      ...(renewalCategories.anthropic || []),
+      ...(renewalCategories.synthetic || []),
+      ...(renewalCategories.zai || []),
+      ...(renewalCategories.copilot || []),
+      ...(renewalCategories.minimax || [])
     ];
   }
   return renewalCategories[provider] || [];

@@ -12,7 +12,7 @@
             {{range .Providers}}
             <button class="provider-tab {{if eq . $.CurrentProvider}}active{{end}}"
                     data-provider="{{.}}" role="tab" aria-selected="{{if eq . $.CurrentProvider}}true{{else}}false{{end}}">
-                {{if eq . "synthetic"}}Synthetic{{else if eq . "zai"}}Z.ai{{else if eq . "anthropic"}}Anthropic{{else if eq . "copilot"}}Copilot{{else if eq . "both"}}All{{else}}{{.}}{{end}}
+                {{if eq . "synthetic"}}Synthetic{{else if eq . "zai"}}Z.ai{{else if eq . "anthropic"}}Anthropic{{else if eq . "copilot"}}Copilot{{else if eq . "minimax"}}MiniMax{{else if eq . "both"}}All{{else}}{{.}}{{end}}
             </button>
             {{end}}
         </div>
@@ -124,10 +124,19 @@
                 <div class="quota-grid quota-grid-stacked" id="quota-grid-copilot-both" data-provider="copilot"></div>
             </section>
             {{end}}
+            {{if .HasMiniMax}}
+            <section class="provider-column" data-provider="minimax">
+                <h3 class="provider-label">MiniMax</h3>
+                <div class="quota-grid quota-grid-stacked" id="quota-grid-minimax-both" data-provider="minimax"></div>
+            </section>
+            {{end}}
         </div>
         {{else if eq .CurrentProvider "copilot"}}
         <!-- Copilot quota cards (dynamically populated by JS) -->
         <div class="quota-grid" id="quota-grid-copilot" data-provider="copilot"></div>
+        {{else if eq .CurrentProvider "minimax"}}
+        <!-- MiniMax quota cards (dynamically populated by JS) -->
+        <div class="quota-grid" id="quota-grid-minimax" data-provider="minimax"></div>
         {{else if eq .CurrentProvider "anthropic"}}
         <!-- Anthropic quota cards (dynamically populated by JS) -->
         <div class="quota-grid" id="quota-grid-anthropic" data-provider="anthropic"></div>
