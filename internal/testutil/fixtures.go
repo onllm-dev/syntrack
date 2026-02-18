@@ -320,7 +320,7 @@ func MiniMaxResponseJSON(modelName string, total, used int, startTime, endTime t
 	if remains < 0 {
 		remains = 0
 	}
-	remainsTime := int64(time.Until(endTime).Seconds())
+	remainsTime := time.Until(endTime).Milliseconds()
 	if remainsTime < 0 {
 		remainsTime = 0
 	}
