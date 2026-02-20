@@ -14,10 +14,13 @@ type CodexTracker struct {
 	store      *store.Store
 	logger     *slog.Logger
 	lastValues map[string]float64
+	lastResets map[string]time.Time
 	hasLast    bool
 
 	onReset func(quotaName string)
 }
+
+const codexResetShiftThreshold = 60 * time.Minute
 
 // CodexSummary contains computed usage statistics for a Codex quota.
 type CodexSummary struct {
@@ -43,6 +46,7 @@ func NewCodexTracker(store *store.Store, logger *slog.Logger) *CodexTracker {
 		store:      store,
 		logger:     logger,
 		lastValues: make(map[string]float64),
+		lastResets: make(map[string]time.Time),
 	}
 }
 
@@ -80,24 +84,44 @@ func (t *CodexTracker) processQuota(quota api.CodexQuota, capturedAt time.Time) 
 			return fmt.Errorf("failed to set initial peak: %w", err)
 		}
 		t.lastValues[quotaName] = currentUtil
+		if quota.ResetsAt != nil {
+			t.lastResets[quotaName] = *quota.ResetsAt
+		}
 		return nil
 	}
 
 	resetDetected := false
+	updateCycleResetAt := false
 	if cycle.ResetsAt != nil && capturedAt.After(cycle.ResetsAt.Add(2*time.Minute)) {
 		resetDetected = true
 	}
 	if !resetDetected {
 		if quota.ResetsAt != nil && cycle.ResetsAt != nil {
-			diff := quota.ResetsAt.Sub(*cycle.ResetsAt)
+			refReset := *cycle.ResetsAt
+			if lastReset, ok := t.lastResets[quotaName]; ok {
+				refReset = lastReset
+			}
+
+			diff := quota.ResetsAt.Sub(refReset)
 			if diff < 0 {
 				diff = -diff
 			}
-			if diff > 10*time.Minute {
-				resetDetected = true
+
+			if diff > codexResetShiftThreshold {
+				// Some Codex responses use rolling reset timestamps. Only treat large
+				// reset-time shifts as a reset when utilization also drops materially.
+				if t.hasLast {
+					if lastUtil, ok := t.lastValues[quotaName]; ok && currentUtil+2 < lastUtil {
+						resetDetected = true
+					}
+				}
+			}
+
+			if !resetDetected {
+				updateCycleResetAt = true
 			}
 		} else if quota.ResetsAt != nil && cycle.ResetsAt == nil {
-			resetDetected = true
+			updateCycleResetAt = true
 		}
 	}
 
@@ -127,10 +151,22 @@ func (t *CodexTracker) processQuota(quota api.CodexQuota, capturedAt time.Time) 
 			return fmt.Errorf("failed to set initial peak: %w", err)
 		}
 		t.lastValues[quotaName] = currentUtil
+		if quota.ResetsAt != nil {
+			t.lastResets[quotaName] = *quota.ResetsAt
+		}
 		if t.onReset != nil {
 			t.onReset(quotaName)
 		}
 		return nil
+	}
+
+	if updateCycleResetAt {
+		if err := t.store.UpdateCodexCycleResetsAt(quotaName, quota.ResetsAt); err != nil {
+			return fmt.Errorf("failed to update cycle reset timestamp: %w", err)
+		}
+		if quota.ResetsAt != nil {
+			t.lastResets[quotaName] = *quota.ResetsAt
+		}
 	}
 
 	if t.hasLast {

@@ -147,6 +147,71 @@ func TestCodexTracker_Process_ResetDetection(t *testing.T) {
 	}
 }
 
+func TestCodexTracker_Process_ResetTimestampDrift_DoesNotReset(t *testing.T) {
+	s := newTestCodexStore(t)
+	tr := NewCodexTracker(s, slog.Default())
+
+	now := time.Now().UTC()
+	reset1 := now.Add(5 * time.Hour)
+	reset2 := reset1.Add(10 * time.Minute)
+	reset3 := reset1.Add(75 * time.Minute)
+
+	snap1 := &api.CodexSnapshot{
+		CapturedAt: now,
+		Quotas: []api.CodexQuota{
+			{Name: "five_hour", Utilization: 40, ResetsAt: &reset1, Status: "warning"},
+		},
+	}
+	if err := tr.Process(snap1); err != nil {
+		t.Fatalf("Process snap1: %v", err)
+	}
+
+	snap2 := &api.CodexSnapshot{
+		CapturedAt: now.Add(10 * time.Minute),
+		Quotas: []api.CodexQuota{
+			{Name: "five_hour", Utilization: 41, ResetsAt: &reset2, Status: "warning"},
+		},
+	}
+	if err := tr.Process(snap2); err != nil {
+		t.Fatalf("Process snap2: %v", err)
+	}
+
+	snap3 := &api.CodexSnapshot{
+		CapturedAt: now.Add(75 * time.Minute),
+		Quotas: []api.CodexQuota{
+			{Name: "five_hour", Utilization: 41.5, ResetsAt: &reset3, Status: "warning"},
+		},
+	}
+	if err := tr.Process(snap3); err != nil {
+		t.Fatalf("Process snap3: %v", err)
+	}
+
+	history, err := s.QueryCodexCycleHistory("five_hour")
+	if err != nil {
+		t.Fatalf("QueryCodexCycleHistory: %v", err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("expected no completed cycles, got %d", len(history))
+	}
+
+	active, err := s.QueryActiveCodexCycle("five_hour")
+	if err != nil {
+		t.Fatalf("QueryActiveCodexCycle: %v", err)
+	}
+	if active == nil {
+		t.Fatal("expected active cycle")
+	}
+	if active.CycleStart.Unix() != now.Unix() {
+		t.Fatalf("expected original cycle start, got %v", active.CycleStart)
+	}
+	if active.ResetsAt == nil {
+		t.Fatal("expected active reset timestamp to be tracked")
+	}
+	if !active.ResetsAt.Equal(reset3) {
+		t.Fatalf("active.ResetsAt = %v, want %v", active.ResetsAt, reset3)
+	}
+}
+
 func TestCodexTracker_UsageSummary(t *testing.T) {
 	s := newTestCodexStore(t)
 	tr := NewCodexTracker(s, slog.Default())
