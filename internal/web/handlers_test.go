@@ -2313,6 +2313,7 @@ func TestHandler_History_WithCodexProvider(t *testing.T) {
 		Quotas: []api.CodexQuota{
 			{Name: "five_hour", Utilization: 22.0},
 			{Name: "seven_day", Utilization: 11.5},
+			{Name: "code_review", Utilization: 7.0},
 		},
 		RawJSON: `{"ok":true}`,
 	}
@@ -2344,6 +2345,9 @@ func TestHandler_History_WithCodexProvider(t *testing.T) {
 	}
 	if _, ok := response[0]["five_hour"]; !ok {
 		t.Error("expected five_hour value in codex history entry")
+	}
+	if _, ok := response[0]["code_review"]; !ok {
+		t.Error("expected code_review value in codex history entry")
 	}
 }
 
