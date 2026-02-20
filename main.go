@@ -312,26 +312,6 @@ func removePIDFile() {
 	os.Remove(pidFile)
 }
 
-// primeCodexTokenFromAuth primes CODEX_TOKEN env var from Codex auth file
-// when it is not explicitly set. This allows config validation to pass for
-// auth-file-only setups.
-func primeCodexTokenFromAuth(logger *slog.Logger) bool {
-	if strings.TrimSpace(os.Getenv("CODEX_TOKEN")) != "" {
-		return false
-	}
-
-	token := api.DetectCodexToken(logger)
-	if token == "" {
-		return false
-	}
-
-	if err := os.Setenv("CODEX_TOKEN", token); err != nil {
-		return false
-	}
-
-	return true
-}
-
 // daemonize re-executes the current binary as a detached background process.
 // The parent writes the child's PID to .onwatch.pid and exits.
 func daemonize(cfg *config.Config) error {
@@ -418,10 +398,6 @@ func run() error {
 	// counted in RSS, causing a permanent ratchet effect.
 	debug.SetMemoryLimit(40 * 1024 * 1024) // 40 MiB soft limit
 	debug.SetGCPercent(50)                 // GC at 50% heap growth (default 100)
-
-	// Prime Codex token from auth file before config validation.
-	// This preserves startup when Codex is configured via auth.json only.
-	codexAutoPrimed := primeCodexTokenFromAuth(slog.Default())
 
 	// Phase 3: Parse flags and load config
 	cfg, err := config.Load()
@@ -578,12 +554,7 @@ func run() error {
 		}
 	}
 
-	if codexAutoPrimed {
-		cfg.CodexAutoToken = true
-		logger.Info("Auto-detected Codex token from Codex credentials")
-	}
-
-	// Auto-detect Codex token if not explicitly configured and not already primed
+	// Auto-detect Codex token if not explicitly configured
 	if cfg.CodexToken == "" {
 		if token := api.DetectCodexToken(logger); token != "" {
 			cfg.CodexToken = token

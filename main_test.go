@@ -1,19 +1,15 @@
 package main
 
 import (
-	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/onllm-dev/onwatch/internal/config"
 )
 
-func discardMainLogger() *slog.Logger {
-	return slog.New(slog.DiscardHandler)
-}
-
-func TestPrimeCodexTokenFromAuth_AllowsConfigLoadWithOnlyCodexAuth(t *testing.T) {
+func TestConfigLoad_WithOnlyCodexAuthFile_ReturnsValidationError(t *testing.T) {
 	homeDir := t.TempDir()
 	codexHome := t.TempDir()
 	t.Setenv("HOME", homeDir)
@@ -29,19 +25,11 @@ func TestPrimeCodexTokenFromAuth_AllowsConfigLoadWithOnlyCodexAuth(t *testing.T)
 		t.Fatalf("write auth.json: %v", err)
 	}
 
-	autoDetected := primeCodexTokenFromAuth(discardMainLogger())
-	if !autoDetected {
-		t.Fatal("primeCodexTokenFromAuth() should auto-detect token")
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("config.Load() should fail without explicit provider env vars")
 	}
-
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatalf("config.Load() failed: %v", err)
-	}
-	if cfg.CodexToken != "codex_oauth_access" {
-		t.Fatalf("CodexToken = %q, want codex_oauth_access", cfg.CodexToken)
-	}
-	if !cfg.HasProvider("codex") {
-		t.Fatal("HasProvider('codex') should be true after priming")
+	if !strings.Contains(err.Error(), "at least one provider must be configured") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
