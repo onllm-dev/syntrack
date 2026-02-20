@@ -2905,7 +2905,7 @@ func TestHandler_Insights_AnthropicEmptyDB(t *testing.T) {
 func TestHandler_Login_GET_RendersForm(t *testing.T) {
 	cfg := createTestConfigWithSynthetic()
 	h := NewHandler(nil, nil, nil, nil, cfg)
-	h.SetVersion("2.10.3")
+	h.SetVersion("2.10.4")
 
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	rr := httptest.NewRecorder()
@@ -2920,7 +2920,7 @@ func TestHandler_Login_GET_RendersForm(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, "/static/app.js?v=2.10.3") {
+	if !strings.Contains(body, "/static/app.js?v=2.10.4") {
 		t.Fatalf("expected login page to include versioned app.js URL, body=%s", body)
 	}
 	if !regexp.MustCompile(`/static/app\.js\?v=[^"\s]+`).MatchString(body) {
@@ -4024,7 +4024,7 @@ func TestHandler_Dashboard_WithProviderParam(t *testing.T) {
 func TestHandler_Dashboard_AppJSVersionedURL_Rendered(t *testing.T) {
 	cfg := createTestConfigWithAll()
 	h := NewHandler(nil, nil, nil, nil, cfg)
-	h.SetVersion("2.10.3")
+	h.SetVersion("2.10.4")
 
 	req := httptest.NewRequest(http.MethodGet, "/?provider=both", nil)
 	rr := httptest.NewRecorder()
@@ -4035,12 +4035,12 @@ func TestHandler_Dashboard_AppJSVersionedURL_Rendered(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, "/static/app.js?v=2.10.3") {
+	if !strings.Contains(body, "/static/app.js?v=2.10.4") {
 		t.Fatalf("expected versioned app.js URL, body=%s", body)
 	}
 
-	if strings.Contains(body, "/static/app.js?v=") && !strings.Contains(body, "/static/app.js?v=2.10.3") {
-		t.Fatalf("expected app.js version token to match 2.10.3, body=%s", body)
+	if strings.Contains(body, "/static/app.js?v=") && !strings.Contains(body, "/static/app.js?v=2.10.4") {
+		t.Fatalf("expected app.js version token to match 2.10.4, body=%s", body)
 	}
 }
 

@@ -243,12 +243,12 @@ To release:
 
 ```bash
 # Update VERSION file
-echo "2.10.3" > VERSION
+echo "2.10.4" > VERSION
 
 # Commit, tag, push
 git add VERSION
-git commit -m "chore: bump version to 2.10.3"
-git tag v2.10.3
+git commit -m "chore: bump version to 2.10.4"
+git tag v2.10.4
 git push && git push --tags
 ```
 
