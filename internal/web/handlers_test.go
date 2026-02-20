@@ -2230,6 +2230,7 @@ func TestHandler_Current_WithCodexProvider(t *testing.T) {
 		Quotas: []api.CodexQuota{
 			{Name: "five_hour", Utilization: 42.5, ResetsAt: &resetsAt},
 			{Name: "seven_day", Utilization: 18.0, ResetsAt: &resetsAt},
+			{Name: "code_review", Utilization: 35.0, ResetsAt: &resetsAt},
 		},
 		RawJSON: `{"plan_type":"plus"}`,
 	}
@@ -2261,8 +2262,8 @@ func TestHandler_Current_WithCodexProvider(t *testing.T) {
 	if !ok {
 		t.Fatal("expected quotas array")
 	}
-	if len(quotas) != 2 {
-		t.Fatalf("expected 2 codex quotas, got %d", len(quotas))
+	if len(quotas) != 3 {
+		t.Fatalf("expected 3 codex quotas, got %d", len(quotas))
 	}
 
 	q0, ok := quotas[0].(map[string]interface{})
@@ -2271,6 +2272,34 @@ func TestHandler_Current_WithCodexProvider(t *testing.T) {
 	}
 	if q0["displayName"] != "5-Hour Limit" {
 		t.Errorf("expected 5-Hour Limit displayName, got %v", q0["displayName"])
+	}
+
+	foundCodeReview := false
+	for _, raw := range quotas {
+		q, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if q["name"] != "code_review" {
+			continue
+		}
+		foundCodeReview = true
+		if q["displayName"] != "Review Requests" {
+			t.Errorf("expected code_review displayName Review Requests, got %v", q["displayName"])
+		}
+		if q["cardLabel"] != "Remaining" {
+			t.Errorf("expected code_review cardLabel Remaining, got %v", q["cardLabel"])
+		}
+		cardPercent, ok := q["cardPercent"].(float64)
+		if !ok || cardPercent != 65.0 {
+			t.Errorf("expected code_review cardPercent 65.0, got %v", q["cardPercent"])
+		}
+		if q["status"] != "healthy" {
+			t.Errorf("expected code_review status healthy, got %v", q["status"])
+		}
+	}
+	if !foundCodeReview {
+		t.Error("expected code_review quota in codex response")
 	}
 }
 
@@ -2284,6 +2313,7 @@ func TestHandler_History_WithCodexProvider(t *testing.T) {
 		Quotas: []api.CodexQuota{
 			{Name: "five_hour", Utilization: 22.0},
 			{Name: "seven_day", Utilization: 11.5},
+			{Name: "code_review", Utilization: 7.0},
 		},
 		RawJSON: `{"ok":true}`,
 	}
@@ -2315,6 +2345,9 @@ func TestHandler_History_WithCodexProvider(t *testing.T) {
 	}
 	if _, ok := response[0]["five_hour"]; !ok {
 		t.Error("expected five_hour value in codex history entry")
+	}
+	if _, ok := response[0]["code_review"]; !ok {
+		t.Error("expected code_review value in codex history entry")
 	}
 }
 
@@ -2453,6 +2486,136 @@ func TestHandler_Insights_CodexEmptyDB(t *testing.T) {
 	}
 }
 
+func TestHandler_Insights_CodexRichData(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	now := time.Now().UTC().Add(-2 * time.Hour)
+	fiveHourReset := now.Add(3 * time.Hour)
+	weeklyReset := now.Add(5 * 24 * time.Hour)
+	credits := 87.5
+	tkr := tracker.NewCodexTracker(s, nil)
+
+	for i, util := range []float64{22.0, 31.0, 44.0} {
+		snap := &api.CodexSnapshot{
+			CapturedAt:     now.Add(time.Duration(i) * 30 * time.Minute),
+			PlanType:       "plus",
+			CreditsBalance: &credits,
+			Quotas: []api.CodexQuota{
+				{Name: "five_hour", Utilization: util, ResetsAt: &fiveHourReset},
+				{Name: "seven_day", Utilization: 60.0 + float64(i), ResetsAt: &weeklyReset},
+				{Name: "code_review", Utilization: 15.0 + float64(i*7), ResetsAt: &weeklyReset},
+			},
+			RawJSON: `{"ok":true}`,
+		}
+		if _, err := s.InsertCodexSnapshot(snap); err != nil {
+			t.Fatalf("failed to insert codex snapshot: %v", err)
+		}
+		if err := tkr.Process(snap); err != nil {
+			t.Fatalf("failed to process codex snapshot: %v", err)
+		}
+	}
+
+	cfg := createTestConfigWithCodex()
+	h := NewHandler(s, nil, nil, nil, cfg)
+	h.SetCodexTracker(tkr)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/insights?provider=codex&range=1d", nil)
+	rr := httptest.NewRecorder()
+	h.Insights(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response insightsResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	if len(response.Stats) == 0 {
+		t.Fatal("expected codex stats")
+	}
+	if len(response.Insights) == 0 {
+		t.Fatal("expected codex insights")
+	}
+
+	hasPlan := false
+	hasFiveHourBehaviorStat := false
+	for _, st := range response.Stats {
+		if st.Label == "Plan" {
+			hasPlan = true
+		}
+		if st.Label == "Average 5-Hour Usage/Cycle" || st.Label == "5-Hour Delta (Current)" {
+			hasFiveHourBehaviorStat = true
+		}
+	}
+	if !hasPlan {
+		t.Error("expected Plan stat in codex insights response")
+	}
+	if !hasFiveHourBehaviorStat {
+		t.Error("expected 5-Hour behavior stat in codex insights response")
+	}
+	for _, in := range response.Insights {
+		if in.Title == "Tracking Quality" {
+			t.Error("did not expect Tracking Quality insight in codex insights response")
+		}
+		if in.Title == "Next Reset" {
+			t.Error("did not expect Next Reset insight in codex insights response")
+		}
+		if in.Title == "Credits Balance" {
+			t.Error("did not expect Credits Balance insight in codex insights response")
+		}
+	}
+	for _, st := range response.Stats {
+		if st.Label == "Credits" {
+			t.Error("did not expect Credits stat in codex insights response")
+		}
+		if st.Label == "Next Reset" {
+			t.Error("did not expect Next Reset stat in codex insights response")
+		}
+		if st.Label == "Last Sample" {
+			t.Error("did not expect Last Sample stat in codex insights response")
+		}
+	}
+
+	shortForecastFound := false
+	weeklyForecastFound := false
+	weeklyPaceFound := false
+	reviewPaceFound := false
+	for _, in := range response.Insights {
+		if in.Title == "Short Window Burn Rate" {
+			t.Error("did not expect Short Window Burn Rate in codex insights response")
+		}
+		if in.Title == "Weekly Window Burn Rate" {
+			weeklyForecastFound = strings.Contains(in.Sublabel, "by reset")
+		}
+		if in.Title == "5-Hour Window Burn Rate" {
+			shortForecastFound = strings.Contains(in.Sublabel, "by reset")
+		}
+		if in.Title == "Weekly Pace" {
+			weeklyPaceFound = true
+		}
+		if in.Title == "Review Request Pace" {
+			reviewPaceFound = true
+		}
+		if in.Title == "Window Pressure" {
+			t.Error("did not expect Window Pressure insight in codex insights response")
+		}
+	}
+	if !shortForecastFound {
+		t.Error("expected 5-Hour Window Burn Rate to show reset estimate sublabel")
+	}
+	if !weeklyForecastFound {
+		t.Error("expected Weekly Window Burn Rate to show reset estimate sublabel")
+	}
+	if !weeklyPaceFound {
+		t.Error("expected Weekly Pace insight in codex insights response")
+	}
+	if !reviewPaceFound {
+		t.Error("expected Review Request Pace insight in codex insights response")
+	}
+}
+
 func TestHandler_Providers_WithCodexOnly(t *testing.T) {
 	cfg := createTestConfigWithCodex()
 	h := NewHandler(nil, nil, nil, nil, cfg)
@@ -2562,6 +2725,28 @@ func TestHandler_CodexUtilStatus(t *testing.T) {
 			got := codexUtilStatus(tt.util)
 			if got != tt.status {
 				t.Errorf("codexUtilStatus(%.1f) = %q, want %q", tt.util, got, tt.status)
+			}
+		})
+	}
+}
+
+func TestHandler_CodexRemainingStatus(t *testing.T) {
+	tests := []struct {
+		remaining float64
+		status    string
+	}{
+		{100, "healthy"},
+		{50, "warning"},
+		{20, "danger"},
+		{5, "critical"},
+		{0, "critical"},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("remaining_%.0f", tt.remaining), func(t *testing.T) {
+			got := codexRemainingStatus(tt.remaining)
+			if got != tt.status {
+				t.Errorf("codexRemainingStatus(%.1f) = %q, want %q", tt.remaining, got, tt.status)
 			}
 		})
 	}
@@ -2720,7 +2905,7 @@ func TestHandler_Insights_AnthropicEmptyDB(t *testing.T) {
 func TestHandler_Login_GET_RendersForm(t *testing.T) {
 	cfg := createTestConfigWithSynthetic()
 	h := NewHandler(nil, nil, nil, nil, cfg)
-	h.SetVersion("2.10.3")
+	h.SetVersion("2.10.4")
 
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	rr := httptest.NewRecorder()
@@ -2735,7 +2920,7 @@ func TestHandler_Login_GET_RendersForm(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, "/static/app.js?v=2.10.3") {
+	if !strings.Contains(body, "/static/app.js?v=2.10.4") {
 		t.Fatalf("expected login page to include versioned app.js URL, body=%s", body)
 	}
 	if !regexp.MustCompile(`/static/app\.js\?v=[^"\s]+`).MatchString(body) {
@@ -3839,7 +4024,7 @@ func TestHandler_Dashboard_WithProviderParam(t *testing.T) {
 func TestHandler_Dashboard_AppJSVersionedURL_Rendered(t *testing.T) {
 	cfg := createTestConfigWithAll()
 	h := NewHandler(nil, nil, nil, nil, cfg)
-	h.SetVersion("2.10.3")
+	h.SetVersion("2.10.4")
 
 	req := httptest.NewRequest(http.MethodGet, "/?provider=both", nil)
 	rr := httptest.NewRecorder()
@@ -3850,12 +4035,12 @@ func TestHandler_Dashboard_AppJSVersionedURL_Rendered(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, "/static/app.js?v=2.10.3") {
+	if !strings.Contains(body, "/static/app.js?v=2.10.4") {
 		t.Fatalf("expected versioned app.js URL, body=%s", body)
 	}
 
-	if strings.Contains(body, "/static/app.js?v=") && !strings.Contains(body, "/static/app.js?v=2.10.3") {
-		t.Fatalf("expected app.js version token to match 2.10.3, body=%s", body)
+	if strings.Contains(body, "/static/app.js?v=") && !strings.Contains(body, "/static/app.js?v=2.10.4") {
+		t.Fatalf("expected app.js version token to match 2.10.4, body=%s", body)
 	}
 }
 

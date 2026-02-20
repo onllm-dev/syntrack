@@ -1,6 +1,6 @@
 # Codex Setup Guide
 
-Track Codex quota usage in onWatch (`v2.10.3`).
+Track Codex quota usage in onWatch (`v2.10.4`).
 
 ---
 

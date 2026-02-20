@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -4041,7 +4042,7 @@ func (h *Handler) cycleOverviewBoth(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if len(quotaNames) == 0 {
-				quotaNames = []string{"five_hour", "seven_day"}
+				quotaNames = []string{"five_hour", "seven_day", "code_review"}
 			}
 			response["codex"] = map[string]interface{}{
 				"groupBy":    groupBy,
@@ -4507,14 +4508,44 @@ func (h *Handler) buildCodexCurrent() map[string]interface{} {
 	if latest.PlanType != "" {
 		response["planType"] = latest.PlanType
 	}
+	if latest.CreditsBalance != nil {
+		response["creditsBalance"] = *latest.CreditsBalance
+	}
 
-	quotas := make([]map[string]interface{}, 0, len(latest.Quotas))
-	for _, q := range latest.Quotas {
+	orderedQuotas := make([]api.CodexQuota, len(latest.Quotas))
+	copy(orderedQuotas, latest.Quotas)
+	sort.SliceStable(orderedQuotas, func(i, j int) bool {
+		left := codexQuotaDisplayOrder(orderedQuotas[i].Name)
+		right := codexQuotaDisplayOrder(orderedQuotas[j].Name)
+		if left != right {
+			return left < right
+		}
+		return orderedQuotas[i].Name < orderedQuotas[j].Name
+	})
+
+	quotas := make([]map[string]interface{}, 0, len(orderedQuotas))
+	for _, q := range orderedQuotas {
+		headroom := 100 - q.Utilization
+		if headroom < 0 {
+			headroom = 0
+		}
+		status := codexUtilStatus(q.Utilization)
 		qMap := map[string]interface{}{
 			"name":        q.Name,
 			"displayName": api.CodexDisplayName(q.Name),
 			"utilization": q.Utilization,
-			"status":      codexUtilStatus(q.Utilization),
+			"headroom":    headroom,
+			"status":      status,
+		}
+		if q.Name == "code_review" {
+			remaining := 100 - q.Utilization
+			if remaining < 0 {
+				remaining = 0
+			}
+			qMap["cardPercent"] = remaining
+			qMap["cardLabel"] = "Remaining"
+			qMap["remainingPercent"] = remaining
+			qMap["status"] = codexRemainingStatus(remaining)
 		}
 		if q.ResetsAt != nil {
 			timeUntilReset := time.Until(*q.ResetsAt)
@@ -4541,6 +4572,32 @@ func codexUtilStatus(util float64) string {
 	case util >= 80:
 		return "danger"
 	case util >= 50:
+		return "warning"
+	default:
+		return "healthy"
+	}
+}
+
+func codexQuotaDisplayOrder(name string) int {
+	switch name {
+	case "five_hour":
+		return 0
+	case "seven_day":
+		return 1
+	case "code_review":
+		return 2
+	default:
+		return 100
+	}
+}
+
+func codexRemainingStatus(remaining float64) string {
+	switch {
+	case remaining <= 5:
+		return "critical"
+	case remaining <= 20:
+		return "danger"
+	case remaining <= 50:
 		return "warning"
 	default:
 		return "healthy"
@@ -4593,8 +4650,9 @@ func (h *Handler) cyclesCodex(w http.ResponseWriter, r *http.Request) {
 	}
 
 	validTypes := map[string]bool{
-		"five_hour": true,
-		"seven_day": true,
+		"five_hour":   true,
+		"seven_day":   true,
+		"code_review": true,
 	}
 	if !validTypes[quotaName] {
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("invalid quota type: %s", quotaName))
@@ -4694,6 +4752,7 @@ func (h *Handler) insightsCodex(w http.ResponseWriter, r *http.Request, rangeDur
 
 func (h *Handler) buildCodexInsights(hidden map[string]bool, rangeDur time.Duration) insightsResponse {
 	resp := insightsResponse{Stats: []insightStat{}, Insights: []insightItem{}}
+	_ = rangeDur
 	if h.store == nil {
 		return resp
 	}
@@ -4711,30 +4770,264 @@ func (h *Handler) buildCodexInsights(hidden map[string]bool, rangeDur time.Durat
 			}
 		}
 	}
-	for _, q := range latest.Quotas {
-		resp.Stats = append(resp.Stats, insightStat{Value: fmt.Sprintf("%.0f%%", q.Utilization), Label: api.CodexDisplayName(q.Name)})
-		key := fmt.Sprintf("forecast_%s", q.Name)
-		if hidden[key] {
+
+	// Stats cards: keep non-duplicate metadata only.
+	if latest.PlanType != "" {
+		resp.Stats = append(resp.Stats, insightStat{
+			Value: codexPlanLabel(latest.PlanType),
+			Label: "Plan",
+		})
+	}
+
+	// Replace "Last Sample" with historical behavior metrics.
+	windowStart := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	fiveHourCycles, err := h.store.QueryCodexCyclesSince("five_hour", windowStart)
+	if err == nil && len(fiveHourCycles) > 0 {
+		var totalDelta float64
+		var peak float64
+		for _, c := range fiveHourCycles {
+			totalDelta += c.TotalDelta
+			if c.PeakUtilization > peak {
+				peak = c.PeakUtilization
+			}
+		}
+		resp.Stats = append(resp.Stats, insightStat{
+			Value:    fmt.Sprintf("%.1f%%", totalDelta/float64(len(fiveHourCycles))),
+			Label:    "Average 5-Hour Usage/Cycle",
+			Sublabel: fmt.Sprintf("%d cycles (30d)", len(fiveHourCycles)),
+		})
+		resp.Stats = append(resp.Stats, insightStat{
+			Value: fmt.Sprintf("%.1f%%", peak),
+			Label: "5-Hour Peak (30d)",
+		})
+	} else if active, err := h.store.QueryActiveCodexCycle("five_hour"); err == nil && active != nil {
+		resp.Stats = append(resp.Stats, insightStat{
+			Value:    fmt.Sprintf("%.1f%%", active.TotalDelta),
+			Label:    "5-Hour Delta (Current)",
+			Sublabel: fmt.Sprintf("peak %.1f%%", active.PeakUtilization),
+		})
+		resp.Stats = append(resp.Stats, insightStat{
+			Value: fmt.Sprintf("%.1f%%", active.PeakUtilization),
+			Label: "5-Hour Peak (Current)",
+		})
+	}
+
+	quotaByName := map[string]*api.CodexQuota{}
+	for i := range latest.Quotas {
+		quotaByName[latest.Quotas[i].Name] = &latest.Quotas[i]
+	}
+
+	// Keep explicit 5-hour/weekly burn-rate insights.
+	if !hidden["forecast_five_hour"] {
+		if q := quotaByName["five_hour"]; q != nil {
+			resp.Insights = append(resp.Insights, buildCodexQuotaBurnRateInsight("forecast_five_hour", "5-Hour Window Burn Rate", q, summaries["five_hour"]))
+		}
+	}
+	if !hidden["forecast_seven_day"] {
+		if q := quotaByName["seven_day"]; q != nil {
+			resp.Insights = append(resp.Insights, buildCodexQuotaBurnRateInsight("forecast_seven_day", "Weekly Window Burn Rate", q, summaries["seven_day"]))
+		}
+	}
+
+	if !hidden["forecast_code_review"] {
+		if reviewInsight, ok := h.buildCodexReviewPaceInsight(latest, summaries); ok {
+			resp.Insights = append(resp.Insights, reviewInsight)
+		}
+	}
+
+	// Weekly pace insight (inspired by CodexBar's "on pace/deficit/reserve" model).
+	if !hidden["weekly_pace"] {
+		if paceInsight, ok := h.buildCodexWeeklyPaceInsight(latest, summaries); ok {
+			resp.Insights = append(resp.Insights, paceInsight)
+		}
+	}
+
+	if len(resp.Insights) == 0 {
+		resp.Insights = append(resp.Insights, insightItem{
+			Type:     "info",
+			Severity: "info",
+			Title:    "Collecting Insights",
+			Desc:     "Keep onWatch running to collect enough Codex history for burn-rate and pace analytics.",
+		})
+	}
+
+	return resp
+}
+
+func codexPlanLabel(plan string) string {
+	if plan == "" {
+		return ""
+	}
+	plan = strings.ReplaceAll(plan, "_", " ")
+	parts := strings.Fields(plan)
+	for i := range parts {
+		if len(parts[i]) == 0 {
 			continue
 		}
-		s := summaries[q.Name]
-		if s != nil && s.CurrentRate > 0 {
-			resp.Insights = append(resp.Insights, insightItem{Key: key, Type: "forecast", Severity: codexInsightSeverity(q.Utilization), Title: fmt.Sprintf("%s Burn Rate", api.CodexDisplayName(q.Name)), Metric: fmt.Sprintf("%.1f%%/hr", s.CurrentRate), Desc: fmt.Sprintf("Currently at %.0f%%. At this rate, projected %.0f%% by reset.", q.Utilization, s.ProjectedUtil)})
-		} else {
-			resp.Insights = append(resp.Insights, insightItem{Key: key, Type: "current", Severity: codexInsightSeverity(q.Utilization), Title: fmt.Sprintf("%s Usage", api.CodexDisplayName(q.Name)), Metric: fmt.Sprintf("%.0f%%", q.Utilization), Desc: "Need more data to estimate burn rate."})
+		parts[i] = strings.ToUpper(parts[i][:1]) + strings.ToLower(parts[i][1:])
+	}
+	return strings.Join(parts, " ")
+}
+
+func codexQuotaInsightLabel(name string) string {
+	switch name {
+	case "five_hour":
+		return "Short Window"
+	case "seven_day":
+		return "Weekly Window"
+	default:
+		return api.CodexDisplayName(name)
+	}
+}
+
+func buildCodexQuotaBurnRateInsight(key string, title string, quota *api.CodexQuota, summary *tracker.CodexSummary) insightItem {
+	projected := quota.Utilization
+	if summary != nil && summary.ProjectedUtil > projected {
+		projected = summary.ProjectedUtil
+	}
+	sublabel := fmt.Sprintf("~%.0f%% by reset", projected)
+
+	if summary != nil && summary.CurrentRate > 0.01 {
+		desc := fmt.Sprintf("Currently at %.0f%%. At this rate, projected %.0f%% by reset.", quota.Utilization, projected)
+		if summary.ResetsAt != nil && summary.TimeUntilReset > 0 {
+			desc = fmt.Sprintf("Currently at %.0f%%. At this rate, projected %.0f%% by reset in %s.", quota.Utilization, projected, formatDuration(summary.TimeUntilReset))
+		}
+		return insightItem{
+			Key:      key,
+			Type:     "forecast",
+			Severity: codexInsightSeverity(quota.Utilization),
+			Title:    title,
+			Metric:   fmt.Sprintf("%.1f%%/hr", summary.CurrentRate),
+			Sublabel: sublabel,
+			Desc:     desc,
 		}
 	}
-	if !hidden["coverage"] {
-		snapCount := 0
-		since := time.Now().Add(-rangeDur)
-		if points, err := h.store.QueryCodexUtilizationSeries("five_hour", since); err == nil {
-			snapCount = len(points)
-		}
-		if snapCount > 0 {
-			resp.Insights = append(resp.Insights, insightItem{Key: "coverage", Type: "info", Severity: "info", Title: "Data Coverage", Metric: fmt.Sprintf("%d snapshots", snapCount), Desc: fmt.Sprintf("Tracking Codex usage with %d data points in selected range.", snapCount)})
+
+	return insightItem{
+		Key:      key,
+		Type:     "info",
+		Severity: "info",
+		Title:    title,
+		Metric:   "Analyzing...",
+		Sublabel: sublabel,
+		Desc:     fmt.Sprintf("Currently at %.0f%%. Collecting more snapshots to estimate burn rate and refine reset projection.", quota.Utilization),
+	}
+}
+
+func (h *Handler) buildCodexReviewPaceInsight(latest *api.CodexSnapshot, summaries map[string]*tracker.CodexSummary) (insightItem, bool) {
+	var reviewQuota *api.CodexQuota
+	for i := range latest.Quotas {
+		if latest.Quotas[i].Name == "code_review" {
+			reviewQuota = &latest.Quotas[i]
+			break
 		}
 	}
-	return resp
+	if reviewQuota == nil {
+		return insightItem{}, false
+	}
+
+	remaining := 100 - reviewQuota.Utilization
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	item := insightItem{
+		Key:      "forecast_code_review",
+		Type:     "forecast",
+		Title:    "Review Request Pace",
+		Sublabel: fmt.Sprintf("%.0f%% remaining", remaining),
+	}
+
+	summary := summaries["code_review"]
+	if summary == nil || summary.CurrentRate <= 0.01 {
+		item.Severity = "info"
+		item.Metric = "Analyzing..."
+		item.Desc = fmt.Sprintf("%.0f%% remaining. Collecting more snapshots to estimate review request pace.", remaining)
+		return item, true
+	}
+
+	projected := reviewQuota.Utilization
+	if summary.ProjectedUtil > projected {
+		projected = summary.ProjectedUtil
+	}
+	item.Severity = codexRemainingStatus(remaining)
+	item.Metric = fmt.Sprintf("%.1f%%/hr", summary.CurrentRate)
+	item.Sublabel = fmt.Sprintf("~%.0f%% by reset", projected)
+	item.Desc = fmt.Sprintf("%.0f%% remaining. At this pace, projected %.0f%% used by reset.", remaining, projected)
+	if summary.ResetsAt != nil && summary.TimeUntilReset > 0 {
+		item.Desc = fmt.Sprintf(
+			"%.0f%% remaining. At this pace, projected %.0f%% used by reset in %s.",
+			remaining,
+			projected,
+			formatDuration(summary.TimeUntilReset),
+		)
+	}
+
+	return item, true
+}
+
+func (h *Handler) buildCodexWeeklyPaceInsight(latest *api.CodexSnapshot, summaries map[string]*tracker.CodexSummary) (insightItem, bool) {
+	var weeklyQuota *api.CodexQuota
+	for i := range latest.Quotas {
+		if latest.Quotas[i].Name == "seven_day" {
+			weeklyQuota = &latest.Quotas[i]
+			break
+		}
+	}
+	if weeklyQuota == nil || weeklyQuota.ResetsAt == nil {
+		return insightItem{}, false
+	}
+
+	now := time.Now()
+	window := 7 * 24 * time.Hour
+	timeUntilReset := weeklyQuota.ResetsAt.Sub(now)
+	if timeUntilReset <= 0 || timeUntilReset > window {
+		return insightItem{}, false
+	}
+
+	elapsed := window - timeUntilReset
+	expectedUsed := (elapsed.Seconds() / window.Seconds()) * 100
+	delta := weeklyQuota.Utilization - expectedUsed
+	if delta < 0 {
+		delta = -delta
+	}
+
+	item := insightItem{
+		Key:      "weekly_pace",
+		Type:     "trend",
+		Severity: "info",
+		Title:    "Weekly Pace",
+	}
+
+	rawDelta := weeklyQuota.Utilization - expectedUsed
+	switch {
+	case rawDelta >= -2 && rawDelta <= 2:
+		item.Metric = "On pace"
+		item.Severity = "positive"
+		item.Desc = fmt.Sprintf("Weekly usage is tracking expected pace (%.0f%% used vs %.0f%% expected by now).", weeklyQuota.Utilization, expectedUsed)
+	case rawDelta > 2:
+		item.Metric = fmt.Sprintf("%.0f%% in deficit", rawDelta)
+		item.Severity = "warning"
+		item.Desc = fmt.Sprintf("Weekly usage is ahead of pace (%.0f%% used vs %.0f%% expected by now).", weeklyQuota.Utilization, expectedUsed)
+	default:
+		item.Metric = fmt.Sprintf("%.0f%% in reserve", delta)
+		item.Severity = "positive"
+		item.Desc = fmt.Sprintf("Weekly usage is below pace (%.0f%% used vs %.0f%% expected by now).", weeklyQuota.Utilization, expectedUsed)
+	}
+
+	if summary := summaries["seven_day"]; summary != nil && summary.CurrentRate > 0 && summary.ResetsAt != nil {
+		hoursLeft := summary.TimeUntilReset.Hours()
+		if hoursLeft > 0 {
+			projected := weeklyQuota.Utilization + (summary.CurrentRate * hoursLeft)
+			if projected <= 100 {
+				item.Sublabel = "lasts until reset"
+			} else {
+				item.Sublabel = "risk before reset"
+			}
+		}
+	}
+
+	return item, true
 }
 
 func (h *Handler) cycleOverviewCodex(w http.ResponseWriter, r *http.Request) {
@@ -4762,7 +5055,7 @@ func (h *Handler) cycleOverviewCodex(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(quotaNames) == 0 {
-		quotaNames = []string{"five_hour", "seven_day"}
+		quotaNames = []string{"five_hour", "seven_day", "code_review"}
 	}
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"groupBy":    groupBy,

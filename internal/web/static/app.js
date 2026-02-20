@@ -311,7 +311,8 @@ const copilotDisplayNames = {
 
 const codexDisplayNames = {
   five_hour: '5-Hour Limit',
-  seven_day: 'Weekly All-Model'
+  seven_day: 'Weekly All-Model',
+  code_review: 'Review Requests'
 };
 
 const codexSessionLabels = {
@@ -322,7 +323,8 @@ const codexSessionLabels = {
 // Codex chart colors keyed by quota name
 const codexChartColorMap = {
   five_hour: { border: '#0EA5E9', bg: 'rgba(14, 165, 233, 0.08)' },
-  seven_day: { border: '#22C55E', bg: 'rgba(34, 197, 94, 0.08)' }
+  seven_day: { border: '#22C55E', bg: 'rgba(34, 197, 94, 0.08)' },
+  code_review: { border: '#F59E0B', bg: 'rgba(245, 158, 11, 0.08)' }
 };
 const codexChartColorFallback = [
   { border: '#F97316', bg: 'rgba(249, 115, 22, 0.08)' },
@@ -371,7 +373,8 @@ const renewalCategories = {
   ],
   codex: [
     { label: '5-Hour', groupBy: 'five_hour' },
-    { label: 'Weekly', groupBy: 'seven_day' }
+    { label: 'Weekly', groupBy: 'seven_day' },
+    { label: 'Review', groupBy: 'code_review' }
   ]
 };
 
@@ -382,6 +385,7 @@ const overviewQuotaDisplayNames = {
   time: 'Time',
   five_hour: '5-Hour',
   seven_day: 'Weekly',
+  code_review: 'Review',
   seven_day_sonnet: 'Sonnet',
   monthly_limit: 'Monthly',
   extra_usage: 'Extra',
@@ -918,7 +922,9 @@ function renderCodexQuotaCards(quotas, containerId) {
   container.innerHTML = quotas.map((q, i) => {
     const icon = anthropicQuotaIcons[q.name] || '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>';
     const displayName = q.displayName || codexDisplayNames[q.name] || q.name;
-    const utilPct = (q.utilization || 0).toFixed(1);
+    const cardPercent = q.cardPercent != null ? q.cardPercent : (q.utilization || 0);
+    const utilPct = cardPercent.toFixed(1);
+    const cardLabel = q.cardLabel || 'Utilization';
     const status = q.status || 'healthy';
     const statusCfg = statusConfig[status] || statusConfig.healthy;
     const countdownId = `countdown-codex-${q.name}`;
@@ -937,10 +943,10 @@ function renderCodexQuotaCards(quotas, containerId) {
       </header>
       <div class="progress-stats">
         <span class="usage-percent" id="${percentId}">${utilPct}%</span>
-        <span class="usage-fraction">Utilization</span>
+        <span class="usage-fraction">${cardLabel}</span>
       </div>
       <div class="progress-wrapper">
-        <div class="progress-bar" role="progressbar" aria-valuenow="${Math.round(q.utilization || 0)}" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-bar" role="progressbar" aria-valuenow="${Math.round(cardPercent)}" aria-valuemin="0" aria-valuemax="100">
           <div class="progress-fill" id="${progressId}" style="width: ${utilPct}%" data-status="${status}"></div>
         </div>
       </div>
@@ -970,14 +976,20 @@ function renderCodexQuotaCards(quotas, containerId) {
 function updateCodexCard(quota) {
   const key = `codex-${quota.name}`;
   const prev = State.currentQuotas[key];
+  const cardPercent = quota.cardPercent != null ? quota.cardPercent : (quota.utilization || 0);
+  const cardLabel = quota.cardLabel || 'Utilization';
   State.currentQuotas[key] = {
-    percent: quota.utilization || 0,
+    percent: cardPercent,
     usage: quota.utilization || 0,
     limit: 100,
+    headroom: quota.headroom || Math.max(0, 100 - (quota.utilization || 0)),
+    currentRate: quota.currentRate || 0,
+    projectedUtil: quota.projectedUtil || 0,
     status: quota.status || 'healthy',
     renewsAt: quota.resetsAt,
     timeUntilReset: quota.timeUntilReset,
     timeUntilResetSeconds: quota.timeUntilResetSeconds || 0,
+    cardLabel,
     name: quota.name,
     displayName: quota.displayName
   };
@@ -988,7 +1000,7 @@ function updateCodexCard(quota) {
   const resetEl = document.getElementById(`reset-codex-${quota.name}`);
   const countdownEl = document.getElementById(`countdown-codex-${quota.name}`);
 
-  const utilPct = (quota.utilization || 0).toFixed(1);
+  const utilPct = cardPercent.toFixed(1);
   const status = quota.status || 'healthy';
 
   if (progressEl) {
@@ -997,8 +1009,8 @@ function updateCodexCard(quota) {
   }
   if (percentEl) {
     const oldVal = prev ? prev.percent : 0;
-    if (Math.abs(oldVal - quota.utilization) > 0.2) {
-      animateValue(percentEl, oldVal, quota.utilization, 400, v => `${v.toFixed(1)}%`);
+    if (Math.abs(oldVal - cardPercent) > 0.2) {
+      animateValue(percentEl, oldVal, cardPercent, 400, v => `${v.toFixed(1)}%`);
     } else {
       percentEl.textContent = `${utilPct}%`;
     }
@@ -1037,12 +1049,13 @@ function openCodexModal(quotaName, providerOverride) {
 
   const statusCfg = statusConfig[data.status] || statusConfig.healthy;
   const timeLeft = data.timeUntilResetSeconds > 0 ? formatDuration(data.timeUntilResetSeconds) : 'N/A';
+  const modalLabel = data.cardLabel || 'Utilization';
 
   bodyEl.innerHTML = `
     <div class="modal-kpi-row">
       <div class="modal-kpi">
         <div class="modal-kpi-value">${data.percent.toFixed(1)}%</div>
-        <div class="modal-kpi-label">Utilization</div>
+        <div class="modal-kpi-label">${modalLabel}</div>
       </div>
       <div class="modal-kpi">
         <div class="modal-kpi-value"><span class="status-badge" data-status="${data.status}"><svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${statusCfg.icon}"/></svg>${statusCfg.label}</span></div>

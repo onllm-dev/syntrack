@@ -12,6 +12,9 @@ func TestParseCodexUsageResponse_ToSnapshot_PrimaryAndSecondary(t *testing.T) {
 	    "primary_window": {"used_percent": 22.5, "reset_at": 1766000000, "limit_window_seconds": 18000},
 	    "secondary_window": {"used_percent": 41.0, "reset_at": 1766400000, "limit_window_seconds": 604800}
 	  },
+	  "code_review_rate_limit": {
+	    "primary_window": {"used_percent": 38.0, "reset_at": 1766000000, "limit_window_seconds": 18000}
+	  },
 	  "credits": {"balance": 123.4}
 	}`)
 
@@ -21,8 +24,8 @@ func TestParseCodexUsageResponse_ToSnapshot_PrimaryAndSecondary(t *testing.T) {
 	}
 
 	snap := resp.ToSnapshot(time.Unix(1765900000, 0).UTC())
-	if len(snap.Quotas) != 2 {
-		t.Fatalf("quota len = %d, want 2", len(snap.Quotas))
+	if len(snap.Quotas) != 3 {
+		t.Fatalf("quota len = %d, want 3", len(snap.Quotas))
 	}
 
 	if snap.Quotas[0].Name != "five_hour" {
@@ -31,14 +34,23 @@ func TestParseCodexUsageResponse_ToSnapshot_PrimaryAndSecondary(t *testing.T) {
 	if snap.Quotas[1].Name != "seven_day" {
 		t.Fatalf("second quota name = %q, want seven_day", snap.Quotas[1].Name)
 	}
+	if snap.Quotas[2].Name != "code_review" {
+		t.Fatalf("third quota name = %q, want code_review", snap.Quotas[2].Name)
+	}
 	if snap.Quotas[0].Utilization != 22.5 {
 		t.Fatalf("five_hour utilization = %f, want 22.5", snap.Quotas[0].Utilization)
+	}
+	if snap.Quotas[2].Utilization != 38.0 {
+		t.Fatalf("code_review utilization = %f, want 38.0", snap.Quotas[2].Utilization)
 	}
 	if snap.Quotas[0].Status != "healthy" {
 		t.Fatalf("five_hour status = %q, want healthy", snap.Quotas[0].Status)
 	}
 	if snap.Quotas[1].Status != "healthy" {
 		t.Fatalf("seven_day status = %q, want healthy", snap.Quotas[1].Status)
+	}
+	if snap.Quotas[2].Status != "healthy" {
+		t.Fatalf("code_review status = %q, want healthy", snap.Quotas[2].Status)
 	}
 	if snap.CreditsBalance == nil || *snap.CreditsBalance != 123.4 {
 		t.Fatalf("credits balance missing or incorrect")
@@ -98,6 +110,9 @@ func TestCodexDisplayName(t *testing.T) {
 	}
 	if got := CodexDisplayName("seven_day"); got != "Weekly All-Model" {
 		t.Fatalf("CodexDisplayName(seven_day) = %q", got)
+	}
+	if got := CodexDisplayName("code_review"); got != "Review Requests" {
+		t.Fatalf("CodexDisplayName(code_review) = %q", got)
 	}
 	if got := CodexDisplayName("unknown"); got != "unknown" {
 		t.Fatalf("CodexDisplayName(unknown) = %q", got)

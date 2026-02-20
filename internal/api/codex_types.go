@@ -11,9 +11,10 @@ import (
 
 // CodexUsageResponse is the OAuth usage payload returned by Codex.
 type CodexUsageResponse struct {
-	PlanType  string         `json:"plan_type"`
-	RateLimit codexRateLimit `json:"rate_limit"`
-	Credits   *codexCredits  `json:"credits,omitempty"`
+	PlanType            string         `json:"plan_type"`
+	RateLimit           codexRateLimit `json:"rate_limit"`
+	CodeReviewRateLimit codexRateLimit `json:"code_review_rate_limit,omitempty"`
+	Credits             *codexCredits  `json:"credits,omitempty"`
 }
 
 type codexRateLimit struct {
@@ -80,8 +81,9 @@ type CodexSnapshot struct {
 }
 
 var codexDisplayNames = map[string]string{
-	"five_hour": "5-Hour Limit",
-	"seven_day": "Weekly All-Model",
+	"five_hour":   "5-Hour Limit",
+	"seven_day":   "Weekly All-Model",
+	"code_review": "Review Requests",
 }
 
 // CodexDisplayName returns a display label for a codex quota key.
@@ -119,8 +121,16 @@ func (r CodexUsageResponse) ToSnapshot(capturedAt time.Time) *CodexSnapshot {
 	if r.RateLimit.SecondaryWindow != nil {
 		snapshot.Quotas = append(snapshot.Quotas, codexQuotaFromWindow("seven_day", r.RateLimit.SecondaryWindow))
 	}
+	if r.CodeReviewRateLimit.PrimaryWindow != nil {
+		snapshot.Quotas = append(snapshot.Quotas, codexQuotaFromWindow("code_review", r.CodeReviewRateLimit.PrimaryWindow))
+	}
 
 	sort.Slice(snapshot.Quotas, func(i, j int) bool {
+		left := codexQuotaSortOrder(snapshot.Quotas[i].Name)
+		right := codexQuotaSortOrder(snapshot.Quotas[j].Name)
+		if left != right {
+			return left < right
+		}
 		return snapshot.Quotas[i].Name < snapshot.Quotas[j].Name
 	})
 
@@ -142,6 +152,19 @@ func codexQuotaFromWindow(name string, window *codexWindow) CodexQuota {
 		q.ResetsAt = &resetAt
 	}
 	return q
+}
+
+func codexQuotaSortOrder(name string) int {
+	switch name {
+	case "five_hour":
+		return 0
+	case "seven_day":
+		return 1
+	case "code_review":
+		return 2
+	default:
+		return 100
+	}
 }
 
 func codexStatusFromUtilization(utilization float64) string {

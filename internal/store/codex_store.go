@@ -277,6 +277,25 @@ func (s *Store) UpdateCodexCycle(quotaName string, peak, delta float64) error {
 	return nil
 }
 
+// UpdateCodexCycleResetsAt updates the reset timestamp for an active Codex cycle.
+func (s *Store) UpdateCodexCycleResetsAt(quotaName string, resetsAt *time.Time) error {
+	var resetsAtValue interface{}
+	if resetsAt != nil {
+		resetsAtValue = resetsAt.Format(time.RFC3339Nano)
+	}
+
+	_, err := s.db.Exec(
+		`UPDATE codex_reset_cycles SET resets_at = ?
+		WHERE quota_name = ? AND cycle_end IS NULL`,
+		resetsAtValue,
+		quotaName,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update codex cycle resets_at: %w", err)
+	}
+	return nil
+}
+
 // QueryActiveCodexCycle returns the active cycle for a Codex quota.
 func (s *Store) QueryActiveCodexCycle(quotaName string) (*CodexResetCycle, error) {
 	var cycle CodexResetCycle
