@@ -394,7 +394,7 @@ func run() error {
 	}
 
 	// Memory tuning: GOMEMLIMIT triggers MADV_DONTNEED which actually shrinks RSS.
-	// Without this, Go uses MADV_FREE on macOS — pages are reclaimable but still
+	// Without this, Go uses MADV_FREE on macOS - pages are reclaimable but still
 	// counted in RSS, causing a permanent ratchet effect.
 	debug.SetMemoryLimit(40 * 1024 * 1024) // 40 MiB soft limit
 	debug.SetGCPercent(50)                 // GC at 50% heap growth (default 100)
@@ -403,6 +403,22 @@ func run() error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Resolve auth tokens before any banner output so displayed providers
+	// match the providers that will actually start.
+	preflightLogger := slog.Default()
+	if cfg.AnthropicToken == "" {
+		if token := api.DetectAnthropicToken(preflightLogger); token != "" {
+			cfg.AnthropicToken = token
+			cfg.AnthropicAutoToken = true
+		}
+	}
+	if cfg.CodexToken == "" {
+		if token := api.DetectCodexToken(preflightLogger); token != "" {
+			cfg.CodexToken = token
+			cfg.CodexAutoToken = true
+		}
 	}
 
 	isDaemonChild := os.Getenv("_ONWATCH_DAEMON") == "1"
@@ -545,13 +561,11 @@ func run() error {
 		}
 	}
 
-	// Auto-detect Anthropic token if not explicitly configured
-	if cfg.AnthropicToken == "" {
-		if token := api.DetectAnthropicToken(logger); token != "" {
-			cfg.AnthropicToken = token
-			cfg.AnthropicAutoToken = true
-			logger.Info("Auto-detected Anthropic token from Claude Code credentials")
-		}
+	if cfg.AnthropicAutoToken {
+		logger.Info("Auto-detected Anthropic token from Claude Code credentials")
+	}
+	if cfg.CodexAutoToken {
+		logger.Info("Auto-detected Codex token from Codex credentials")
 	}
 
 	// Create API clients based on configured providers
@@ -578,6 +592,16 @@ func run() error {
 	if cfg.HasProvider("copilot") {
 		copilotClient = api.NewCopilotClient(cfg.CopilotToken, logger)
 		logger.Info("Copilot API client configured")
+	}
+
+	var codexClient *api.CodexClient
+	if cfg.HasProvider("codex") {
+		codexCreds := api.DetectCodexCredentials(logger)
+		codexClient = api.NewCodexClient(cfg.CodexToken, logger)
+		if codexCreds != nil && codexCreds.AccountID != "" {
+			codexClient.SetAccountID(codexCreds.AccountID)
+		}
+		logger.Info("Codex API client configured")
 	}
 
 	// Create components
@@ -638,6 +662,21 @@ func run() error {
 		copilotAg = agent.NewCopilotAgent(copilotClient, db, copilotTr, cfg.PollInterval, logger, copilotSm)
 	}
 
+	// Create Codex tracker
+	var codexTr *tracker.CodexTracker
+	if cfg.HasProvider("codex") {
+		codexTr = tracker.NewCodexTracker(db, logger)
+	}
+
+	var codexAg *agent.CodexAgent
+	if codexClient != nil {
+		codexSm := agent.NewSessionManager(db, "codex", idleTimeout, logger)
+		codexAg = agent.NewCodexAgent(codexClient, db, codexTr, cfg.PollInterval, logger, codexSm)
+		codexAg.SetTokenRefresh(func() string {
+			return api.DetectCodexToken(logger)
+		})
+	}
+
 	// Create notification engine
 	notifier := notify.New(db, logger)
 	notifier.SetEncryptionKey(deriveEncryptionKey(cfg.AdminPassHash))
@@ -657,6 +696,9 @@ func run() error {
 	}
 	if copilotAg != nil {
 		copilotAg.SetNotifier(notifier)
+	}
+	if codexAg != nil {
+		codexAg.SetNotifier(notifier)
 	}
 
 	// Wire polling checks — agents skip poll when telemetry disabled
@@ -688,6 +730,9 @@ func run() error {
 	if copilotAg != nil {
 		copilotAg.SetPollingCheck(func() bool { return isPollingEnabled("copilot") })
 	}
+	if codexAg != nil {
+		codexAg.SetPollingCheck(func() bool { return isPollingEnabled("codex") })
+	}
 
 	// Wire reset callbacks to trackers
 	tr.SetOnReset(func(quotaName string) {
@@ -708,6 +753,11 @@ func run() error {
 			notifier.Check(notify.QuotaStatus{Provider: "copilot", QuotaKey: quotaName, ResetOccurred: true})
 		})
 	}
+	if codexTr != nil {
+		codexTr.SetOnReset(func(quotaName string) {
+			notifier.Check(notify.QuotaStatus{Provider: "codex", QuotaKey: quotaName, ResetOccurred: true})
+		})
+	}
 
 	handler := web.NewHandler(db, tr, logger, nil, cfg, zaiTr)
 	handler.SetVersion(version)
@@ -717,6 +767,9 @@ func run() error {
 	}
 	if copilotTr != nil {
 		handler.SetCopilotTracker(copilotTr)
+	}
+	if codexTr != nil {
+		handler.SetCodexTracker(codexTr)
 	}
 	updater := update.NewUpdater(version, logger)
 	handler.SetUpdater(updater)
@@ -735,7 +788,7 @@ func run() error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
 	// Start agents in goroutines (staggered to avoid SQLite contention on session creation)
-	agentErr := make(chan error, 4)
+	agentErr := make(chan error, 5)
 	if ag != nil {
 		go func() {
 			defer func() {
@@ -799,7 +852,23 @@ func run() error {
 		}()
 	}
 
-	if ag == nil && zaiAg == nil && anthropicAg == nil && copilotAg == nil {
+	if codexAg != nil {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("Codex agent panicked", "panic", r)
+					agentErr <- fmt.Errorf("codex agent panic: %v", r)
+				}
+			}()
+			time.Sleep(800 * time.Millisecond) // stagger to avoid SQLite BUSY
+			logger.Info("Starting Codex agent", "interval", cfg.PollInterval)
+			if err := codexAg.Run(ctx); err != nil {
+				agentErr <- fmt.Errorf("codex agent error: %w", err)
+			}
+		}()
+	}
+
+	if ag == nil && zaiAg == nil && anthropicAg == nil && copilotAg == nil && codexAg == nil {
 		logger.Info("No agents configured")
 	}
 
@@ -1179,6 +1248,13 @@ func printBanner(cfg *config.Config, version string) {
 	if cfg.HasProvider("copilot") {
 		fmt.Println("║  API:       github.com/copilot (β)   ║")
 	}
+	if cfg.HasProvider("codex") {
+		if cfg.CodexAutoToken {
+			fmt.Println("║  API:       chatgpt.com/wham (auto)  ║")
+		} else {
+			fmt.Println("║  API:       chatgpt.com/wham         ║")
+		}
+	}
 
 	fmt.Printf("║  Polling:   every %s              ║\n", cfg.PollInterval)
 	fmt.Printf("║  Dashboard: http://localhost:%d    ║\n", cfg.Port)
@@ -1206,6 +1282,13 @@ func printBanner(cfg *config.Config, version string) {
 	}
 	if cfg.HasProvider("copilot") {
 		fmt.Printf("Copilot Token:     %s\n", redactAPIKey(cfg.CopilotToken))
+	}
+	if cfg.HasProvider("codex") {
+		label := "Codex Token:       "
+		if cfg.CodexAutoToken {
+			label = "Codex (auto):      "
+		}
+		fmt.Printf("%s%s\n", label, redactAPIKey(cfg.CodexToken))
 	}
 	fmt.Println()
 }
@@ -1235,6 +1318,8 @@ func printHelp() {
 	fmt.Println("  ZAI_BASE_URL           Z.ai base URL (default: https://api.z.ai/api)")
 	fmt.Println("  ANTHROPIC_TOKEN         Anthropic token (auto-detected if not set)")
 	fmt.Println("  COPILOT_TOKEN           GitHub Copilot token (PAT with copilot scope)")
+	fmt.Println("  CODEX_TOKEN             Codex OAuth token (recommended; required for Codex-only)")
+	fmt.Println("  CODEX_HOME              Optional Codex auth directory (uses CODEX_HOME/auth.json)")
 	fmt.Println("  ONWATCH_POLL_INTERVAL   Polling interval in seconds")
 	fmt.Println("  ONWATCH_PORT            Dashboard HTTP port")
 	fmt.Println("  ONWATCH_ADMIN_USER      Dashboard admin username")
@@ -1260,8 +1345,9 @@ func printHelp() {
 	fmt.Println("  Test instances never kill production instances and vice versa.")
 	fmt.Println("  Use --db and --port to further isolate test from production.")
 	fmt.Println()
+	fmt.Println("Anthropic and Codex tokens can be auto-detected from local auth when another provider is already configured.")
 	fmt.Println("Configure providers in .env file or environment variables.")
-	fmt.Println("At least one provider (Synthetic, Z.ai, Anthropic, or Copilot) must be configured.")
+	fmt.Println("At least one provider (Synthetic, Z.ai, Anthropic, Copilot, or Codex) must be configured.")
 }
 
 func redactAPIKey(key string) string {

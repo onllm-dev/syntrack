@@ -130,8 +130,13 @@ func contentTypeHandler(next http.Handler) http.Handler {
 				w.Header().Set("Content-Type", "image/svg+xml")
 			}
 		}
-		// Immutable caching — static assets are versioned via ?v= query param
-		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		if strings.HasSuffix(r.URL.Path, "app.js") {
+			// app.js must revalidate so frontend behavior updates are visible immediately.
+			w.Header().Set("Cache-Control", "no-cache")
+		} else {
+			// Immutable caching - other static assets are versioned via ?v= query param.
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
 		next.ServeHTTP(w, r)
 	})
 }

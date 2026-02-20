@@ -293,6 +293,9 @@ func TestTracker_UsageSummary_SingleCycle(t *testing.T) {
 	if summary.PeakCycle != 100 { // Peak in completed cycle
 		t.Errorf("PeakCycle = %v, want 100", summary.PeakCycle)
 	}
+	if summary.TrackingSince.IsZero() {
+		t.Fatal("expected TrackingSince to be set")
+	}
 }
 
 func TestTracker_UsageSummary_MultipleCycles(t *testing.T) {

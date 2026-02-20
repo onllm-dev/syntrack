@@ -11,13 +11,13 @@
       gtag('js', new Date());
       gtag('config', 'G-HLLYRRWW4R');
     </script>
-    <title>onWatch — Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, GitHub Copilot</title>
-    <meta name="description" content="onWatch is the intelligence layer for multi-provider AI API management. Track usage across Synthetic, Z.ai, Anthropic, and GitHub Copilot with cross-provider insights, pattern detection, rate projections, and reset cycle intelligence — a ~13 MB Go binary, <50 MB RAM, zero telemetry.">
-    <meta name="keywords" content="onWatch, AI API intelligence, multi-provider API tracking, Synthetic API monitor, Z.ai API tracker, Anthropic API monitoring, GitHub Copilot quota tracker, cross-provider insights, AI coding API usage, quota monitoring tool, open source API monitor, Cline quota tracker, Claude Code API usage, intelligent provider switching, API budget tracker, self-hosted API monitoring, reset cycle detection, rate projection, Go CLI tool, API quota dashboard">
+    <title>onWatch — Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot</title>
+    <meta name="description" content="onWatch is the intelligence layer for multi-provider AI API management. Track usage across Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot with cross-provider insights, pattern detection, rate projections, and reset cycle intelligence - a ~13 MB Go binary, <50 MB RAM, zero telemetry.">
+    <meta name="keywords" content="onWatch, AI API intelligence, multi-provider API tracking, Synthetic API monitor, Z.ai API tracker, Anthropic API monitoring, Codex API monitoring, GitHub Copilot quota tracker, cross-provider insights, AI coding API usage, quota monitoring tool, open source API monitor, Cline quota tracker, Claude Code API usage, intelligent provider switching, API budget tracker, self-hosted API monitoring, reset cycle detection, rate projection, Go CLI tool, API quota dashboard">
     <link rel="canonical" href="https://onwatch.onllm.dev">
 
     <!-- Open Graph -->
-    <meta property="og:title" content="onWatch — Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, GitHub Copilot">
+    <meta property="og:title" content="onWatch — Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot">
     <meta property="og:description" content="The intelligence layer for multi-provider AI API management. Cross-provider insights, pattern detection, rate projections, and reset cycle intelligence. Free, open-source, single binary, zero telemetry.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://onwatch.onllm.dev">
@@ -29,7 +29,7 @@
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="onWatch — Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, GitHub Copilot">
+    <meta name="twitter:title" content="onWatch — Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot">
     <meta name="twitter:description" content="The intelligence layer for multi-provider AI API management. Cross-provider insights, pattern detection, and rate projections. ~13 MB binary, <50 MB RAM, zero telemetry.">
     <meta name="twitter:image" content="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/anthropic-dark.png">
 
@@ -44,11 +44,11 @@
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "onWatch",
-      "description": "The intelligence layer for multi-provider AI API management. Tracks usage across Synthetic, Z.ai, Anthropic, and GitHub Copilot with cross-provider insights, pattern detection, consumption rate projections, reset cycle intelligence, and a Material Design 3 web dashboard. ~13 MB Go binary, <50 MB RAM, zero telemetry.",
+      "description": "The intelligence layer for multi-provider AI API management. Tracks usage across Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot with cross-provider insights, pattern detection, consumption rate projections, reset cycle intelligence, and a Material Design 3 web dashboard. ~13 MB Go binary, <50 MB RAM, zero telemetry.",
       "url": "https://onwatch.onllm.dev",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "macOS, Linux, Windows",
-      "softwareVersion": "2.10.0",
+      "softwareVersion": "2.10.3",
       "license": "https://www.gnu.org/licenses/gpl-3.0.en.html",
       "isAccessibleForFree": true,
       "offers": {
@@ -73,7 +73,7 @@
         "Automatic quota reset cycle detection",
         "Consumption rate projections and time-to-exhaustion",
         "Per-session usage tracking",
-        "Multi-provider support: Synthetic, Z.ai, Anthropic, and GitHub Copilot",
+        "Multi-provider support: Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot",
         "Unified All Providers view showing all providers side-by-side",
         "Live countdown timers for quota resets",
         "Material Design 3 dashboard with dark and light mode",
@@ -88,7 +88,7 @@
         "Configurable delivery channels: email, push, or both",
         "Built-in self-update via CLI or dashboard"
       ],
-      "keywords": "AI API intelligence, multi-provider API tracking, Synthetic API, Z.ai, Anthropic, GitHub Copilot, AI coding tools, usage monitoring, open source, Cline, Claude Code, cross-provider insights, API budget tracker, self-hosted"
+      "keywords": "AI API intelligence, multi-provider API tracking, Synthetic API, Z.ai, Anthropic, Codex, GitHub Copilot, AI coding tools, usage monitoring, open source, Cline, Claude Code, cross-provider insights, API budget tracker, self-hosted"
     }
     </script>
 
@@ -103,7 +103,7 @@
           "name": "How do I get started with onWatch?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Install with one command: curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash. Add your API keys to ~/.onwatch/.env — set any combination of SYNTHETIC_API_KEY, ZAI_API_KEY, ANTHROPIC_TOKEN, or COPILOT_TOKEN. onWatch polls each configured provider every 60 seconds, stores snapshots in SQLite, and serves a Material Design 3 dashboard at localhost:9211 with live countdowns, charts, and cross-provider views."
+            "text": "Install with one command: curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash. Add your API keys to ~/.onwatch/.env - set any combination of SYNTHETIC_API_KEY, ZAI_API_KEY, ANTHROPIC_TOKEN, CODEX_TOKEN, or COPILOT_TOKEN. onWatch polls each configured provider every 60 seconds, stores snapshots in SQLite, and serves a Material Design 3 dashboard at localhost:9211 with live countdowns, charts, and cross-provider views."
           }
         },
         {
@@ -111,7 +111,7 @@
           "name": "What is the best open-source tool to track AI coding API usage?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "onWatch is the only open-source tool designed to track historical quota usage across Anthropic, Synthetic, Z.ai, and GitHub Copilot in a single dashboard. It provides features that provider dashboards lack: historical usage trends, automatic reset cycle detection, consumption rate projections, per-session tracking, and a multi-provider unified view. It's a ~13 MB Go binary that uses <50 MB RAM with zero telemetry and local SQLite storage."
+            "text": "onWatch is the only open-source tool designed to track historical quota usage across Anthropic, Synthetic, Z.ai, Codex, and GitHub Copilot in a single dashboard. It provides features that provider dashboards lack: historical usage trends, automatic reset cycle detection, consumption rate projections, per-session tracking, and a multi-provider unified view. It's a ~13 MB Go binary that uses <50 MB RAM with zero telemetry and local SQLite storage."
           }
         },
         {
@@ -119,7 +119,7 @@
           "name": "How does Anthropic API tracking work?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Anthropic's Pro/Max plan exposes utilization percentages and reset times for five_hour and seven_day windows, plus per-model breakdowns (seven_day_sonnet, seven_day_opus). onWatch polls this data, stores historical snapshots, and adds what Anthropic doesn't provide: usage trends, reset cycle detection, rate projections, and cross-provider context alongside Synthetic, Z.ai, and GitHub Copilot. Set ANTHROPIC_TOKEN in .env or let onWatch auto-detect it from your Claude Code credentials."
+            "text": "Anthropic's Pro/Max plan exposes utilization percentages and reset times for five_hour and seven_day windows, plus per-model breakdowns (seven_day_sonnet, seven_day_opus). onWatch polls this data, stores historical snapshots, and adds what Anthropic doesn't provide: usage trends, reset cycle detection, rate projections, and cross-provider context alongside Synthetic, Z.ai, Codex, and GitHub Copilot. Set ANTHROPIC_TOKEN in .env or let onWatch auto-detect it from your Claude Code credentials."
           }
         },
         {
@@ -127,7 +127,7 @@
           "name": "What is the Both view and why does it matter?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "The All Providers view is onWatch's cross-provider unified dashboard that shows Synthetic, Z.ai, Anthropic, and GitHub Copilot quotas side-by-side in a single view. It lets you compare headroom across providers at a glance — for example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence."
+            "text": "The All Providers view is onWatch's cross-provider unified dashboard that shows Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quotas side-by-side in a single view. It lets you compare headroom across providers at a glance — for example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence."
           }
         },
         {
@@ -135,7 +135,7 @@
           "name": "Does onWatch send any data to external servers?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No. onWatch has zero telemetry. All usage data is stored locally in a SQLite file on your machine. The only outbound network calls are to the Synthetic, Z.ai, Anthropic, and GitHub Copilot quota APIs you configure. No analytics, no tracking pixels, no cloud dependencies. The tool is fully open-source (GPL-3.0) and auditable on GitHub."
+            "text": "No. onWatch has zero telemetry. All usage data is stored locally in a SQLite file on your machine. The only outbound network calls are to the Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quota APIs you configure. No analytics, no tracking pixels, no cloud dependencies. The tool is fully open-source (GPL-3.0) and auditable on GitHub."
           }
         },
         {
@@ -143,7 +143,7 @@
           "name": "How much memory does onWatch use?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "onWatch uses <50 MB RAM under all conditions (typically ~34 MB idle, ~43 MB under heavy load), measured with all four agents (Synthetic, Z.ai, Anthropic, GitHub Copilot) polling in parallel. It's designed to run as a background daemon with minimal resource usage: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), and polling buffer (1 MB). This is lighter than a single browser tab."
+            "text": "onWatch uses <50 MB RAM under all conditions (typically ~34 MB idle, ~43 MB under heavy load), measured with all five agents (Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot) polling in parallel. It's designed to run as a background daemon with minimal resource usage: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), and polling buffer (1 MB). This is lighter than a single browser tab."
           }
         },
         {
@@ -1024,6 +1024,7 @@ a:hover { text-decoration: underline; }
 .provider-card--synthetic { border-top-color: #6366F1; }
 .provider-card--zai { border-top-color: #0EA5E9; }
 .provider-card--anthropic { border-top-color: #D97757; }
+.provider-card--codex { border-top-color: #4F46E5; }
 
 .provider-card-head {
   display: flex;
@@ -2241,7 +2242,7 @@ a:hover { text-decoration: underline; }
                 Beta — Currently in active development
             </div>
             <h1>The <span class="accent">intelligence</span> layer for your AI API stack</h1>
-            <p class="hero-desc">Track API usage across Synthetic, Z.ai, Anthropic, and GitHub Copilot in one place. onWatch polls every provider's quotas, stores historical data locally, and surfaces patterns, projections, and cross-provider context&mdash;so you always know where your budget stands and which provider has headroom. Get notified via email or push notifications when quotas approach limits.</p>
+            <p class="hero-desc">Track API usage across Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot in one place. onWatch polls every provider's quotas, stores historical data locally, and surfaces patterns, projections, and cross-provider context&mdash;so you always know where your budget stands and which provider has headroom. Get notified via email or push notifications when quotas approach limits.</p>
             <div class="hero-actions">
                 <a href="#install" class="btn-primary">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
@@ -2257,7 +2258,7 @@ a:hover { text-decoration: underline; }
                 <code><span class="install-prefix">$</span> curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>
                 <span class="copy-hint">Copy</span>
             </div>
-            <p class="hero-meta"><span id="hero-version">v2.10.0</span> &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; <50 MB RAM &middot; ~13 MB Binary</p>
+            <p class="hero-meta"><span id="hero-version">v2.10.3</span> &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; <50 MB RAM &middot; ~13 MB Binary</p>
         </div>
 
         <!-- Dashboard Mockup -->
@@ -2507,10 +2508,25 @@ a:hover { text-decoration: underline; }
     <div class="container">
         <div class="fade-in" style="text-align:center;margin-bottom:40px;">
             <div class="section-label">Providers</div>
-            <h2 class="section-title">Four providers, one dashboard</h2>
+            <h2 class="section-title">Five providers, one dashboard</h2>
             <p class="section-desc" style="margin-left:auto;margin-right:auto;">Each provider has different quotas, reset cycles, and gotchas. onWatch handles the complexity.</p>
         </div>
         <div class="provider-grid fade-in">
+            <!-- Codex -->
+            <div class="provider-card provider-card--codex">
+                <div class="provider-card-head">
+                    <div class="provider-card-icon" style="background:#4F46E5;">
+                        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" fill="#fff" opacity="0.2"/><path d="M8 9l4-2 4 2v6l-4 2-4-2V9z" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>
+                    </div>
+                    <div class="provider-card-name">Codex</div>
+                </div>
+                <ul class="provider-card-quotas">
+                    <li><strong>five_hour</strong> — utilization + reset</li>
+                    <li><strong>seven_day</strong> — utilization + reset</li>
+                    <li><strong>monthly_limit</strong> — utilization + reset</li>
+                </ul>
+                <div class="provider-card-note">OAuth token from ~/.codex/auth.json or CODEX_TOKEN. Tracked with the same cross-provider insights and cycle analytics.</div>
+            </div>
             <!-- Anthropic -->
             <div class="provider-card provider-card--anthropic">
                 <div class="provider-card-head">
@@ -2730,6 +2746,7 @@ a:hover { text-decoration: underline; }
                         <th scope="col">Synthetic</th>
                         <th scope="col">Z.ai</th>
                         <th scope="col">Anthropic</th>
+                        <th scope="col">Codex</th>
                         <th scope="col">Copilot</th>
                         <th scope="col" class="highlight-col">onWatch</th>
                     </tr>
@@ -2737,6 +2754,7 @@ a:hover { text-decoration: underline; }
                 <tbody>
                     <tr>
                         <td>Current quota usage</td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
                         <td><span class="check" aria-label="Yes">&#10003;</span></td>
                         <td><span class="check" aria-label="Yes">&#10003;</span></td>
                         <td><span class="check" aria-label="Yes">&#10003;</span></td>
@@ -2749,6 +2767,7 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="check" aria-label="Yes">&#10003;</span></td>
                         <td><span class="check" aria-label="Yes">&#10003;</span></td>
+                        <td><span class="check" aria-label="Yes">&#10003;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
@@ -2757,10 +2776,12 @@ a:hover { text-decoration: underline; }
                         <td><span class="check" aria-label="Yes">&#10003;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
                         <td>Reset cycle detection &amp; history</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
@@ -2773,10 +2794,12 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
                         <td>Usage rate &amp; projections</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
@@ -2789,10 +2812,12 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
                         <td>Cross-provider unified view</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
@@ -2805,10 +2830,12 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
                         <td>Email &amp; push alerts</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
@@ -2821,10 +2848,12 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
                         <td>OAuth token auto-refresh</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
@@ -2837,6 +2866,7 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
@@ -2845,10 +2875,12 @@ a:hover { text-decoration: underline; }
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td class="highlight-col"><span class="check" aria-label="Yes">&#10003;</span></td>
                     </tr>
                     <tr>
                         <td>Open source &amp; self-hosted</td>
+                        <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
                         <td><span class="cross" aria-label="No">&#10005;</span></td>
@@ -2875,7 +2907,7 @@ a:hover { text-decoration: underline; }
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 </div>
                 <div class="arch-node-title">Your Providers</div>
-                <div class="arch-node-desc">Synthetic + Z.ai + Anthropic + Copilot</div>
+                <div class="arch-node-desc">Synthetic + Z.ai + Anthropic + Codex + Copilot</div>
             </div>
             <div class="arch-arrow">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
@@ -2933,7 +2965,7 @@ a:hover { text-decoration: underline; }
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 </div>
                 <h3 class="feature-title">Solo Developers</h3>
-                <p class="feature-desc">Running Cline, Claude Code, or Kilo Code on a single API key? onWatch tracks your burn rate across Anthropic, Synthetic, Z.ai, and GitHub Copilot so you never get throttled mid-task.</p>
+                <p class="feature-desc">Running Cline, Claude Code, or Kilo Code on a single API key? onWatch tracks your burn rate across Anthropic, Synthetic, Z.ai, Codex, and GitHub Copilot so you never get throttled mid-task.</p>
             </div>
             <div class="feature-card fade-in">
                 <div class="feature-icon peach">
@@ -3107,37 +3139,37 @@ a:hover { text-decoration: underline; }
             <details class="faq-item">
                 <summary class="faq-question">How do I get started?</summary>
                 <div class="faq-answer">
-                    <p>Install with one command: <code>curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>. Add your API keys to <code>~/.onwatch/.env</code> — set any combination of <code>SYNTHETIC_API_KEY</code>, <code>ZAI_API_KEY</code>, <code>ANTHROPIC_TOKEN</code>, or <code>COPILOT_TOKEN</code>. onWatch polls each configured provider every 60 seconds, stores snapshots in SQLite, and serves a dashboard at <code>localhost:9211</code> with live countdowns, charts, and cross-provider views.</p>
+                    <p>Install with one command: <code>curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>. Add your API keys to <code>~/.onwatch/.env</code> - set any combination of <code>SYNTHETIC_API_KEY</code>, <code>ZAI_API_KEY</code>, <code>ANTHROPIC_TOKEN</code>, <code>CODEX_TOKEN</code>, or <code>COPILOT_TOKEN</code>. onWatch polls each configured provider every 60 seconds, stores snapshots in SQLite, and serves a dashboard at <code>localhost:9211</code> with live countdowns, charts, and cross-provider views.</p>
                 </div>
             </details>
             <details class="faq-item">
                 <summary class="faq-question">Does onWatch work with Cline, Roo Code, Kilo Code, or Claude Code?</summary>
                 <div class="faq-answer">
-                    <p>Yes. onWatch monitors the API provider (Synthetic, Z.ai, Anthropic, or GitHub Copilot), not the coding tool. Any tool that uses these API keys&mdash;including Cline, Roo Code, Kilo Code, Claude Code, Cursor, Windsurf, GitHub Copilot, and others&mdash;will have its usage tracked automatically.</p>
+                    <p>Yes. onWatch monitors the API provider (Synthetic, Z.ai, Anthropic, Codex, or GitHub Copilot), not the coding tool. Any tool that uses these API keys&mdash;including Cline, Roo Code, Kilo Code, Claude Code, Cursor, Windsurf, GitHub Copilot, and others&mdash;will have its usage tracked automatically.</p>
                 </div>
             </details>
             <details class="faq-item">
                 <summary class="faq-question">How does Anthropic API tracking work?</summary>
                 <div class="faq-answer">
-                    <p>Anthropic's Pro/Max plan exposes utilization percentages and reset times for <code>five_hour</code> and <code>seven_day</code> windows, plus per-model breakdowns (<code>seven_day_sonnet</code>, <code>seven_day_opus</code>). onWatch polls this data, stores historical snapshots, and adds what Anthropic doesn't show: usage trends over time, reset cycle detection, rate projections, and cross-provider context alongside Synthetic, Z.ai, and GitHub Copilot. Set <code>ANTHROPIC_TOKEN</code> in your <code>.env</code> or let onWatch auto-detect from Claude Code credentials.</p>
+                    <p>Anthropic's Pro/Max plan exposes utilization percentages and reset times for <code>five_hour</code> and <code>seven_day</code> windows, plus per-model breakdowns (<code>seven_day_sonnet</code>, <code>seven_day_opus</code>). onWatch polls this data, stores historical snapshots, and adds what Anthropic doesn't show: usage trends over time, reset cycle detection, rate projections, and cross-provider context alongside Synthetic, Z.ai, Codex, and GitHub Copilot. Set <code>ANTHROPIC_TOKEN</code> in your <code>.env</code> or let onWatch auto-detect from Claude Code credentials.</p>
                 </div>
             </details>
             <details class="faq-item">
                 <summary class="faq-question">What is the Both view and why does it matter?</summary>
                 <div class="faq-answer">
-                    <p>The All Providers view is onWatch's cross-provider unified dashboard. It shows Synthetic, Z.ai, Anthropic, and GitHub Copilot quotas side-by-side so you can compare headroom across providers at a glance. For example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence&mdash;provider dashboards only show their own data.</p>
+                    <p>The All Providers view is onWatch's cross-provider unified dashboard. It shows Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quotas side-by-side so you can compare headroom across providers at a glance. For example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence&mdash;provider dashboards only show their own data.</p>
                 </div>
             </details>
             <details class="faq-item">
                 <summary class="faq-question">Does onWatch send any data to external servers?</summary>
                 <div class="faq-answer">
-                    <p>No. onWatch has zero telemetry. All usage data is stored locally in a SQLite file on your machine. The only outbound network calls are to the Synthetic, Z.ai, Anthropic, and GitHub Copilot quota APIs you configure. No analytics, no tracking, no cloud. The source code is fully auditable on <a href="https://github.com/onllm-dev/onwatch" target="_blank" rel="noopener noreferrer">GitHub</a> (GPL-3.0).</p>
+                    <p>No. onWatch has zero telemetry. All usage data is stored locally in a SQLite file on your machine. The only outbound network calls are to the Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quota APIs you configure. No analytics, no tracking, no cloud. The source code is fully auditable on <a href="https://github.com/onllm-dev/onwatch" target="_blank" rel="noopener noreferrer">GitHub</a> (GPL-3.0).</p>
                 </div>
             </details>
             <details class="faq-item">
                 <summary class="faq-question">How much memory does onWatch use?</summary>
                 <div class="faq-answer">
-                    <p>onWatch uses <50 MB RAM under all conditions (typically ~34 MB idle, ~43 MB under heavy load), measured with all four agents (Synthetic, Z.ai, Anthropic, GitHub Copilot) polling in parallel. Breakdown: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), polling buffer (1 MB). This is lighter than a single browser tab and designed to run as a background daemon indefinitely.</p>
+                    <p>onWatch uses <50 MB RAM under all conditions (typically ~34 MB idle, ~43 MB under heavy load), measured with all five agents (Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot) polling in parallel. Breakdown: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), polling buffer (1 MB). This is lighter than a single browser tab and designed to run as a background daemon indefinitely.</p>
                 </div>
             </details>
             <details class="faq-item">
@@ -3169,6 +3201,7 @@ a:hover { text-decoration: underline; }
                 <button class="filter-btn active" data-filter="provider" data-value="anthropic">Anthropic</button>
                 <button class="filter-btn" data-filter="provider" data-value="synthetic">Synthetic</button>
                 <button class="filter-btn" data-filter="provider" data-value="zai">Z.ai</button>
+                <button class="filter-btn" data-filter="provider" data-value="codex">Codex</button>
                 <button class="filter-btn" data-filter="provider" data-value="copilot">Copilot</button>
                 <button class="filter-btn" data-filter="provider" data-value="both">All Providers</button>
                 <button class="filter-btn" data-filter="provider" data-value="all">All</button>
@@ -3223,6 +3256,20 @@ a:hover { text-decoration: underline; }
                     <span class="gallery-caption-badge">Z.ai</span>
                 </div>
             </div>
+            <div class="gallery-item fade-in visible hidden" data-theme="light" data-provider="codex" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="../docs/screenshots/codex-light.png" alt="onWatch Codex dashboard in light mode — 5-Hour and Weekly All-Model quota cards, usage insights, cycle history" loading="lazy">
+                <div class="gallery-caption">
+                    <span class="gallery-caption-text">Codex — Light Mode</span>
+                    <span class="gallery-caption-badge">Codex</span>
+                </div>
+            </div>
+            <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="codex" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="../docs/screenshots/codex-dark.png" alt="onWatch Codex dashboard in dark mode — 5-Hour and Weekly All-Model quota cards, usage insights, cycle history" loading="lazy">
+                <div class="gallery-caption">
+                    <span class="gallery-caption-text">Codex — Dark Mode</span>
+                    <span class="gallery-caption-badge">Codex</span>
+                </div>
+            </div>
             <div class="gallery-item fade-in visible hidden" data-theme="light" data-provider="copilot" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
                 <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/copilot-light.png" alt="onWatch GitHub Copilot dashboard in light mode — Premium Requests, Chat, Completions quotas" loading="lazy">
                 <div class="gallery-caption">
@@ -3238,14 +3285,14 @@ a:hover { text-decoration: underline; }
                 </div>
             </div>
             <div class="gallery-item fade-in visible hidden" data-theme="light" data-provider="both" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/all-light.png" alt="onWatch All Providers view in light mode — Anthropic, Synthetic, Z.ai, GitHub Copilot side-by-side" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/all-light.png" alt="onWatch All Providers view in light mode — Anthropic, Synthetic, Z.ai, Codex, GitHub Copilot side-by-side" loading="lazy">
                 <div class="gallery-caption">
                     <span class="gallery-caption-text">All Providers — Light Mode</span>
                     <span class="gallery-caption-badge">All</span>
                 </div>
             </div>
             <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="both" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/all-dark.png" alt="onWatch All Providers view in dark mode — Anthropic, Synthetic, Z.ai, GitHub Copilot side-by-side" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/all-dark.png" alt="onWatch All Providers view in dark mode — Anthropic, Synthetic, Z.ai, Codex, GitHub Copilot side-by-side" loading="lazy">
                 <div class="gallery-caption">
                     <span class="gallery-caption-text">All Providers — Dark Mode</span>
                     <span class="gallery-caption-badge">All</span>
@@ -3353,15 +3400,40 @@ a:hover { text-decoration: underline; }
     });
 })();
 
-/* Fetch latest version from GitHub */
+/* Fetch latest version from GitHub without downgrading fallback */
 (function() {
+    function parseSemver(value) {
+        var cleaned = String(value || '').trim().replace(/^v/i, '');
+        if (!cleaned) return [];
+        return cleaned.split('.').map(function(part) {
+            var n = parseInt(part, 10);
+            return Number.isNaN(n) ? 0 : n;
+        });
+    }
+
+    function isGteVersion(candidate, baseline) {
+        var a = parseSemver(candidate);
+        var b = parseSemver(baseline);
+        var len = Math.max(a.length, b.length);
+        for (var i = 0; i < len; i++) {
+            var av = a[i] || 0;
+            var bv = b[i] || 0;
+            if (av > bv) return true;
+            if (av < bv) return false;
+        }
+        return true;
+    }
+
     fetch('https://api.github.com/repos/onllm-dev/onwatch/releases/latest')
         .then(function(r) { return r.json(); })
         .then(function(data) {
-            if (data && data.tag_name) {
-                var ver = data.tag_name;
-                var el = document.getElementById('hero-version');
-                if (el) el.textContent = ver;
+            if (!data || !data.tag_name) return;
+            var ver = data.tag_name;
+            var el = document.getElementById('hero-version');
+            if (!el) return;
+            var fallback = (el.textContent || '').trim();
+            if (!fallback || isGteVersion(ver, fallback)) {
+                el.textContent = ver;
             }
         })
         .catch(function() { /* keep fallback version */ });
