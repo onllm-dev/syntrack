@@ -2504,6 +2504,7 @@ func TestHandler_Insights_CodexRichData(t *testing.T) {
 			Quotas: []api.CodexQuota{
 				{Name: "five_hour", Utilization: util, ResetsAt: &fiveHourReset},
 				{Name: "seven_day", Utilization: 60.0 + float64(i), ResetsAt: &weeklyReset},
+				{Name: "code_review", Utilization: 15.0 + float64(i*7), ResetsAt: &weeklyReset},
 			},
 			RawJSON: `{"ok":true}`,
 		}
@@ -2577,21 +2578,34 @@ func TestHandler_Insights_CodexRichData(t *testing.T) {
 		}
 	}
 
-	shortForecastFound := false
-	weeklyForecastFound := false
+	windowPressureFound := false
+	weeklyPaceFound := false
+	reviewPaceFound := false
 	for _, in := range response.Insights {
 		if in.Title == "Short Window Burn Rate" {
-			shortForecastFound = strings.Contains(in.Sublabel, "by reset")
+			t.Error("did not expect Short Window Burn Rate in codex insights response")
 		}
 		if in.Title == "Weekly Window Burn Rate" {
-			weeklyForecastFound = strings.Contains(in.Sublabel, "by reset")
+			t.Error("did not expect Weekly Window Burn Rate in codex insights response")
+		}
+		if in.Title == "Window Pressure" {
+			windowPressureFound = true
+		}
+		if in.Title == "Weekly Pace" {
+			weeklyPaceFound = true
+		}
+		if in.Title == "Review Request Pace" {
+			reviewPaceFound = true
 		}
 	}
-	if !shortForecastFound {
-		t.Error("expected Short Window Burn Rate to show reset estimate sublabel")
+	if !windowPressureFound {
+		t.Error("expected Window Pressure insight in codex insights response")
 	}
-	if !weeklyForecastFound {
-		t.Error("expected Weekly Window Burn Rate to show reset estimate sublabel")
+	if !weeklyPaceFound {
+		t.Error("expected Weekly Pace insight in codex insights response")
+	}
+	if !reviewPaceFound {
+		t.Error("expected Review Request Pace insight in codex insights response")
 	}
 }
 

@@ -4812,45 +4812,17 @@ func (h *Handler) buildCodexInsights(hidden map[string]bool, rangeDur time.Durat
 		})
 	}
 
-	// Burn-rate insights per quota.
-	for _, q := range latest.Quotas {
-		key := fmt.Sprintf("forecast_%s", q.Name)
-		if hidden[key] {
-			continue
+	// Deep insights: avoid duplicating top quota cards for 5-hour/weekly quotas.
+	if !hidden["window_pressure"] {
+		if pressureInsight, ok := h.buildCodexWindowPressureInsight(summaries); ok {
+			resp.Insights = append(resp.Insights, pressureInsight)
 		}
-		s := summaries[q.Name]
-		projected := q.Utilization
-		if s != nil && s.ProjectedUtil > projected {
-			projected = s.ProjectedUtil
-		}
-		sublabel := fmt.Sprintf("~%.0f%% by reset", projected)
+	}
 
-		if s != nil && s.CurrentRate > 0.01 {
-			desc := fmt.Sprintf("Currently at %.0f%%. At this rate, projected %.0f%% by reset.", q.Utilization, projected)
-			if s.ResetsAt != nil && s.TimeUntilReset > 0 {
-				desc = fmt.Sprintf("Currently at %.0f%%. At this rate, projected %.0f%% by reset in %s.", q.Utilization, projected, formatDuration(s.TimeUntilReset))
-			}
-			resp.Insights = append(resp.Insights, insightItem{
-				Key:      key,
-				Type:     "forecast",
-				Severity: codexInsightSeverity(q.Utilization),
-				Title:    fmt.Sprintf("%s Burn Rate", codexQuotaInsightLabel(q.Name)),
-				Metric:   fmt.Sprintf("%.1f%%/hr", s.CurrentRate),
-				Sublabel: sublabel,
-				Desc:     desc,
-			})
-			continue
+	if !hidden["forecast_code_review"] {
+		if reviewInsight, ok := h.buildCodexReviewPaceInsight(latest, summaries); ok {
+			resp.Insights = append(resp.Insights, reviewInsight)
 		}
-
-		resp.Insights = append(resp.Insights, insightItem{
-			Key:      key,
-			Type:     "info",
-			Severity: "info",
-			Title:    fmt.Sprintf("%s Burn Rate", codexQuotaInsightLabel(q.Name)),
-			Metric:   "Analyzing...",
-			Sublabel: sublabel,
-			Desc:     fmt.Sprintf("Currently at %.0f%%. Collecting more snapshots to estimate burn rate and refine reset projection.", q.Utilization),
-		})
 	}
 
 	// Weekly pace insight (inspired by CodexBar's "on pace/deficit/reserve" model).
@@ -4858,6 +4830,15 @@ func (h *Handler) buildCodexInsights(hidden map[string]bool, rangeDur time.Durat
 		if paceInsight, ok := h.buildCodexWeeklyPaceInsight(latest, summaries); ok {
 			resp.Insights = append(resp.Insights, paceInsight)
 		}
+	}
+
+	if len(resp.Insights) == 0 {
+		resp.Insights = append(resp.Insights, insightItem{
+			Type:     "info",
+			Severity: "info",
+			Title:    "Collecting Insights",
+			Desc:     "Keep onWatch running to collect enough Codex history for pressure and pace analytics.",
+		})
 	}
 
 	return resp
@@ -4887,6 +4868,101 @@ func codexQuotaInsightLabel(name string) string {
 	default:
 		return api.CodexDisplayName(name)
 	}
+}
+
+func (h *Handler) buildCodexWindowPressureInsight(summaries map[string]*tracker.CodexSummary) (insightItem, bool) {
+	shortSummary := summaries["five_hour"]
+	weeklySummary := summaries["seven_day"]
+	if shortSummary == nil || weeklySummary == nil {
+		return insightItem{}, false
+	}
+	if shortSummary.CurrentRate <= 0.01 || weeklySummary.CurrentRate <= 0.01 {
+		return insightItem{}, false
+	}
+
+	ratio := shortSummary.CurrentRate / weeklySummary.CurrentRate
+	item := insightItem{
+		Key:      "window_pressure",
+		Type:     "trend",
+		Title:    "Window Pressure",
+		Metric:   fmt.Sprintf("%.1fx faster", ratio),
+		Sublabel: "5-hour vs weekly burn",
+		Desc: fmt.Sprintf(
+			"5-hour usage is burning at %.1f%%/hr versus %.1f%%/hr weekly. The short window is likely to constrain usage first.",
+			shortSummary.CurrentRate,
+			weeklySummary.CurrentRate,
+		),
+	}
+
+	switch {
+	case ratio >= 3:
+		item.Severity = "warning"
+	case ratio >= 1.2:
+		item.Severity = "info"
+	default:
+		item.Severity = "positive"
+		item.Metric = "Balanced"
+		item.Sublabel = fmt.Sprintf("%.1fx ratio", ratio)
+		item.Desc = fmt.Sprintf(
+			"5-hour and weekly usage are tracking at similar pace (%.1f%%/hr vs %.1f%%/hr).",
+			shortSummary.CurrentRate,
+			weeklySummary.CurrentRate,
+		)
+	}
+
+	return item, true
+}
+
+func (h *Handler) buildCodexReviewPaceInsight(latest *api.CodexSnapshot, summaries map[string]*tracker.CodexSummary) (insightItem, bool) {
+	var reviewQuota *api.CodexQuota
+	for i := range latest.Quotas {
+		if latest.Quotas[i].Name == "code_review" {
+			reviewQuota = &latest.Quotas[i]
+			break
+		}
+	}
+	if reviewQuota == nil {
+		return insightItem{}, false
+	}
+
+	remaining := 100 - reviewQuota.Utilization
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	item := insightItem{
+		Key:      "forecast_code_review",
+		Type:     "forecast",
+		Title:    "Review Request Pace",
+		Sublabel: fmt.Sprintf("%.0f%% remaining", remaining),
+	}
+
+	summary := summaries["code_review"]
+	if summary == nil || summary.CurrentRate <= 0.01 {
+		item.Severity = "info"
+		item.Metric = "Analyzing..."
+		item.Desc = fmt.Sprintf("%.0f%% remaining. Collecting more snapshots to estimate review request pace.", remaining)
+		return item, true
+	}
+
+	projected := reviewQuota.Utilization
+	if summary.ProjectedUtil > projected {
+		projected = summary.ProjectedUtil
+	}
+	item.Severity = codexRemainingStatus(remaining)
+	item.Metric = fmt.Sprintf("%.1f%%/hr", summary.CurrentRate)
+	item.Sublabel = fmt.Sprintf("~%.0f%% by reset", projected)
+	item.Desc = fmt.Sprintf("%.0f%% remaining. At this pace, projected %.0f%% used by reset.", remaining, projected)
+	if summary.ResetsAt != nil && summary.TimeUntilReset > 0 {
+		item.Desc = fmt.Sprintf(
+			"%.0f%% remaining. At this pace, projected %.0f%% used by reset in %s.",
+			remaining,
+			projected,
+			formatDuration(summary.TimeUntilReset),
+		)
+	}
+
+	return item, true
 }
 
 func (h *Handler) buildCodexWeeklyPaceInsight(latest *api.CodexSnapshot, summaries map[string]*tracker.CodexSummary) (insightItem, bool) {
