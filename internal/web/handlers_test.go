@@ -2453,6 +2453,105 @@ func TestHandler_Insights_CodexEmptyDB(t *testing.T) {
 	}
 }
 
+func TestHandler_Insights_CodexRichData(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	now := time.Now().UTC().Add(-2 * time.Hour)
+	fiveHourReset := now.Add(3 * time.Hour)
+	weeklyReset := now.Add(5 * 24 * time.Hour)
+	credits := 87.5
+	tkr := tracker.NewCodexTracker(s, nil)
+
+	for i, util := range []float64{22.0, 31.0, 44.0} {
+		snap := &api.CodexSnapshot{
+			CapturedAt:     now.Add(time.Duration(i) * 30 * time.Minute),
+			PlanType:       "plus",
+			CreditsBalance: &credits,
+			Quotas: []api.CodexQuota{
+				{Name: "five_hour", Utilization: util, ResetsAt: &fiveHourReset},
+				{Name: "seven_day", Utilization: 60.0 + float64(i), ResetsAt: &weeklyReset},
+			},
+			RawJSON: `{"ok":true}`,
+		}
+		if _, err := s.InsertCodexSnapshot(snap); err != nil {
+			t.Fatalf("failed to insert codex snapshot: %v", err)
+		}
+		if err := tkr.Process(snap); err != nil {
+			t.Fatalf("failed to process codex snapshot: %v", err)
+		}
+	}
+
+	cfg := createTestConfigWithCodex()
+	h := NewHandler(s, nil, nil, nil, cfg)
+	h.SetCodexTracker(tkr)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/insights?provider=codex&range=1d", nil)
+	rr := httptest.NewRecorder()
+	h.Insights(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response insightsResponse
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+	if len(response.Stats) == 0 {
+		t.Fatal("expected codex stats")
+	}
+	if len(response.Insights) == 0 {
+		t.Fatal("expected codex insights")
+	}
+
+	hasPlan := false
+	for _, st := range response.Stats {
+		if st.Label == "Plan" {
+			hasPlan = true
+		}
+	}
+	if !hasPlan {
+		t.Error("expected Plan stat in codex insights response")
+	}
+	for _, in := range response.Insights {
+		if in.Title == "Tracking Quality" {
+			t.Error("did not expect Tracking Quality insight in codex insights response")
+		}
+		if in.Title == "Next Reset" {
+			t.Error("did not expect Next Reset insight in codex insights response")
+		}
+		if in.Title == "Credits Balance" {
+			t.Error("did not expect Credits Balance insight in codex insights response")
+		}
+	}
+	for _, st := range response.Stats {
+		if st.Label == "Credits" {
+			t.Error("did not expect Credits stat in codex insights response")
+		}
+		if st.Label == "Next Reset" {
+			t.Error("did not expect Next Reset stat in codex insights response")
+		}
+	}
+
+	shortForecastFound := false
+	weeklyForecastFound := false
+	for _, in := range response.Insights {
+		if in.Title == "Short Window Burn Rate" {
+			shortForecastFound = strings.Contains(in.Sublabel, "by reset")
+		}
+		if in.Title == "Weekly Window Burn Rate" {
+			weeklyForecastFound = strings.Contains(in.Sublabel, "by reset")
+		}
+	}
+	if !shortForecastFound {
+		t.Error("expected Short Window Burn Rate to show reset estimate sublabel")
+	}
+	if !weeklyForecastFound {
+		t.Error("expected Weekly Window Burn Rate to show reset estimate sublabel")
+	}
+}
+
 func TestHandler_Providers_WithCodexOnly(t *testing.T) {
 	cfg := createTestConfigWithCodex()
 	h := NewHandler(nil, nil, nil, nil, cfg)
