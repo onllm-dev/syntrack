@@ -1,6 +1,6 @@
 # Screenshots
 
-Dashboard screenshots captured from a live onWatch v2.10.1 instance with real Anthropic, Synthetic, Z.ai, Codex, and GitHub Copilot (Beta) data. Each screenshot shows the top half of the dashboard (quota cards, usage insights, charts, and cycle history).
+Dashboard screenshots captured from a live onWatch v2.10.3 instance with real Anthropic, Synthetic, Z.ai, Codex, and GitHub Copilot (Beta) data. Each screenshot shows the top half of the dashboard (quota cards, usage insights, charts, and cycle history).
 
 ## Anthropic Provider
 

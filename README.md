@@ -2,9 +2,9 @@
 
 ### **[onwatch.onllm.dev](https://onwatch.onllm.dev)**
 
-**onWatch** is a free, open-source CLI tool that tracks [Synthetic](https://synthetic.new), [Z.ai](https://z.ai), [Anthropic](https://anthropic.com) (Claude Code), and [GitHub Copilot](https://github.com/features/copilot) API quota usage in real time. It runs as a lightweight background agent (<50 MB RAM with all four providers polling in parallel), stores historical data in SQLite, and serves a Material Design 3 web dashboard with dark/light mode.
+**onWatch** is a free, open-source CLI tool that tracks [Synthetic](https://synthetic.new), [Z.ai](https://z.ai), [Anthropic](https://anthropic.com) (Claude Code), [Codex](https://openai.com/codex), and [GitHub Copilot](https://github.com/features/copilot) API quota usage in real time. It runs as a lightweight background agent (<50 MB RAM with all five providers polling in parallel), stores historical data in SQLite, and serves a Material Design 3 web dashboard with dark/light mode.
 
-onWatch fills the gap between "current usage snapshot" and the historical, per-cycle, cross-session intelligence that developers actually need. It works with any tool that uses Synthetic, Z.ai, Anthropic, or GitHub Copilot API keys, including **Cline**, **Roo Code**, **Kilo Code**, **Claude Code**, **Cursor**, **Windsurf**, **GitHub Copilot**, and others.
+onWatch fills the gap between "current usage snapshot" and the historical, per-cycle, cross-session intelligence that developers actually need. It works with any tool that uses Synthetic, Z.ai, Anthropic, Codex, or GitHub Copilot API keys, including **Cline**, **Roo Code**, **Kilo Code**, **Claude Code**, **Codex CLI**, **Cursor**, **Windsurf**, **GitHub Copilot**, and others.
 
 **Zero telemetry. Single binary. All data stays on your machine.**
 
@@ -14,6 +14,7 @@ onWatch fills the gap between "current usage snapshot" and the historical, per-c
 [![Go 1.25+](https://img.shields.io/badge/Go-1.25+-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://go.dev)
 [![Platform](https://img.shields.io/badge/macOS%20%7C%20Linux%20%7C%20Windows-orange?style=for-the-badge&logo=apple&logoColor=white)](#quick-start)
 [![Website](https://img.shields.io/badge/onwatch.onllm.dev-7C3AED?style=for-the-badge&logo=globe&logoColor=white)](https://onwatch.onllm.dev)
+[![Version](https://img.shields.io/badge/Version-v2.10.3-0EA5E9?style=for-the-badge)](https://github.com/onllm-dev/onwatch/releases/tag/v2.10.3)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/prakersh)
 
 [![Star History Chart](https://api.star-history.com/svg?repos=onllm-dev/onwatch&type=Timeline)](https://star-history.com/#onllm-dev/onwatch&Timeline)
@@ -67,12 +68,13 @@ Edit `~/.onwatch/.env` (or `.env` in the project directory if built from source)
 SYNTHETIC_API_KEY=syn_your_key_here       # https://synthetic.new/settings/api
 ZAI_API_KEY=your_zai_key_here             # https://www.z.ai/api-keys
 ANTHROPIC_TOKEN=your_token_here           # Auto-detected from Claude Code credentials
+CODEX_TOKEN=your_token_here               # Auto-detected from ~/.codex/auth.json if not set
 COPILOT_TOKEN=ghp_your_token_here         # GitHub PAT with copilot scope (Beta)
 ONWATCH_ADMIN_USER=admin
 ONWATCH_ADMIN_PASS=changeme
 ```
 
-At least one provider key is required. Configure any combination to track them in parallel. Anthropic tokens are auto-detected from Claude Code credentials (macOS Keychain, Linux keyring, or `~/.claude/.credentials.json`). Copilot tokens require a GitHub Personal Access Token (classic) with the `copilot` scope — see [Copilot Setup Guide](docs/COPILOT_SETUP.md) for step-by-step instructions.
+At least one provider key is required. Configure any combination to track them in parallel. Anthropic tokens are auto-detected from Claude Code credentials (macOS Keychain, Linux keyring, or `~/.claude/.credentials.json`). Codex tokens are auto-detected from `~/.codex/auth.json` (or `CODEX_HOME/auth.json`). Copilot tokens require a GitHub Personal Access Token (classic) with the `copilot` scope — see [Copilot Setup Guide](docs/COPILOT_SETUP.md) for step-by-step instructions.
 
 ### Run
 
@@ -157,7 +159,7 @@ Install onWatch, set `SYNTHETIC_API_KEY` in your `.env`, and run `./onwatch`. It
 
 ### How do I monitor Z.ai (GLM Coding Plan) API quota?
 
-Set `ZAI_API_KEY` in your `.env`. onWatch polls the Z.ai `/monitor/usage/quota/limit` endpoint and tracks token limits, time limits, and tool call quotas. All three providers can run simultaneously.
+Set `ZAI_API_KEY` in your `.env`. onWatch polls the Z.ai `/monitor/usage/quota/limit` endpoint and tracks token limits, time limits, and tool call quotas. All providers can run simultaneously.
 
 ### How do I track my Anthropic (Claude Code) usage?
 
@@ -169,15 +171,15 @@ Set `COPILOT_TOKEN` in your `.env` with a GitHub Personal Access Token (classic)
 
 ### Does onWatch work with Cline, Roo Code, Kilo Code, or Claude Code?
 
-Yes. onWatch monitors the API provider (Synthetic, Z.ai, Anthropic, or GitHub Copilot), not the coding tool. Any tool that uses a Synthetic, Z.ai, Anthropic, or Copilot API key -- including Cline, Roo Code, Kilo Code, Claude Code, Cursor, Windsurf, GitHub Copilot, and others -- will have its usage tracked automatically.
+Yes. onWatch monitors the API provider (Synthetic, Z.ai, Anthropic, Codex, or GitHub Copilot), not the coding tool. Any tool that uses a Synthetic, Z.ai, Anthropic, Codex, or Copilot API key -- including Cline, Roo Code, Kilo Code, Claude Code, Codex CLI, Cursor, Windsurf, GitHub Copilot, and others -- will have its usage tracked automatically.
 
 ### Does onWatch send any data to external servers?
 
-No. Zero telemetry. All data stays in a local SQLite file. The only outbound calls are to the Synthetic, Z.ai, Anthropic, and GitHub Copilot quota APIs you configure. Fully auditable on [GitHub](https://github.com/onllm-dev/onwatch) (GPL-3.0).
+No. Zero telemetry. All data stays in a local SQLite file. The only outbound calls are to the Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quota APIs you configure. Fully auditable on [GitHub](https://github.com/onllm-dev/onwatch) (GPL-3.0).
 
 ### How much memory does onWatch use?
 
-<50 MB under all conditions (typically ~37 MB idle, ~44 MB under heavy dashboard load). Measured with all four agents (Synthetic, Z.ai, Anthropic, GitHub Copilot) polling in parallel. Lighter than a single browser tab. See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed benchmarks.
+<50 MB under all conditions (typically ~34 MB idle, ~43 MB under heavy load). Measured with all five agents (Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot) polling in parallel. Lighter than a single browser tab. See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed benchmarks.
 
 ---
 
@@ -205,7 +207,7 @@ No. Zero telemetry. All data stays in a local SQLite file. The only outbound cal
 
 All agents run as parallel goroutines. Each polls its API at the configured interval and writes snapshots. The dashboard reads from the shared store.
 
-**Measured RAM (all four agents running in parallel):** ~37 MB idle, ~46 MB P95 under continuous load (~4,600 requests in 60s). Single binary, all assets embedded via `embed.FS`.
+**Measured RAM (all five agents running in parallel):** ~34 MB idle, ~43 MB under heavy load. Single binary, all assets embedded via `embed.FS`.
 
 ---
 
@@ -225,6 +227,7 @@ Additional environment variables:
 | Variable             | Description                                            |
 | -------------------- | ------------------------------------------------------ |
 | `ANTHROPIC_TOKEN`    | Anthropic OAuth token (auto-detected from Claude Code) |
+| `CODEX_TOKEN`        | Codex token (auto-detected from Codex auth if not set) |
 | `COPILOT_TOKEN`      | GitHub Copilot PAT with `copilot` scope (Beta)         |
 | `SYNTHETIC_API_KEY`  | Synthetic API key                                      |
 | `ZAI_API_KEY`        | Z.ai API key                                           |
@@ -240,7 +243,7 @@ CLI flags override environment variables.
 
 ## API Endpoints
 
-All endpoints require authentication (session cookie or Basic Auth). Append `?provider=synthetic|zai|anthropic|copilot|both` to select the provider.
+All endpoints require authentication (session cookie or Basic Auth). Append `?provider=synthetic|zai|anthropic|codex|copilot|both` to select the provider.
 
 | Endpoint                        | Method      | Description                                    |
 | ------------------------------- | ----------- | ---------------------------------------------- |
@@ -370,6 +373,7 @@ Copy `.env.docker.example` to `.env` and set at least one provider key. See `.en
 | `SYNTHETIC_API_KEY`     | Synthetic API key                          | --         |
 | `ZAI_API_KEY`           | Z.ai API key                               | --         |
 | `ANTHROPIC_TOKEN`       | Anthropic token (auto-detected if not set) | --         |
+| `CODEX_TOKEN`           | Codex token (auto-detected if not set)     | --         |
 | `ONWATCH_ADMIN_USER`    | Dashboard username                         | `admin`    |
 | `ONWATCH_ADMIN_PASS`    | Dashboard password                         | `changeme` |
 | `ONWATCH_POLL_INTERVAL` | Polling interval (seconds)                 | `60`       |
