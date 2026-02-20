@@ -424,14 +424,27 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	hasAnthropic := h.config != nil && h.config.HasProvider("anthropic")
-	hasCopilot := h.config != nil && h.config.HasProvider("copilot")
-	hasCodex := h.config != nil && h.config.HasProvider("codex")
+	hasVisibleProvider := func(name string) bool {
+		for _, p := range providers {
+			if p == name {
+				return true
+			}
+		}
+		return false
+	}
+
+	hasSynthetic := hasVisibleProvider("synthetic")
+	hasZai := hasVisibleProvider("zai")
+	hasAnthropic := hasVisibleProvider("anthropic")
+	hasCopilot := hasVisibleProvider("copilot")
+	hasCodex := hasVisibleProvider("codex")
 	data := map[string]interface{}{
 		"Title":           "Dashboard",
 		"Providers":       providers,
 		"CurrentProvider": currentProvider,
 		"Version":         h.version,
+		"HasSynthetic":    hasSynthetic,
+		"HasZai":          hasZai,
 		"HasAnthropic":    hasAnthropic,
 		"HasCopilot":      hasCopilot,
 		"HasCodex":        hasCodex,

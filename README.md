@@ -114,6 +114,7 @@ Open **http://localhost:9211** and log in with your `.env` credentials.
 - **Synthetic** -- Subscription, Search, and Tool Call quota cards
 - **Z.ai** -- Tokens, Time, and Tool Call quota cards
 - **Anthropic** -- Dynamic quota cards (5-Hour, 7-Day, 7-Day Sonnet, Monthly, etc.) with utilization percentages and OAuth token auto-refresh
+- **Codex** -- Dynamic quota cards (5-Hour, 7-Day) with OAuth auth-state refresh and historical cycle analytics
 - **GitHub Copilot (Beta)** -- Premium Interactions, Chat, and Completions quota cards with monthly reset tracking
 - **All** -- Side-by-side view of all configured providers
 - **PWA installable** -- Install onWatch from your browser for a native app experience (Beta)
@@ -146,7 +147,7 @@ Each quota card shows: usage vs. limit with progress bar, live countdown to rese
 
 | Audience                                                                                                                 | Pain Point                                                                          | How onWatch Helps                                                                                       |
 | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **Solo developers & freelancers** using Claude Code, Cline, Roo Code, or Kilo Code with Anthropic/Synthetic/Z.ai/Copilot | Budget anxiety -- no visibility into quota burn rate, surprise throttling mid-task  | Real-time rate projections, historical trends, live countdowns so you never get throttled unexpectedly  |
+| **Solo developers & freelancers** using Claude Code, Cline, Roo Code, or Kilo Code with Anthropic/Synthetic/Z.ai/Codex/Copilot | Budget anxiety -- no visibility into quota burn rate, surprise throttling mid-task  | Real-time rate projections, historical trends, live countdowns so you never get throttled unexpectedly  |
 | **Small dev teams (3-20 people)** sharing API keys                                                                       | No shared visibility into who's consuming what, impossible to budget next month     | Shared dashboard with session tracking, cycle history for budget planning                               |
 | **DevOps & platform engineers**                                                                                          | Shadow AI usage with no FinOps for coding API subscriptions                         | Lightweight sidecar (<50 MB), SQLite data source for Grafana, REST API for monitoring stack integration |
 | **Privacy-conscious developers** in regulated industries                                                                 | Can't use SaaS analytics that phone home; need local, auditable monitoring          | Single binary, local SQLite, zero telemetry, GPL-3.0 source code, works air-gapped                      |
@@ -201,16 +202,16 @@ No. Zero telemetry. All data stays in a local SQLite file. The only outbound cal
                   ┌──────┴───────┐
                   │   SQLite     │
                   │   (WAL)      │
-                  └──┬──┬──┬──┬─┘
-       ┌────────────┘  │  │  └────────────┐
-  ┌────┴─────┐  ┌──────┴──┐  ┌──────┴──┐  ┌──────┴──┐
-  │ Synthetic│  │  Z.ai   │  │Anthropic│  │ Copilot │
-  │  Agent   │  │  Agent  │  │  Agent  │  │  Agent  │
-  └────┬─────┘  └────┬────┘  └────┬────┘  └────┬────┘
-  ┌────┴─────┐  ┌────┴────┐  ┌────┴────┐  ┌────┴────┐
-  │ Synthetic│  │  Z.ai   │  │Anthropic│  │ GitHub  │
-  │  API     │  │  API    │  │OAuth API│  │Copilot  │
-  └──────────┘  └─────────┘  └─────────┘  └─────────┘
+                  └──┬──┬──┬──┬──┬─┘
+       ┌────────────┘  │  │  │  └────────────┐
+  ┌────┴─────┐  ┌──────┴──┐  ┌──────┴──┐  ┌──────┴──┐  ┌──────┴──┐
+  │ Synthetic│  │  Z.ai   │  │Anthropic│  │  Codex  │  │ Copilot │
+  │  Agent   │  │  Agent  │  │  Agent  │  │  Agent  │  │  Agent  │
+  └────┬─────┘  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘
+  ┌────┴─────┐  ┌────┴────┐  ┌────┴────┐  ┌────┴────┐  ┌────┴────┐
+  │ Synthetic│  │  Z.ai   │  │Anthropic│  │chatgpt  │  │ GitHub  │
+  │  API     │  │  API    │  │OAuth API│  │OAuth API│  │Copilot  │
+  └──────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────┘
 ```
 
 All agents run as parallel goroutines. Each polls its API at the configured interval and writes snapshots. The dashboard reads from the shared store.
@@ -381,7 +382,7 @@ Copy `.env.docker.example` to `.env` and set at least one provider key. See `.en
 | `SYNTHETIC_API_KEY`     | Synthetic API key                          | --         |
 | `ZAI_API_KEY`           | Z.ai API key                               | --         |
 | `ANTHROPIC_TOKEN`       | Anthropic token (auto-detected if not set) | --         |
-| `CODEX_TOKEN`           | Codex OAuth access token (set explicitly)  | --         |
+| `CODEX_TOKEN`           | Codex OAuth access token (recommended; required for Codex-only) | -- |
 | `ONWATCH_ADMIN_USER`    | Dashboard username                         | `admin`    |
 | `ONWATCH_ADMIN_PASS`    | Dashboard password                         | `changeme` |
 | `ONWATCH_POLL_INTERVAL` | Polling interval (seconds)                 | `60`       |

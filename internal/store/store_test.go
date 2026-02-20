@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 
@@ -599,12 +600,12 @@ func TestStore_UpsertNotificationLog_Insert(t *testing.T) {
 	}
 	defer s.Close()
 
-	err = s.UpsertNotificationLog("five_hour", "threshold_80", 82.5)
+	err = s.UpsertNotificationLog("anthropic", "five_hour", "threshold_80", 82.5)
 	if err != nil {
 		t.Fatalf("UpsertNotificationLog failed: %v", err)
 	}
 
-	sentAt, util, err := s.GetLastNotification("five_hour", "threshold_80")
+	sentAt, util, err := s.GetLastNotification("anthropic", "five_hour", "threshold_80")
 	if err != nil {
 		t.Fatalf("GetLastNotification failed: %v", err)
 	}
@@ -624,12 +625,12 @@ func TestStore_UpsertNotificationLog_Upsert(t *testing.T) {
 	defer s.Close()
 
 	// Insert first
-	err = s.UpsertNotificationLog("five_hour", "threshold_80", 80.0)
+	err = s.UpsertNotificationLog("anthropic", "five_hour", "threshold_80", 80.0)
 	if err != nil {
 		t.Fatalf("First upsert failed: %v", err)
 	}
 
-	sentAt1, _, err := s.GetLastNotification("five_hour", "threshold_80")
+	sentAt1, _, err := s.GetLastNotification("anthropic", "five_hour", "threshold_80")
 	if err != nil {
 		t.Fatalf("GetLastNotification failed: %v", err)
 	}
@@ -637,12 +638,12 @@ func TestStore_UpsertNotificationLog_Upsert(t *testing.T) {
 	// Upsert (replace)
 	// Small delay to ensure different timestamp
 	time.Sleep(10 * time.Millisecond)
-	err = s.UpsertNotificationLog("five_hour", "threshold_80", 85.0)
+	err = s.UpsertNotificationLog("anthropic", "five_hour", "threshold_80", 85.0)
 	if err != nil {
 		t.Fatalf("Second upsert failed: %v", err)
 	}
 
-	sentAt2, util, err := s.GetLastNotification("five_hour", "threshold_80")
+	sentAt2, util, err := s.GetLastNotification("anthropic", "five_hour", "threshold_80")
 	if err != nil {
 		t.Fatalf("GetLastNotification after upsert failed: %v", err)
 	}
@@ -662,7 +663,7 @@ func TestStore_GetLastNotification_NotFound(t *testing.T) {
 	}
 	defer s.Close()
 
-	sentAt, util, err := s.GetLastNotification("nonexistent", "threshold_80")
+	sentAt, util, err := s.GetLastNotification("anthropic", "nonexistent", "threshold_80")
 	if err != nil {
 		t.Fatalf("GetLastNotification failed: %v", err)
 	}
@@ -682,23 +683,23 @@ func TestStore_UpsertNotificationLog_DifferentKeys(t *testing.T) {
 	defer s.Close()
 
 	// Insert for different quota keys
-	err = s.UpsertNotificationLog("five_hour", "threshold_80", 80.0)
+	err = s.UpsertNotificationLog("anthropic", "five_hour", "threshold_80", 80.0)
 	if err != nil {
 		t.Fatalf("Upsert five_hour failed: %v", err)
 	}
-	err = s.UpsertNotificationLog("seven_day", "threshold_80", 81.0)
+	err = s.UpsertNotificationLog("anthropic", "seven_day", "threshold_80", 81.0)
 	if err != nil {
 		t.Fatalf("Upsert seven_day failed: %v", err)
 	}
-	err = s.UpsertNotificationLog("five_hour", "threshold_95", 95.0)
+	err = s.UpsertNotificationLog("anthropic", "five_hour", "threshold_95", 95.0)
 	if err != nil {
 		t.Fatalf("Upsert five_hour threshold_95 failed: %v", err)
 	}
 
 	// Each should be independent
-	_, util1, _ := s.GetLastNotification("five_hour", "threshold_80")
-	_, util2, _ := s.GetLastNotification("seven_day", "threshold_80")
-	_, util3, _ := s.GetLastNotification("five_hour", "threshold_95")
+	_, util1, _ := s.GetLastNotification("anthropic", "five_hour", "threshold_80")
+	_, util2, _ := s.GetLastNotification("anthropic", "seven_day", "threshold_80")
+	_, util3, _ := s.GetLastNotification("anthropic", "five_hour", "threshold_95")
 
 	if util1 != 80.0 {
 		t.Errorf("five_hour/threshold_80 util = %v, want 80.0", util1)
@@ -708,6 +709,143 @@ func TestStore_UpsertNotificationLog_DifferentKeys(t *testing.T) {
 	}
 	if util3 != 95.0 {
 		t.Errorf("five_hour/threshold_95 util = %v, want 95.0", util3)
+	}
+}
+
+func TestStore_NotificationLog_ProviderScoped(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	if err := s.UpsertNotificationLog("anthropic", "five_hour", "threshold_80", 80.0); err != nil {
+		t.Fatalf("Upsert anthropic failed: %v", err)
+	}
+	if err := s.UpsertNotificationLog("codex", "five_hour", "threshold_80", 90.0); err != nil {
+		t.Fatalf("Upsert codex failed: %v", err)
+	}
+
+	_, anthropicUtil, err := s.GetLastNotification("anthropic", "five_hour", "threshold_80")
+	if err != nil {
+		t.Fatalf("GetLastNotification anthropic failed: %v", err)
+	}
+	_, codexUtil, err := s.GetLastNotification("codex", "five_hour", "threshold_80")
+	if err != nil {
+		t.Fatalf("GetLastNotification codex failed: %v", err)
+	}
+
+	if anthropicUtil != 80.0 {
+		t.Errorf("anthropic util = %v, want 80.0", anthropicUtil)
+	}
+	if codexUtil != 90.0 {
+		t.Errorf("codex util = %v, want 90.0", codexUtil)
+	}
+}
+
+func TestStore_ClearNotificationLog_ProviderScoped(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	if err := s.UpsertNotificationLog("anthropic", "five_hour", "warning", 80.0); err != nil {
+		t.Fatalf("Upsert anthropic failed: %v", err)
+	}
+	if err := s.UpsertNotificationLog("codex", "five_hour", "warning", 90.0); err != nil {
+		t.Fatalf("Upsert codex failed: %v", err)
+	}
+
+	if err := s.ClearNotificationLog("anthropic", "five_hour"); err != nil {
+		t.Fatalf("ClearNotificationLog anthropic failed: %v", err)
+	}
+
+	anthropicSentAt, _, err := s.GetLastNotification("anthropic", "five_hour", "warning")
+	if err != nil {
+		t.Fatalf("GetLastNotification anthropic failed: %v", err)
+	}
+	codexSentAt, _, err := s.GetLastNotification("codex", "five_hour", "warning")
+	if err != nil {
+		t.Fatalf("GetLastNotification codex failed: %v", err)
+	}
+
+	if !anthropicSentAt.IsZero() {
+		t.Errorf("expected anthropic entry to be cleared, got sentAt=%v", anthropicSentAt)
+	}
+	if codexSentAt.IsZero() {
+		t.Error("expected codex entry to remain after anthropic clear")
+	}
+}
+
+func TestStore_NotificationLog_MigratesLegacySchema(t *testing.T) {
+	dbPath := t.TempDir() + "/legacy-notification.db"
+
+	legacyDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("Failed to open legacy DB: %v", err)
+	}
+
+	if _, err := legacyDB.Exec(`
+		CREATE TABLE notification_log (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			quota_key TEXT NOT NULL,
+			notification_type TEXT NOT NULL,
+			sent_at TEXT NOT NULL,
+			utilization REAL,
+			UNIQUE(quota_key, notification_type)
+		)
+	`); err != nil {
+		t.Fatalf("Failed to create legacy notification_log: %v", err)
+	}
+
+	if _, err := legacyDB.Exec(`
+		INSERT INTO notification_log (quota_key, notification_type, sent_at, utilization)
+		VALUES ('five_hour', 'warning', ?, 81.5)
+	`, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		t.Fatalf("Failed to insert legacy row: %v", err)
+	}
+
+	if err := legacyDB.Close(); err != nil {
+		t.Fatalf("Failed to close legacy DB: %v", err)
+	}
+
+	s, err := New(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to open migrated store: %v", err)
+	}
+	defer s.Close()
+
+	var providerColCount int
+	if err := s.db.QueryRow(`
+		SELECT COUNT(*) FROM pragma_table_info('notification_log') WHERE name = 'provider'
+	`).Scan(&providerColCount); err != nil {
+		t.Fatalf("Failed to check provider column: %v", err)
+	}
+	if providerColCount != 1 {
+		t.Fatalf("Expected provider column after migration, got count=%d", providerColCount)
+	}
+
+	legacySentAt, legacyUtil, err := s.GetLastNotification("legacy", "five_hour", "warning")
+	if err != nil {
+		t.Fatalf("GetLastNotification legacy failed: %v", err)
+	}
+	if legacySentAt.IsZero() {
+		t.Fatal("Expected migrated legacy notification row")
+	}
+	if legacyUtil != 81.5 {
+		t.Fatalf("legacy util = %v, want 81.5", legacyUtil)
+	}
+
+	if err := s.UpsertNotificationLog("anthropic", "five_hour", "warning", 88.0); err != nil {
+		t.Fatalf("UpsertNotificationLog anthropic failed: %v", err)
+	}
+	_, anthropicUtil, err := s.GetLastNotification("anthropic", "five_hour", "warning")
+	if err != nil {
+		t.Fatalf("GetLastNotification anthropic failed: %v", err)
+	}
+	if anthropicUtil != 88.0 {
+		t.Fatalf("anthropic util = %v, want 88.0", anthropicUtil)
 	}
 }
 

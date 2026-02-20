@@ -63,8 +63,9 @@
         </div>
 
         {{if eq .CurrentProvider "both"}}
-        <!-- Both providers side-by-side -->
+        <!-- All configured providers side-by-side -->
         <div class="both-view" id="both-view" data-provider="both">
+            {{if .HasSynthetic}}
             <section class="provider-column" data-provider="synthetic">
                 <h3 class="provider-label">Synthetic</h3>
                 <div class="quota-grid quota-grid-stacked" id="quota-grid-synthetic" data-provider="synthetic">
@@ -88,6 +89,8 @@
                     </article>
                 </div>
             </section>
+            {{end}}
+            {{if .HasZai}}
             <section class="provider-column" data-provider="zai">
                 <h3 class="provider-label">Z.ai</h3>
                 <div class="quota-grid quota-grid-stacked" id="quota-grid-zai" data-provider="zai">
@@ -112,6 +115,7 @@
                     </article>
                 </div>
             </section>
+            {{end}}
             {{if .HasAnthropic}}
             <section class="provider-column" data-provider="anthropic">
                 <h3 class="provider-label">Anthropic</h3>

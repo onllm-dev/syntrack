@@ -13,21 +13,21 @@ import (
 
 // NotificationEngine evaluates quota statuses and sends alerts via email and push.
 type NotificationEngine struct {
-	store         *store.Store
-	logger        *slog.Logger
-	mailer        *SMTPMailer
-	pushSender    *PushSender
+	store          *store.Store
+	logger         *slog.Logger
+	mailer         *SMTPMailer
+	pushSender     *PushSender
 	vapidPublicKey string
-	mu            sync.RWMutex
-	cfg           NotificationConfig
-	encryptionKey string // hex-encoded key for decrypting SMTP passwords
+	mu             sync.RWMutex
+	cfg            NotificationConfig
+	encryptionKey  string // hex-encoded key for decrypting SMTP passwords
 }
 
 // NotificationConfig holds threshold and delivery settings.
 type NotificationConfig struct {
 	Warning   float64                      // global warning threshold (default 80)
 	Critical  float64                      // global critical threshold (default 95)
-	Overrides map[string]ThresholdOverride // per quota key overrides
+	Overrides map[string]ThresholdOverride // per provider+quota overrides (legacy key: quota only)
 	Cooldown  time.Duration                // minimum time between notifications
 	Types     NotificationTypes            // which notification types are enabled
 	Channels  NotificationChannels         // which delivery channels are enabled
@@ -102,12 +102,12 @@ func (e *NotificationEngine) Config() NotificationConfig {
 
 // notificationSettingsJSON matches the JSON shape saved by the handler's UpdateSettings.
 type notificationSettingsJSON struct {
-	WarningThreshold  float64 `json:"warning_threshold"`
-	CriticalThreshold float64 `json:"critical_threshold"`
-	NotifyWarning     bool    `json:"notify_warning"`
-	NotifyCritical    bool    `json:"notify_critical"`
-	NotifyReset       bool    `json:"notify_reset"`
-	CooldownMinutes   int     `json:"cooldown_minutes"`
+	WarningThreshold  float64               `json:"warning_threshold"`
+	CriticalThreshold float64               `json:"critical_threshold"`
+	NotifyWarning     bool                  `json:"notify_warning"`
+	NotifyCritical    bool                  `json:"notify_critical"`
+	NotifyReset       bool                  `json:"notify_reset"`
+	CooldownMinutes   int                   `json:"cooldown_minutes"`
 	Channels          *NotificationChannels `json:"channels,omitempty"`
 	Overrides         []struct {
 		QuotaKey   string  `json:"quota_key"`
@@ -151,7 +151,14 @@ func (e *NotificationEngine) Reload() error {
 
 	overrides := make(map[string]ThresholdOverride, len(notif.Overrides))
 	for _, o := range notif.Overrides {
-		overrides[o.QuotaKey] = ThresholdOverride{Warning: o.Warning, Critical: o.Critical, IsAbsolute: o.IsAbsolute}
+		key := strings.TrimSpace(o.QuotaKey)
+		if key == "" {
+			continue
+		}
+		if provider := normalizeNotificationProvider(o.Provider); provider != "legacy" {
+			key = notificationOverrideKey(provider, key)
+		}
+		overrides[key] = ThresholdOverride{Warning: o.Warning, Critical: o.Critical, IsAbsolute: o.IsAbsolute}
 	}
 	e.cfg.Overrides = overrides
 
@@ -360,8 +367,9 @@ func (e *NotificationEngine) Check(status QuotaStatus) {
 	}
 
 	// Handle reset: clear notification log so alerts can fire again in the new cycle
+	provider := normalizeNotificationProvider(status.Provider)
 	if status.ResetOccurred {
-		if err := e.store.ClearNotificationLog(status.QuotaKey); err != nil {
+		if err := e.store.ClearNotificationLog(provider, status.QuotaKey); err != nil {
 			e.logger.Error("failed to clear notification log on reset", "error", err)
 		}
 		if cfg.Types.Reset {
@@ -373,7 +381,25 @@ func (e *NotificationEngine) Check(status QuotaStatus) {
 	// Resolve thresholds
 	warningThreshold := cfg.Warning
 	criticalThreshold := cfg.Critical
-	if override, ok := cfg.Overrides[status.QuotaKey]; ok {
+	if override, ok := cfg.Overrides[notificationOverrideKey(provider, status.QuotaKey)]; ok {
+		if override.IsAbsolute && status.Limit > 0 {
+			// Convert absolute values to percentage for comparison
+			if override.Warning > 0 {
+				warningThreshold = (override.Warning / status.Limit) * 100
+			}
+			if override.Critical > 0 {
+				criticalThreshold = (override.Critical / status.Limit) * 100
+			}
+		} else {
+			if override.Warning > 0 {
+				warningThreshold = override.Warning
+			}
+			if override.Critical > 0 {
+				criticalThreshold = override.Critical
+			}
+		}
+	} else if override, ok := cfg.Overrides[status.QuotaKey]; ok {
+		// Backward compatibility: legacy settings keyed by quota only.
 		if override.IsAbsolute && status.Limit > 0 {
 			// Convert absolute values to percentage for comparison
 			if override.Warning > 0 {
@@ -421,10 +447,11 @@ func (e *NotificationEngine) SendTestEmail() error {
 }
 
 // sendNotification sends notifications via enabled channels.
-// Each quota+type combination fires at most once per cycle.
+// Each provider+quota+type combination fires at most once per cycle.
 // The notification_log entry is cleared on quota reset (see Check/resetOccurred).
 func (e *NotificationEngine) sendNotification(mailer *SMTPMailer, pushSender *PushSender, channels NotificationChannels, status QuotaStatus, notifType string) {
-	sentAt, _, err := e.store.GetLastNotification(status.QuotaKey, notifType)
+	provider := normalizeNotificationProvider(status.Provider)
+	sentAt, _, err := e.store.GetLastNotification(provider, status.QuotaKey, notifType)
 	if err != nil {
 		e.logger.Error("failed to check notification log", "error", err)
 		return
@@ -477,10 +504,22 @@ func (e *NotificationEngine) sendNotification(mailer *SMTPMailer, pushSender *Pu
 
 	// Log the notification only if at least one channel succeeded
 	if sent {
-		if err := e.store.UpsertNotificationLog(status.QuotaKey, notifType, status.Utilization); err != nil {
+		if err := e.store.UpsertNotificationLog(provider, status.QuotaKey, notifType, status.Utilization); err != nil {
 			e.logger.Error("failed to log notification", "error", err)
 		}
 	}
+}
+
+func normalizeNotificationProvider(provider string) string {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	if p == "" {
+		return "legacy"
+	}
+	return p
+}
+
+func notificationOverrideKey(provider, quotaKey string) string {
+	return normalizeNotificationProvider(provider) + ":" + strings.TrimSpace(quotaKey)
 }
 
 // titleCase capitalizes the first letter of a string.

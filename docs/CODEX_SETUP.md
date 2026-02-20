@@ -1,6 +1,6 @@
 # Codex Setup Guide
 
-Track Codex quota usage in onWatch.
+Track Codex quota usage in onWatch (`v2.10.3`).
 
 ---
 
@@ -72,7 +72,38 @@ CODEX_TOKEN=your_codex_oauth_access_token
 
 Notes:
 - If Codex is your only provider, `CODEX_TOKEN` must be set so startup validation passes.
+- If another provider is already configured, onWatch can auto-detect Codex auth when `CODEX_TOKEN` is omitted.
 - While running, onWatch re-reads Codex credentials and can pick up token rotation from `auth.json`.
+
+---
+
+## How Codex Auth Resolution Works
+
+onWatch follows this order:
+
+1. Use `CODEX_TOKEN` from `.env` (or environment) if set.
+2. If missing, try Codex auth state from:
+   - `CODEX_HOME/auth.json` (when `CODEX_HOME` is set)
+   - `~/.codex/auth.json` (default)
+3. During runtime, keep checking auth state and refresh token usage automatically when credentials change.
+
+This is aligned with the Anthropic provider behavior: explicit env token first, local auth-state detection as fallback, and runtime refresh for credential changes.
+
+---
+
+## Installation Scenarios
+
+### Codex-only install
+
+Set `CODEX_TOKEN` in `.env`, then start onWatch.
+
+### Multi-provider install
+
+If another provider key is already set, Codex can be enabled via auth-state auto-detection even without `CODEX_TOKEN`.
+
+### Custom Codex home
+
+Set `CODEX_HOME` to your custom Codex directory so onWatch reads `CODEX_HOME/auth.json`.
 
 ---
 

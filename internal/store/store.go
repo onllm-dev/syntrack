@@ -271,14 +271,15 @@ func (s *Store) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_anthropic_cycles_name_start ON anthropic_reset_cycles(quota_name, cycle_start);
 		CREATE INDEX IF NOT EXISTS idx_anthropic_cycles_name_active ON anthropic_reset_cycles(quota_name, cycle_end) WHERE cycle_end IS NULL;
 
-		-- Notification log (dedup: one row per quota_key + notification_type)
+		-- Notification log (dedup: one row per provider + quota_key + notification_type)
 		CREATE TABLE IF NOT EXISTS notification_log (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			provider TEXT NOT NULL DEFAULT 'legacy',
 			quota_key TEXT NOT NULL,
 			notification_type TEXT NOT NULL,
 			sent_at TEXT NOT NULL,
 			utilization REAL,
-			UNIQUE(quota_key, notification_type)
+			UNIQUE(provider, quota_key, notification_type)
 		);
 
 		-- Push notification subscriptions
@@ -430,7 +431,91 @@ func (s *Store) migrateSchema() error {
 		}
 	}
 
+	// Migrate notification_log to provider-scoped dedupe keys.
+	if err := s.migrateNotificationLogProviderScope(); err != nil {
+		return fmt.Errorf("failed to migrate notification_log provider scope: %w", err)
+	}
+
 	return nil
+}
+
+func (s *Store) migrateNotificationLogProviderScope() error {
+	hasProviderCol, err := s.tableHasColumn("notification_log", "provider")
+	if err != nil {
+		return err
+	}
+	if hasProviderCol {
+		return nil
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin notification_log migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+		CREATE TABLE notification_log_v2 (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			provider TEXT NOT NULL DEFAULT 'legacy',
+			quota_key TEXT NOT NULL,
+			notification_type TEXT NOT NULL,
+			sent_at TEXT NOT NULL,
+			utilization REAL,
+			UNIQUE(provider, quota_key, notification_type)
+		)
+	`); err != nil {
+		return fmt.Errorf("failed to create notification_log_v2: %w", err)
+	}
+
+	if _, err := tx.Exec(`
+		INSERT INTO notification_log_v2 (provider, quota_key, notification_type, sent_at, utilization)
+		SELECT 'legacy', quota_key, notification_type, sent_at, utilization FROM notification_log
+	`); err != nil {
+		return fmt.Errorf("failed to copy notification_log rows: %w", err)
+	}
+
+	if _, err := tx.Exec(`DROP TABLE notification_log`); err != nil {
+		return fmt.Errorf("failed to drop old notification_log table: %w", err)
+	}
+
+	if _, err := tx.Exec(`ALTER TABLE notification_log_v2 RENAME TO notification_log`); err != nil {
+		return fmt.Errorf("failed to rename notification_log_v2: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit notification_log migration: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) tableHasColumn(tableName, columnName string) (bool, error) {
+	query := fmt.Sprintf("PRAGMA table_info(%s)", tableName)
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return false, fmt.Errorf("failed to inspect table %s: %w", tableName, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name string
+		var colType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &defaultValue, &pk); err != nil {
+			return false, fmt.Errorf("failed to scan table_info for %s: %w", tableName, err)
+		}
+		if name == columnName {
+			return true, nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("failed to iterate table_info for %s: %w", tableName, err)
+	}
+	return false, nil
 }
 
 // Close closes the database connection
@@ -1358,13 +1443,16 @@ func (s *Store) DeleteAllAuthTokens() error {
 }
 
 // UpsertNotificationLog inserts or replaces a notification log entry.
-// The UNIQUE(quota_key, notification_type) constraint ensures only the most recent
-// notification per quota+type pair is kept.
-func (s *Store) UpsertNotificationLog(quotaKey, notifType string, util float64) error {
+// The UNIQUE(provider, quota_key, notification_type) constraint ensures only the
+// most recent notification per provider+quota+type pair is kept.
+func (s *Store) UpsertNotificationLog(provider, quotaKey, notifType string, util float64) error {
+	if provider == "" {
+		provider = "legacy"
+	}
 	_, err := s.db.Exec(
-		`INSERT OR REPLACE INTO notification_log (quota_key, notification_type, sent_at, utilization)
-		 VALUES (?, ?, ?, ?)`,
-		quotaKey, notifType, time.Now().UTC().Format(time.RFC3339Nano), util,
+		`INSERT OR REPLACE INTO notification_log (provider, quota_key, notification_type, sent_at, utilization)
+		 VALUES (?, ?, ?, ?, ?)`,
+		provider, quotaKey, notifType, time.Now().UTC().Format(time.RFC3339Nano), util,
 	)
 	if err != nil {
 		return fmt.Errorf("store.UpsertNotificationLog: %w", err)
@@ -1372,14 +1460,18 @@ func (s *Store) UpsertNotificationLog(quotaKey, notifType string, util float64) 
 	return nil
 }
 
-// GetLastNotification returns the last notification time and utilization for a quota+type pair.
+// GetLastNotification returns the last notification time and utilization for a provider+quota+type pair.
 // Returns zero time and 0 utilization if no entry exists.
-func (s *Store) GetLastNotification(quotaKey, notifType string) (time.Time, float64, error) {
+func (s *Store) GetLastNotification(provider, quotaKey, notifType string) (time.Time, float64, error) {
+	if provider == "" {
+		provider = "legacy"
+	}
 	var sentAtStr string
 	var util float64
 	err := s.db.QueryRow(
-		`SELECT sent_at, utilization FROM notification_log WHERE quota_key = ? AND notification_type = ?`,
-		quotaKey, notifType,
+		`SELECT sent_at, utilization FROM notification_log
+		WHERE provider = ? AND quota_key = ? AND notification_type = ?`,
+		provider, quotaKey, notifType,
 	).Scan(&sentAtStr, &util)
 	if err == sql.ErrNoRows {
 		return time.Time{}, 0, nil
@@ -1391,10 +1483,13 @@ func (s *Store) GetLastNotification(quotaKey, notifType string) (time.Time, floa
 	return sentAt, util, nil
 }
 
-// ClearNotificationLog removes all notification log entries for a quota key.
+// ClearNotificationLog removes all notification log entries for a provider+quota key.
 // Called on quota reset to allow notifications to fire again in the new cycle.
-func (s *Store) ClearNotificationLog(quotaKey string) error {
-	_, err := s.db.Exec(`DELETE FROM notification_log WHERE quota_key = ?`, quotaKey)
+func (s *Store) ClearNotificationLog(provider, quotaKey string) error {
+	if provider == "" {
+		provider = "legacy"
+	}
+	_, err := s.db.Exec(`DELETE FROM notification_log WHERE provider = ? AND quota_key = ?`, provider, quotaKey)
 	if err != nil {
 		return fmt.Errorf("store.ClearNotificationLog: %w", err)
 	}

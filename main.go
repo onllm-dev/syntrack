@@ -405,6 +405,22 @@ func run() error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// Resolve auth tokens before any banner output so displayed providers
+	// match the providers that will actually start.
+	preflightLogger := slog.Default()
+	if cfg.AnthropicToken == "" {
+		if token := api.DetectAnthropicToken(preflightLogger); token != "" {
+			cfg.AnthropicToken = token
+			cfg.AnthropicAutoToken = true
+		}
+	}
+	if cfg.CodexToken == "" {
+		if token := api.DetectCodexToken(preflightLogger); token != "" {
+			cfg.CodexToken = token
+			cfg.CodexAutoToken = true
+		}
+	}
+
 	isDaemonChild := os.Getenv("_ONWATCH_DAEMON") == "1"
 
 	// Auto-fix systemd unit file BEFORE stopping the previous instance.
@@ -545,22 +561,11 @@ func run() error {
 		}
 	}
 
-	// Auto-detect Anthropic token if not explicitly configured
-	if cfg.AnthropicToken == "" {
-		if token := api.DetectAnthropicToken(logger); token != "" {
-			cfg.AnthropicToken = token
-			cfg.AnthropicAutoToken = true
-			logger.Info("Auto-detected Anthropic token from Claude Code credentials")
-		}
+	if cfg.AnthropicAutoToken {
+		logger.Info("Auto-detected Anthropic token from Claude Code credentials")
 	}
-
-	// Auto-detect Codex token if not explicitly configured
-	if cfg.CodexToken == "" {
-		if token := api.DetectCodexToken(logger); token != "" {
-			cfg.CodexToken = token
-			cfg.CodexAutoToken = true
-			logger.Info("Auto-detected Codex token from Codex credentials")
-		}
+	if cfg.CodexAutoToken {
+		logger.Info("Auto-detected Codex token from Codex credentials")
 	}
 
 	// Create API clients based on configured providers
@@ -1245,9 +1250,9 @@ func printBanner(cfg *config.Config, version string) {
 	}
 	if cfg.HasProvider("codex") {
 		if cfg.CodexAutoToken {
-			fmt.Println("║  API:       codex (auto-detect)      ║")
+			fmt.Println("║  API:       chatgpt.com/wham (auto)  ║")
 		} else {
-			fmt.Println("║  API:       api.openai.com/codex     ║")
+			fmt.Println("║  API:       chatgpt.com/wham         ║")
 		}
 	}
 
@@ -1313,7 +1318,8 @@ func printHelp() {
 	fmt.Println("  ZAI_BASE_URL           Z.ai base URL (default: https://api.z.ai/api)")
 	fmt.Println("  ANTHROPIC_TOKEN         Anthropic token (auto-detected if not set)")
 	fmt.Println("  COPILOT_TOKEN           GitHub Copilot token (PAT with copilot scope)")
-	fmt.Println("  CODEX_TOKEN             Codex token (auto-detected from Codex auth if not set)")
+	fmt.Println("  CODEX_TOKEN             Codex OAuth token (recommended; required for Codex-only)")
+	fmt.Println("  CODEX_HOME              Optional Codex auth directory (uses CODEX_HOME/auth.json)")
 	fmt.Println("  ONWATCH_POLL_INTERVAL   Polling interval in seconds")
 	fmt.Println("  ONWATCH_PORT            Dashboard HTTP port")
 	fmt.Println("  ONWATCH_ADMIN_USER      Dashboard admin username")
@@ -1339,8 +1345,9 @@ func printHelp() {
 	fmt.Println("  Test instances never kill production instances and vice versa.")
 	fmt.Println("  Use --db and --port to further isolate test from production.")
 	fmt.Println()
+	fmt.Println("Anthropic and Codex tokens can be auto-detected from local auth when another provider is already configured.")
 	fmt.Println("Configure providers in .env file or environment variables.")
-	fmt.Println("At least one provider (Synthetic, Z.ai, Anthropic, or Copilot) must be configured.")
+	fmt.Println("At least one provider (Synthetic, Z.ai, Anthropic, Copilot, or Codex) must be configured.")
 }
 
 func redactAPIKey(key string) string {

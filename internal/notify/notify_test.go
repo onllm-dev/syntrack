@@ -158,9 +158,9 @@ func TestNotificationEngine_Reload_CustomValues(t *testing.T) {
 		t.Error("Types.Reset should be true")
 	}
 
-	override, ok := cfg.Overrides["five_hour"]
+	override, ok := cfg.Overrides[notificationOverrideKey("anthropic", "five_hour")]
 	if !ok {
-		t.Fatal("Expected override for five_hour")
+		t.Fatal("Expected override for anthropic/five_hour")
 	}
 	if override.Warning != 50 {
 		t.Errorf("five_hour Warning = %v, want 50", override.Warning)
@@ -193,7 +193,7 @@ func TestNotificationEngine_Check_WarningThreshold(t *testing.T) {
 	}
 
 	// Verify notification was logged
-	sentAt, util, err := s.GetLastNotification("five_hour", "warning")
+	sentAt, util, err := s.GetLastNotification("anthropic", "five_hour", "warning")
 	if err != nil {
 		t.Fatalf("GetLastNotification failed: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestNotificationEngine_Check_CriticalThreshold(t *testing.T) {
 		t.Errorf("Expected 1 email for critical, got %d", mailCount.Load())
 	}
 
-	sentAt, _, err := s.GetLastNotification("five_hour", "critical")
+	sentAt, _, err := s.GetLastNotification("anthropic", "five_hour", "critical")
 	if err != nil {
 		t.Fatalf("GetLastNotification failed: %v", err)
 	}
@@ -289,6 +289,53 @@ func TestNotificationEngine_Check_CooldownEnforced(t *testing.T) {
 	})
 	if mailCount.Load() != 1 {
 		t.Errorf("Expected still 1 email after cooldown check, got %d", mailCount.Load())
+	}
+}
+
+func TestNotificationEngine_Check_DedupIsProviderScoped(t *testing.T) {
+	s := newTestStore(t)
+	defer s.Close()
+
+	engine := newTestEngine(t, s)
+	engine.Reload()
+
+	mailCount, cleanup := setupSMTPAndMailer(t, s, engine)
+	defer cleanup()
+
+	engine.Check(QuotaStatus{
+		Provider:    "anthropic",
+		QuotaKey:    "five_hour",
+		Utilization: 82.0,
+		Limit:       100,
+	})
+	if mailCount.Load() != 1 {
+		t.Fatalf("Expected 1 email after anthropic warning, got %d", mailCount.Load())
+	}
+
+	// Same quota key/type on a different provider should still send once.
+	engine.Check(QuotaStatus{
+		Provider:    "codex",
+		QuotaKey:    "five_hour",
+		Utilization: 83.0,
+		Limit:       100,
+	})
+	if mailCount.Load() != 2 {
+		t.Fatalf("Expected 2 emails after codex warning, got %d", mailCount.Load())
+	}
+
+	anthropicSentAt, _, err := s.GetLastNotification("anthropic", "five_hour", "warning")
+	if err != nil {
+		t.Fatalf("GetLastNotification anthropic failed: %v", err)
+	}
+	codexSentAt, _, err := s.GetLastNotification("codex", "five_hour", "warning")
+	if err != nil {
+		t.Fatalf("GetLastNotification codex failed: %v", err)
+	}
+	if anthropicSentAt.IsZero() {
+		t.Fatal("Expected anthropic warning notification to be logged")
+	}
+	if codexSentAt.IsZero() {
+		t.Fatal("Expected codex warning notification to be logged")
 	}
 }
 
@@ -380,7 +427,7 @@ func TestNotificationEngine_Check_NoMailer_SilentSkip(t *testing.T) {
 	})
 
 	// No crash = success. Also verify notification was NOT logged (no mailer = no send = no log).
-	sentAt, _, _ := s.GetLastNotification("five_hour", "critical")
+	sentAt, _, _ := s.GetLastNotification("anthropic", "five_hour", "critical")
 	if !sentAt.IsZero() {
 		t.Error("Expected no notification logged when mailer is nil")
 	}
@@ -417,9 +464,64 @@ func TestNotificationEngine_Check_ResetNotification(t *testing.T) {
 		t.Errorf("Expected 1 email for reset notification, got %d", mailCount.Load())
 	}
 
-	sentAt, _, _ := s.GetLastNotification("five_hour", "reset")
+	sentAt, _, _ := s.GetLastNotification("anthropic", "five_hour", "reset")
 	if sentAt.IsZero() {
 		t.Error("Expected reset notification to be logged")
+	}
+}
+
+func TestNotificationEngine_Check_ResetClearsOnlyCurrentProvider(t *testing.T) {
+	s := newTestStore(t)
+	defer s.Close()
+
+	engine := newTestEngine(t, s)
+	engine.Reload()
+
+	mailCount, cleanup := setupSMTPAndMailer(t, s, engine)
+	defer cleanup()
+
+	// Seed warning logs for two providers.
+	engine.Check(QuotaStatus{
+		Provider:    "anthropic",
+		QuotaKey:    "five_hour",
+		Utilization: 82.0,
+		Limit:       100,
+	})
+	engine.Check(QuotaStatus{
+		Provider:    "codex",
+		QuotaKey:    "five_hour",
+		Utilization: 83.0,
+		Limit:       100,
+	})
+	if mailCount.Load() != 2 {
+		t.Fatalf("Expected 2 emails after initial warnings, got %d", mailCount.Load())
+	}
+
+	// Reset only anthropic; this should clear anthropic dedupe entry.
+	engine.Check(QuotaStatus{
+		Provider:      "anthropic",
+		QuotaKey:      "five_hour",
+		Utilization:   10.0,
+		Limit:         100,
+		ResetOccurred: true,
+	})
+
+	// Anthropic warning should send again after reset; codex should still be deduped.
+	engine.Check(QuotaStatus{
+		Provider:    "anthropic",
+		QuotaKey:    "five_hour",
+		Utilization: 84.0,
+		Limit:       100,
+	})
+	engine.Check(QuotaStatus{
+		Provider:    "codex",
+		QuotaKey:    "five_hour",
+		Utilization: 84.0,
+		Limit:       100,
+	})
+
+	if mailCount.Load() != 3 {
+		t.Fatalf("Expected 3 emails total (anthropic resent, codex still deduped), got %d", mailCount.Load())
 	}
 }
 
