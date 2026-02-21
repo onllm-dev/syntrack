@@ -11,13 +11,13 @@
       gtag('js', new Date());
       gtag('config', 'G-HLLYRRWW4R');
     </script>
-    <title>onWatch — Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot</title>
+    <title>onWatch - Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot</title>
     <meta name="description" content="onWatch is the intelligence layer for multi-provider AI API management. Track usage across Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot with cross-provider insights, pattern detection, rate projections, and reset cycle intelligence - a ~13 MB Go binary, <50 MB RAM, zero telemetry.">
     <meta name="keywords" content="onWatch, AI API intelligence, multi-provider API tracking, Synthetic API monitor, Z.ai API tracker, Anthropic API monitoring, Codex API monitoring, GitHub Copilot quota tracker, cross-provider insights, AI coding API usage, quota monitoring tool, open source API monitor, Cline quota tracker, Claude Code API usage, intelligent provider switching, API budget tracker, self-hosted API monitoring, reset cycle detection, rate projection, Go CLI tool, API quota dashboard">
     <link rel="canonical" href="https://onwatch.onllm.dev">
 
     <!-- Open Graph -->
-    <meta property="og:title" content="onWatch — Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot">
+    <meta property="og:title" content="onWatch - Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot">
     <meta property="og:description" content="The intelligence layer for multi-provider AI API management. Cross-provider insights, pattern detection, rate projections, and reset cycle intelligence. Free, open-source, single binary, zero telemetry.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://onwatch.onllm.dev">
@@ -29,7 +29,7 @@
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="onWatch — Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot">
+    <meta name="twitter:title" content="onWatch - Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot">
     <meta name="twitter:description" content="The intelligence layer for multi-provider AI API management. Cross-provider insights, pattern detection, and rate projections. ~13 MB binary, <50 MB RAM, zero telemetry.">
     <meta name="twitter:image" content="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/anthropic-dark.png">
 
@@ -127,7 +127,7 @@
           "name": "What is the Both view and why does it matter?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "The All Providers view is onWatch's cross-provider unified dashboard that shows Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quotas side-by-side in a single view. It lets you compare headroom across providers at a glance — for example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence."
+            "text": "The All Providers view is onWatch's cross-provider unified dashboard that shows Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quotas side-by-side in a single view. It lets you compare headroom across providers at a glance - for example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence."
           }
         },
         {
@@ -151,7 +151,7 @@
           "name": "How do email and push notifications work?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Configure SMTP in Settings to receive email alerts when quotas cross warning or critical thresholds or reset. SMTP passwords are encrypted at rest with AES-256-GCM. For push notifications (Beta), enable them in Delivery Channels and allow browser notifications. onWatch uses Web Push (VAPID) with no external dependencies — keys are auto-generated. Note: Push notifications require HTTPS to work. Choose email, push, or both."
+            "text": "Configure SMTP in Settings to receive email alerts when quotas cross warning or critical thresholds or reset. SMTP passwords are encrypted at rest with AES-256-GCM. For push notifications (Beta), enable them in Delivery Channels and allow browser notifications. onWatch uses Web Push (VAPID) with no external dependencies - keys are auto-generated. Note: Push notifications require HTTPS to work. Choose email, push, or both."
           }
         },
         {
@@ -171,7 +171,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
 /* ═══════════════════════════════════════════
-   DESIGN TOKENS — Matches onWatch Dashboard
+   DESIGN TOKENS - Matches onWatch Dashboard
    ═══════════════════════════════════════════ */
 :root {
   --surface-page: #F0F2F5;
@@ -528,13 +528,18 @@ a:hover { text-decoration: underline; }
   border-left: 1px solid rgba(13, 148, 136, 0.15);
 }
 .hero-badge-downloads {
-  color: var(--text-secondary);
+  color: var(--text-primary);
   background: var(--bg-tertiary);
   border-left: 1px solid rgba(13, 148, 136, 0.15);
 }
-.hero-badge-downloads img {
-  height: 20px;
-  vertical-align: middle;
+.hero-badge-downloads .download-count {
+  font-variant-numeric: tabular-nums;
+  background: var(--accent-teal);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  margin-left: 4px;
 }
 .hero-badge svg { width: 14px; height: 14px; }
 
@@ -1396,7 +1401,7 @@ a:hover { text-decoration: underline; }
 }
 
 /* ═══════════════════════════════════════════
-   INSTALL SECTION — Method Cards
+   INSTALL SECTION - Method Cards
    ═══════════════════════════════════════════ */
 .install {
   padding: 80px 0;
@@ -2246,15 +2251,16 @@ a:hover { text-decoration: underline; }
                     Powered by onllm.dev
                 </a>
                 <a href="https://github.com/onllm-dev/onwatch/releases" class="hero-badge hero-badge-downloads" target="_blank" rel="noopener noreferrer">
-                    <img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/onllm-dev/onwatch/total?style=flat&logo=github&logoColor=currentColor&label=Downloads&color=gray">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                    Downloads <span class="download-count" id="download-count">--</span>
                 </a>
             </div>
             <div class="beta-banner">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                Beta — Currently in active development
+                Beta - Currently in active development
             </div>
             <h1>The <span class="accent">intelligence</span> layer for your AI API stack</h1>
-            <p class="hero-desc">Track API usage across Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot in one place. onWatch polls every provider's quotas, stores historical data locally, and surfaces patterns, projections, and cross-provider context&mdash;so you always know where your budget stands and which provider has headroom. Get notified via email or push notifications when quotas approach limits.</p>
+            <p class="hero-desc">Track API usage across Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot in one place. onWatch polls every provider's quotas, stores historical data locally, and surfaces patterns, projections, and cross-provider context-so you always know where your budget stands and which provider has headroom. Get notified via email or push notifications when quotas approach limits.</p>
             <div class="hero-actions">
                 <a href="#install" class="btn-primary">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
@@ -2381,7 +2387,7 @@ a:hover { text-decoration: underline; }
                             </div>
                         </div>
                     </div>
-                    <!-- Anthropic view — single combined card with vertical sub-rows -->
+                    <!-- Anthropic view - single combined card with vertical sub-rows -->
                     <div class="mockup-view" id="mock-anthropic">
                         <div class="mockup-cards" style="grid-template-columns:1fr;">
                             <div class="mock-card" style="padding:14px 16px;">
@@ -2485,7 +2491,7 @@ a:hover { text-decoration: underline; }
                         </div>
                     </div>
                     <div class="mock-chart">
-                        <div class="mock-chart-title">Usage over time — Last 6 hours</div>
+                        <div class="mock-chart-title">Usage over time - Last 6 hours</div>
                         <div id="chart-single" style="position:relative;height:110px;"><canvas id="mock-chart-canvas"></canvas></div>
                         <div id="chart-multi" style="display:none;">
                             <div style="display:flex;gap:6px;">
@@ -2533,9 +2539,9 @@ a:hover { text-decoration: underline; }
                     <div class="provider-card-name">Codex</div>
                 </div>
                 <ul class="provider-card-quotas">
-                    <li><strong>five_hour</strong> — utilization + reset</li>
-                    <li><strong>seven_day</strong> — utilization + reset</li>
-                    <li><strong>monthly_limit</strong> — utilization + reset</li>
+                    <li><strong>five_hour</strong> - utilization + reset</li>
+                    <li><strong>seven_day</strong> - utilization + reset</li>
+                    <li><strong>monthly_limit</strong> - utilization + reset</li>
                 </ul>
                 <div class="provider-card-note">OAuth token from ~/.codex/auth.json or CODEX_TOKEN. Tracked with the same cross-provider insights and cycle analytics.</div>
             </div>
@@ -2548,9 +2554,9 @@ a:hover { text-decoration: underline; }
                     <div class="provider-card-name">Anthropic</div>
                 </div>
                 <ul class="provider-card-quotas">
-                    <li><strong>five_hour</strong> — utilization + reset</li>
-                    <li><strong>seven_day</strong> — utilization + reset</li>
-                    <li><strong>Per-model</strong> — Sonnet, Opus breakdown</li>
+                    <li><strong>five_hour</strong> - utilization + reset</li>
+                    <li><strong>seven_day</strong> - utilization + reset</li>
+                    <li><strong>Per-model</strong> - Sonnet, Opus breakdown</li>
                 </ul>
                 <div class="provider-card-note">Auto-detects token from Claude Code (Keychain, keyring, or credentials file).</div>
             </div>
@@ -2563,9 +2569,9 @@ a:hover { text-decoration: underline; }
                     <div class="provider-card-name">Synthetic</div>
                 </div>
                 <ul class="provider-card-quotas">
-                    <li><strong>subscription</strong> — ~5h reset cycle</li>
-                    <li><strong>search.hourly</strong> — 250 req/hr</li>
-                    <li><strong>toolCallDiscounts</strong> — ~24h cycle</li>
+                    <li><strong>subscription</strong> - ~5h reset cycle</li>
+                    <li><strong>search.hourly</strong> - 250 req/hr</li>
+                    <li><strong>toolCallDiscounts</strong> - ~24h cycle</li>
                 </ul>
                 <div class="provider-card-note">Polls /v2/quotas every 60s. Does not count against quota.</div>
             </div>
@@ -2578,9 +2584,9 @@ a:hover { text-decoration: underline; }
                     <div class="provider-card-name">Z.ai</div>
                 </div>
                 <ul class="provider-card-quotas">
-                    <li><strong>TOKENS_LIMIT</strong> — daily token budget</li>
-                    <li><strong>TIME_LIMIT</strong> — daily + per-model</li>
-                    <li><strong>Tool Calls</strong> — daily limit</li>
+                    <li><strong>TOKENS_LIMIT</strong> - daily token budget</li>
+                    <li><strong>TIME_LIMIT</strong> - daily + per-model</li>
+                    <li><strong>Tool Calls</strong> - daily limit</li>
                 </ul>
                 <div class="provider-card-note">Normalizes Z.ai's confusing field names (usage = limit, currentValue = used).</div>
             </div>
@@ -2593,9 +2599,9 @@ a:hover { text-decoration: underline; }
                     <div class="provider-card-name">GitHub Copilot <span style="font-size:0.7em;background:#6e40c9;color:#fff;padding:2px 6px;border-radius:4px;margin-left:6px;">Beta</span></div>
                 </div>
                 <ul class="provider-card-quotas">
-                    <li><strong>premium_interactions</strong> — monthly limit (300-1500)</li>
-                    <li><strong>chat</strong> — unlimited</li>
-                    <li><strong>completions</strong> — unlimited</li>
+                    <li><strong>premium_interactions</strong> - monthly limit (300-1500)</li>
+                    <li><strong>chat</strong> - unlimited</li>
+                    <li><strong>completions</strong> - unlimited</li>
                 </ul>
                 <div class="provider-card-note">Uses GitHub PAT with copilot scope. Monthly reset cycle detection.</div>
             </div>
@@ -2636,7 +2642,7 @@ a:hover { text-decoration: underline; }
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 </div>
                 <h3 class="intel-card-title">Know before you're throttled</h3>
-                <p class="intel-card-desc">Extrapolates your consumption rate to the next reset boundary. Know whether you'll run out before relief arrives — and switch providers before it happens.</p>
+                <p class="intel-card-desc">Extrapolates your consumption rate to the next reset boundary. Know whether you'll run out before relief arrives - and switch providers before it happens.</p>
                 <div class="intel-card-example">Anthropic seven_day: 31% used, resets Feb 14. Z.ai tokens: 95% used, resets tomorrow. Route to Anthropic.</div>
             </div>
             <div class="intel-card fade-in">
@@ -2652,7 +2658,7 @@ a:hover { text-decoration: underline; }
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                 </div>
                 <h3 class="intel-card-title">Never waste quota near a reset</h3>
-                <p class="intel-card-desc">Tracks every reset boundary independently — Anthropic's 5-hour and 7-day windows, Synthetic's ~5h subscription, Z.ai's daily token budget. Know when each resets and how much went unused.</p>
+                <p class="intel-card-desc">Tracks every reset boundary independently - Anthropic's 5-hour and 7-day windows, Synthetic's ~5h subscription, Z.ai's daily token budget. Know when each resets and how much went unused.</p>
                 <div class="intel-card-example">Anthropic five_hour resets in 12 min. 50% utilization. Synthetic subscription resets in 3h.</div>
             </div>
         </div>
@@ -2680,14 +2686,14 @@ a:hover { text-decoration: underline; }
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                 </div>
                 <h3 class="feature-title">Reset cycle detection</h3>
-                <p class="feature-desc">Detects when quotas reset across all providers — Anthropic's 5-hour and 7-day windows, Synthetic's subscription cycles, Z.ai's daily token budget. Logs peak usage and total delta per cycle.</p>
+                <p class="feature-desc">Detects when quotas reset across all providers - Anthropic's 5-hour and 7-day windows, Synthetic's subscription cycles, Z.ai's daily token budget. Logs peak usage and total delta per cycle.</p>
             </div>
             <div class="feature-card fade-in">
                 <div class="feature-icon blue">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 </div>
                 <h3 class="feature-title">Live countdowns &amp; projections</h3>
-                <p class="feature-desc">Real-time countdown to each quota reset. Extrapolates your current rate to the next boundary so you know whether you'll make it — or should switch providers.</p>
+                <p class="feature-desc">Real-time countdown to each quota reset. Extrapolates your current rate to the next boundary so you know whether you'll make it - or should switch providers.</p>
             </div>
             <div class="feature-card fade-in">
                 <div class="feature-icon teal">
@@ -2729,7 +2735,7 @@ a:hover { text-decoration: underline; }
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                 </div>
                 <h3 class="feature-title">Enterprise-grade security</h3>
-                <p class="feature-desc">AES-256-GCM encrypted SMTP passwords, auto-generated VAPID keys (ECDSA P-256), Web Push RFC 8291 encryption, constant-time auth, parameterized SQL. Zero telemetry — all data stays local.</p>
+                <p class="feature-desc">AES-256-GCM encrypted SMTP passwords, auto-generated VAPID keys (ECDSA P-256), Web Push RFC 8291 encryption, constant-time auth, parameterized SQL. Zero telemetry - all data stays local.</p>
             </div>
             <div class="feature-card fade-in">
                 <div class="feature-icon peach">
@@ -3157,7 +3163,7 @@ a:hover { text-decoration: underline; }
             <details class="faq-item">
                 <summary class="faq-question">Does onWatch work with Cline, Roo Code, Kilo Code, or Claude Code?</summary>
                 <div class="faq-answer">
-                    <p>Yes. onWatch monitors the API provider (Synthetic, Z.ai, Anthropic, Codex, or GitHub Copilot), not the coding tool. Any tool that uses these API keys&mdash;including Cline, Roo Code, Kilo Code, Claude Code, Cursor, Windsurf, GitHub Copilot, and others&mdash;will have its usage tracked automatically.</p>
+                    <p>Yes. onWatch monitors the API provider (Synthetic, Z.ai, Anthropic, Codex, or GitHub Copilot), not the coding tool. Any tool that uses these API keys-including Cline, Roo Code, Kilo Code, Claude Code, Cursor, Windsurf, GitHub Copilot, and others-will have its usage tracked automatically.</p>
                 </div>
             </details>
             <details class="faq-item">
@@ -3169,7 +3175,7 @@ a:hover { text-decoration: underline; }
             <details class="faq-item">
                 <summary class="faq-question">What is the Both view and why does it matter?</summary>
                 <div class="faq-answer">
-                    <p>The All Providers view is onWatch's cross-provider unified dashboard. It shows Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quotas side-by-side so you can compare headroom across providers at a glance. For example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence&mdash;provider dashboards only show their own data.</p>
+                    <p>The All Providers view is onWatch's cross-provider unified dashboard. It shows Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quotas side-by-side so you can compare headroom across providers at a glance. For example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence-provider dashboards only show their own data.</p>
                 </div>
             </details>
             <details class="faq-item">
@@ -3187,7 +3193,7 @@ a:hover { text-decoration: underline; }
             <details class="faq-item">
                 <summary class="faq-question">How do email and push notifications work?</summary>
                 <div class="faq-answer">
-                    <p>Configure SMTP settings in the Settings page to receive email alerts when quotas cross warning or critical thresholds, or when they reset. SMTP passwords are encrypted at rest with AES-256-GCM. For push notifications (Beta), enable them in Settings &rarr; Notifications &rarr; Delivery Channels and allow browser notifications. onWatch uses the Web Push protocol (VAPID) with no external service dependencies &mdash; VAPID keys are auto-generated and all encryption is handled locally. <strong>Note:</strong> Push notifications require HTTPS to work. You can choose email, push, or both.</p>
+                    <p>Configure SMTP settings in the Settings page to receive email alerts when quotas cross warning or critical thresholds, or when they reset. SMTP passwords are encrypted at rest with AES-256-GCM. For push notifications (Beta), enable them in Settings &rarr; Notifications &rarr; Delivery Channels and allow browser notifications. onWatch uses the Web Push protocol (VAPID) with no external service dependencies - VAPID keys are auto-generated and all encryption is handled locally. <strong>Note:</strong> Push notifications require HTTPS to work. You can choose email, push, or both.</p>
                 </div>
             </details>
             <details class="faq-item">
@@ -3227,86 +3233,86 @@ a:hover { text-decoration: underline; }
         </div>
         <div class="gallery-grid" id="gallery-grid">
             <div class="gallery-item fade-in visible" data-theme="light" data-provider="anthropic" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/anthropic-light.png" alt="onWatch Anthropic dashboard in light mode — quota cards, usage graphs, cycle history" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/anthropic-light.png" alt="onWatch Anthropic dashboard in light mode - quota cards, usage graphs, cycle history" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">Anthropic — Light Mode</span>
+                    <span class="gallery-caption-text">Anthropic - Light Mode</span>
                     <span class="gallery-caption-badge">Anthropic</span>
                 </div>
             </div>
             <div class="gallery-item fade-in visible" data-theme="dark" data-provider="anthropic" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/anthropic-dark.png" alt="onWatch Anthropic dashboard in dark mode — quota cards, usage graphs, cycle history" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/anthropic-dark.png" alt="onWatch Anthropic dashboard in dark mode - quota cards, usage graphs, cycle history" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">Anthropic — Dark Mode</span>
+                    <span class="gallery-caption-text">Anthropic - Dark Mode</span>
                     <span class="gallery-caption-badge">Anthropic</span>
                 </div>
             </div>
             <div class="gallery-item fade-in visible hidden" data-theme="light" data-provider="synthetic" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
                 <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/synthetic-light.png" alt="onWatch Synthetic provider dashboard in light mode" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">Synthetic — Light Mode</span>
+                    <span class="gallery-caption-text">Synthetic - Light Mode</span>
                     <span class="gallery-caption-badge">Synthetic</span>
                 </div>
             </div>
             <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="synthetic" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
                 <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/synthetic-dark.png" alt="onWatch Synthetic provider dashboard in dark mode" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">Synthetic — Dark Mode</span>
+                    <span class="gallery-caption-text">Synthetic - Dark Mode</span>
                     <span class="gallery-caption-badge">Synthetic</span>
                 </div>
             </div>
             <div class="gallery-item fade-in visible hidden" data-theme="light" data-provider="zai" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/zai-light.png" alt="onWatch Z.ai provider dashboard in light mode — tokens and time quotas" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/zai-light.png" alt="onWatch Z.ai provider dashboard in light mode - tokens and time quotas" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">Z.ai — Light Mode</span>
+                    <span class="gallery-caption-text">Z.ai - Light Mode</span>
                     <span class="gallery-caption-badge">Z.ai</span>
                 </div>
             </div>
             <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="zai" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/zai-dark.png" alt="onWatch Z.ai provider dashboard in dark mode — tokens and time quotas" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/zai-dark.png" alt="onWatch Z.ai provider dashboard in dark mode - tokens and time quotas" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">Z.ai — Dark Mode</span>
+                    <span class="gallery-caption-text">Z.ai - Dark Mode</span>
                     <span class="gallery-caption-badge">Z.ai</span>
                 </div>
             </div>
             <div class="gallery-item fade-in visible hidden" data-theme="light" data-provider="codex" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/codex-light.png" alt="onWatch Codex dashboard in light mode — 5-Hour and Weekly All-Model quota cards, usage insights, cycle history" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/codex-light.png" alt="onWatch Codex dashboard in light mode - 5-Hour and Weekly All-Model quota cards, usage insights, cycle history" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">Codex — Light Mode</span>
+                    <span class="gallery-caption-text">Codex - Light Mode</span>
                     <span class="gallery-caption-badge">Codex</span>
                 </div>
             </div>
             <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="codex" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/codex-dark.png" alt="onWatch Codex dashboard in dark mode — 5-Hour and Weekly All-Model quota cards, usage insights, cycle history" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/codex-dark.png" alt="onWatch Codex dashboard in dark mode - 5-Hour and Weekly All-Model quota cards, usage insights, cycle history" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">Codex — Dark Mode</span>
+                    <span class="gallery-caption-text">Codex - Dark Mode</span>
                     <span class="gallery-caption-badge">Codex</span>
                 </div>
             </div>
             <div class="gallery-item fade-in visible hidden" data-theme="light" data-provider="copilot" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/copilot-light.png" alt="onWatch GitHub Copilot dashboard in light mode — Premium Requests, Chat, Completions quotas" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/copilot-light.png" alt="onWatch GitHub Copilot dashboard in light mode - Premium Requests, Chat, Completions quotas" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">GitHub Copilot — Light Mode</span>
+                    <span class="gallery-caption-text">GitHub Copilot - Light Mode</span>
                     <span class="gallery-caption-badge beta-badge">Copilot (Beta)</span>
                 </div>
             </div>
             <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="copilot" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/copilot-dark.png" alt="onWatch GitHub Copilot dashboard in dark mode — Premium Requests, Chat, Completions quotas" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/copilot-dark.png" alt="onWatch GitHub Copilot dashboard in dark mode - Premium Requests, Chat, Completions quotas" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">GitHub Copilot — Dark Mode</span>
+                    <span class="gallery-caption-text">GitHub Copilot - Dark Mode</span>
                     <span class="gallery-caption-badge beta-badge">Copilot (Beta)</span>
                 </div>
             </div>
             <div class="gallery-item fade-in visible hidden" data-theme="light" data-provider="both" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/all-light.png" alt="onWatch All Providers view in light mode — Anthropic, Synthetic, Z.ai, Codex, GitHub Copilot side-by-side" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/all-light.png" alt="onWatch All Providers view in light mode - Anthropic, Synthetic, Z.ai, Codex, GitHub Copilot side-by-side" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">All Providers — Light Mode</span>
+                    <span class="gallery-caption-text">All Providers - Light Mode</span>
                     <span class="gallery-caption-badge">All</span>
                 </div>
             </div>
             <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="both" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/all-dark.png" alt="onWatch All Providers view in dark mode — Anthropic, Synthetic, Z.ai, Codex, GitHub Copilot side-by-side" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/all-dark.png" alt="onWatch All Providers view in dark mode - Anthropic, Synthetic, Z.ai, Codex, GitHub Copilot side-by-side" loading="lazy">
                 <div class="gallery-caption">
-                    <span class="gallery-caption-text">All Providers — Dark Mode</span>
+                    <span class="gallery-caption-text">All Providers - Dark Mode</span>
                     <span class="gallery-caption-badge">All</span>
                 </div>
             </div>
@@ -3449,6 +3455,28 @@ a:hover { text-decoration: underline; }
             }
         })
         .catch(function() { /* keep fallback version */ });
+})();
+
+/* Fetch total download count from GitHub releases */
+(function() {
+    fetch('https://api.github.com/repos/onllm-dev/onwatch/releases')
+        .then(function(r) { return r.json(); })
+        .then(function(releases) {
+            if (!Array.isArray(releases)) return;
+            var total = 0;
+            releases.forEach(function(release) {
+                if (release.assets) {
+                    release.assets.forEach(function(asset) {
+                        total += asset.download_count || 0;
+                    });
+                }
+            });
+            var el = document.getElementById('download-count');
+            if (el && total > 0) {
+                el.textContent = total >= 1000 ? (total / 1000).toFixed(1) + 'k' : total;
+            }
+        })
+        .catch(function() { /* keep placeholder */ });
 })();
 
 /* Fade-in on scroll */
@@ -4203,7 +4231,7 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     var antSonData = buildCurveWithBase(actAntSon, 0.2, 1.0);
     monotonic(antSonData);
 
-    /* Anthropic API returns integer utilization — round all data points */
+    /* Anthropic API returns integer utilization - round all data points */
     function roundArray(arr) { for (var k = 0; k < arr.length; k++) arr[k] = Math.round(arr[k]); return arr; }
     roundArray(ant5hData);
     roundArray(ant7dData);

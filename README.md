@@ -20,7 +20,7 @@ onWatch fills the gap between "current usage snapshot" and the historical, per-c
 
 [![Star History Chart](https://api.star-history.com/svg?repos=onllm-dev/onwatch&type=Timeline)](https://star-history.com/#onllm-dev/onwatch&Timeline)
 
-![Anthropic Dashboard — Light Mode](./docs/screenshots/anthropic-light.png)
+![Anthropic Dashboard - Light Mode](./docs/screenshots/anthropic-light.png)
 
 > Powered by [onllm.dev](https://onllm.dev) | [Landing Page](https://onwatch.onllm.dev)
 
@@ -134,7 +134,7 @@ Each quota card shows: usage vs. limit with progress bar, live countdown to rese
 
 **Email notifications (Beta)** -- Configure SMTP to receive alerts when quotas cross warning or critical thresholds, or when quotas reset. Per-quota threshold overrides for fine-grained control. SMTP passwords are encrypted at rest with AES-GCM.
 
-**Push notifications (Beta)** -- Receive browser push notifications when quotas cross thresholds. onWatch is a PWA (Progressive Web App) — install it from your browser for a native app experience. Uses Web Push protocol (VAPID) with zero external dependencies. Configure delivery channels (email, push, or both) per your preference.
+**Push notifications (Beta)** -- Receive browser push notifications when quotas cross thresholds. onWatch is a PWA (Progressive Web App) - install it from your browser for a native app experience. Uses Web Push protocol (VAPID) with zero external dependencies. Configure delivery channels (email, push, or both) per your preference.
 
 **Dark/Light mode** -- Toggle via sun/moon icon in the header. Auto-detects system preference on first visit and persists your choice across sessions.
 
@@ -290,13 +290,13 @@ onwatch update    # Check for updates and self-update from CLI
 
 Or click the update badge in the dashboard footer when a new version is available.
 
-**Under systemd**, the update is fully automatic — no manual restart needed. onWatch detects its systemd service via `/proc/self/cgroup`, fixes the unit file if needed (`Restart=always`), runs `systemctl daemon-reload`, and triggers `systemctl restart` for a clean lifecycle-managed restart.
+**Under systemd**, the update is fully automatic - no manual restart needed. onWatch detects its systemd service via `/proc/self/cgroup`, fixes the unit file if needed (`Restart=always`), runs `systemctl daemon-reload`, and triggers `systemctl restart` for a clean lifecycle-managed restart.
 
 **Standalone mode** (macOS, or Linux without systemd) spawns the new binary, which takes over via PID file. If the spawn fails, onWatch automatically falls back to `systemctl restart` as a safety net.
 
 The binary validates downloaded updates by checking executable magic bytes (ELF, Mach-O, PE) before replacing itself.
 
-**If a self-update fails to restart**, the new binary is already on disk — just restart the service manually:
+**If a self-update fails to restart**, the new binary is already on disk - just restart the service manually:
 
 ```bash
 # systemd (Linux)
@@ -417,7 +417,7 @@ The `docker-compose.yml` includes memory limits (64M limit, 32M reservation), lo
 
 **Database errors:** Pre-create bind mount directories with `sudo chown 65532:65532` or use named volumes.
 **Container won't start:** Check `docker-compose logs -f`; verify API keys in `.env` and port 9211 availability.
-**Debugging:** The distroless image has no shell — use a sidecar: `docker run -it --rm --pid=container:onwatch --net=container:onwatch nicolaka/netshoot bash`
+**Debugging:** The distroless image has no shell - use a sidecar: `docker run -it --rm --pid=container:onwatch --net=container:onwatch nicolaka/netshoot bash`
 
 ---
 
