@@ -379,6 +379,20 @@ a:hover { text-decoration: underline; }
 .nav-cta:hover { opacity: 0.9; text-decoration: none; }
 .nav-cta svg { width: 16px; height: 16px; }
 
+.nav-star-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+}
+.nav-star-count svg { width: 10px; height: 10px; }
+
 .nav-support {
   display: inline-flex;
   align-items: center;
@@ -492,21 +506,6 @@ a:hover { text-decoration: underline; }
   border: 1px solid rgba(13, 148, 136, 0.2);
 }
 
-.beta-banner {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--accent-blue);
-  background: var(--accent-blue-muted);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  border-radius: var(--radius-full);
-  margin-bottom: 24px;
-}
-.beta-banner svg { width: 14px; height: 14px; }
-
 .hero-badge {
   display: inline-flex;
   align-items: center;
@@ -540,6 +539,12 @@ a:hover { text-decoration: underline; }
   border-radius: 10px;
   font-size: 11px;
   margin-left: 4px;
+}
+.hero-badge-beta {
+  color: var(--accent-blue);
+  background: var(--accent-blue-muted);
+  border-left: 1px solid rgba(59, 130, 246, 0.15);
+  cursor: default;
 }
 .hero-badge svg { width: 14px; height: 14px; }
 
@@ -613,6 +618,20 @@ a:hover { text-decoration: underline; }
   text-decoration: none;
 }
 .btn-secondary svg { width: 18px; height: 18px; }
+
+.star-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: rgba(245, 158, 11, 0.15);
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f59e0b;
+}
+.star-count svg { width: 12px; height: 12px; }
 
 .install-label {
   font-size: 12px;
@@ -2115,6 +2134,21 @@ a:hover { text-decoration: underline; }
   .hero { padding: 100px 0 48px; }
   .hero h1 { font-size: 32px; }
   .hero-desc { font-size: 16px; }
+  .hero-badges {
+    flex-wrap: wrap;
+    gap: 8px;
+    border: none;
+    border-radius: 0;
+    overflow: visible;
+  }
+  .hero-badge {
+    border-radius: var(--radius-full);
+    border: 1px solid rgba(13, 148, 136, 0.2);
+  }
+  .hero-badge-onllm,
+  .hero-badge-downloads {
+    border-left: none;
+  }
   .nav-inner { padding: 10px 20px; }
   .nav-links { gap: 6px; }
   .nav-links .nav-link { display: none; }
@@ -2145,6 +2179,15 @@ a:hover { text-decoration: underline; }
   .nav-links { gap: 4px; }
   .nav-cta { padding: 6px 10px; font-size: 12px; }
   .theme-toggle { width: 30px; height: 30px; }
+  .hero-badges {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .hero-badge {
+    padding: 5px 10px;
+    font-size: 11px;
+  }
   .hero-actions { flex-direction: column; }
   .btn-primary, .btn-secondary { width: 100%; justify-content: center; }
   .hero-install code { font-size: 11px; }
@@ -2228,6 +2271,10 @@ a:hover { text-decoration: underline; }
             <a href="https://github.com/onllm-dev/onwatch" class="nav-cta" target="_blank" rel="noopener noreferrer">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
                 GitHub
+                <span class="nav-star-count" title="GitHub Stars">
+                    <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/></svg>
+                    <span class="nav-star-value">--</span>
+                </span>
             </a>
             <a href="https://buymeacoffee.com/prakersh" class="nav-support" target="_blank" rel="noopener noreferrer" title="Support onWatch">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
@@ -2247,17 +2294,17 @@ a:hover { text-decoration: underline; }
                     Free &amp; Open Source
                 </a>
                 <a href="https://onllm.dev" class="hero-badge hero-badge-onllm" target="_blank" rel="noopener noreferrer">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>
-                    Powered by onllm.dev
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2v6"/><path d="M6.34 6.34a9 9 0 1 0 11.32 0"/></svg>
+                    onllm.dev
                 </a>
                 <a href="https://github.com/onllm-dev/onwatch/releases" class="hero-badge hero-badge-downloads" target="_blank" rel="noopener noreferrer">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                     Downloads <span class="download-count" id="download-count">--</span>
                 </a>
-            </div>
-            <div class="beta-banner">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                Beta - Currently in active development
+                <span class="hero-badge hero-badge-beta">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                    In active development
+                </span>
             </div>
             <h1>The <span class="accent">intelligence</span> layer for your AI API stack</h1>
             <p class="hero-desc">Track API usage across Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot in one place. onWatch polls every provider's quotas, stores historical data locally, and surfaces patterns, projections, and cross-provider context-so you always know where your budget stands and which provider has headroom. Get notified via email or push notifications when quotas approach limits.</p>
@@ -2269,6 +2316,10 @@ a:hover { text-decoration: underline; }
                 <a href="https://github.com/onllm-dev/onwatch" class="btn-secondary" target="_blank" rel="noopener noreferrer">
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
                     View on GitHub
+                    <span class="star-count" id="star-count" title="GitHub Stars">
+                        <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.75.75 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25z"/></svg>
+                        <span id="star-count-value">--</span>
+                    </span>
                 </a>
             </div>
             <div class="install-label">One-command install</div>
@@ -3395,8 +3446,8 @@ a:hover { text-decoration: underline; }
                 <a href="https://github.com/onllm-dev/onwatch/releases" class="footer-link" target="_blank" rel="noopener noreferrer">Releases</a>
                 <a href="https://github.com/onllm-dev/onwatch/blob/main/LICENSE" class="footer-link" target="_blank" rel="noopener noreferrer">GPL-3.0 License</a>
                 <a href="https://buymeacoffee.com/prakersh" class="footer-support" target="_blank" rel="noopener noreferrer">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
-                    Buy Me a Coffee
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                    Support onWatch
                 </a>
             </div>
             <div class="footer-copy">Powered by <a href="https://onllm.dev" target="_blank" rel="noopener noreferrer" style="color:var(--accent-teal);">onllm.dev</a> &middot; Built with <a href="https://www.chartjs.org/" target="_blank" rel="noopener noreferrer" style="color:var(--text-muted);">Chart.js</a> &middot; <a href="https://pkg.go.dev/modernc.org/sqlite" target="_blank" rel="noopener noreferrer" style="color:var(--text-muted);">modernc.org/sqlite</a></div>
@@ -3475,6 +3526,24 @@ a:hover { text-decoration: underline; }
             if (el && total > 0) {
                 el.textContent = total >= 1000 ? (total / 1000).toFixed(1) + 'k' : total;
             }
+        })
+        .catch(function() { /* keep placeholder */ });
+})();
+
+/* Fetch star count from GitHub API */
+(function() {
+    fetch('https://api.github.com/repos/onllm-dev/onwatch')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data || !data.stargazers_count) return;
+            var count = data.stargazers_count;
+            var formatted = count >= 1000 ? (count / 1000).toFixed(1) + 'k' : count;
+            // Update hero star count
+            var heroEl = document.getElementById('star-count-value');
+            if (heroEl) heroEl.textContent = formatted;
+            // Update nav star count
+            var navEls = document.querySelectorAll('.nav-star-value');
+            navEls.forEach(function(el) { el.textContent = formatted; });
         })
         .catch(function() { /* keep placeholder */ });
 })();
