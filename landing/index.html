@@ -11,13 +11,13 @@
       gtag('js', new Date());
       gtag('config', 'G-HLLYRRWW4R');
     </script>
-    <title>onWatch - Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot</title>
+    <title>onWatch - Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, Antigravity</title>
     <meta name="description" content="onWatch is the intelligence layer for multi-provider AI API management. Track usage across Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, and Antigravity with cross-provider insights, pattern detection, rate projections, and reset cycle intelligence - a ~13 MB Go binary, <50 MB RAM, zero telemetry.">
     <meta name="keywords" content="onWatch, AI API intelligence, multi-provider API tracking, Synthetic API monitor, Z.ai API tracker, Anthropic API monitoring, Codex API monitoring, GitHub Copilot quota tracker, Antigravity quota tracker, cross-provider insights, AI coding API usage, quota monitoring tool, open source API monitor, Cline quota tracker, Claude Code API usage, intelligent provider switching, API budget tracker, self-hosted API monitoring, reset cycle detection, rate projection, Go CLI tool, API quota dashboard">
     <link rel="canonical" href="https://onwatch.onllm.dev">
 
     <!-- Open Graph -->
-    <meta property="og:title" content="onWatch - Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot">
+    <meta property="og:title" content="onWatch - Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, Antigravity">
     <meta property="og:description" content="The intelligence layer for multi-provider AI API management. Cross-provider insights, pattern detection, rate projections, and reset cycle intelligence. Free, open-source, single binary, zero telemetry.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://onwatch.onllm.dev">
@@ -29,7 +29,7 @@
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="onWatch - Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot">
+    <meta name="twitter:title" content="onWatch - Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, Antigravity">
     <meta name="twitter:description" content="The intelligence layer for multi-provider AI API management. Cross-provider insights, pattern detection, and rate projections. ~13 MB binary, <50 MB RAM, zero telemetry.">
     <meta name="twitter:image" content="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/anthropic-dark.png">
 
@@ -2349,6 +2349,7 @@ a:hover { text-decoration: underline; }
                             <span class="mockup-tab active" data-tab="anthropic" onclick="switchMockTab('anthropic')">Anthropic</span>
                             <span class="mockup-tab" data-tab="synthetic" onclick="switchMockTab('synthetic')">Synthetic</span>
                             <span class="mockup-tab" data-tab="zai" onclick="switchMockTab('zai')">Z.ai</span>
+                            <span class="mockup-tab" data-tab="antigravity" onclick="switchMockTab('antigravity')">Antigravity</span>
                             <span class="mockup-tab" data-tab="all" onclick="switchMockTab('all')">All</span>
                         </div>
                     </div>
@@ -2474,6 +2475,50 @@ a:hover { text-decoration: underline; }
                                     <div class="ant-quota-reset mock-reset" id="mock-reset-ant-son"></div>
                                 </div>
                                 <div class="mock-progress" style="margin:4px 0 0;"><div class="mock-progress-fill" id="prog-ant-son" style="width:0%;background:var(--status-healthy)"></div></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Antigravity view -->
+                    <div class="mockup-view" id="mock-antigravity" style="display:none;">
+                        <div class="mockup-cards" style="grid-template-columns: repeat(3, 1fr);">
+                            <div class="mock-card">
+                                <div class="mock-card-header">
+                                    <div class="mock-card-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>Claude + GPT</div>
+                                    <div class="mock-card-countdown" id="mock-cd-ag-claude">2h 14m</div>
+                                </div>
+                                <div class="mock-card-value" id="anim-ag-claude">0%</div>
+                                <div class="mock-card-sub">40% used across 3 models</div>
+                                <div class="mock-progress"><div class="mock-progress-fill" id="prog-ag-claude" style="width:0%;background:var(--status-warning)"></div></div>
+                                <div class="mock-card-footer">
+                                    <span class="mock-badge warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Warning</span>
+                                    <span class="mock-reset" id="mock-reset-ag-claude"></span>
+                                </div>
+                            </div>
+                            <div class="mock-card">
+                                <div class="mock-card-header">
+                                    <div class="mock-card-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Gemini Pro</div>
+                                    <div class="mock-card-countdown">5h 32m</div>
+                                </div>
+                                <div class="mock-card-value" id="anim-ag-gemini-pro">0%</div>
+                                <div class="mock-card-sub">0% used</div>
+                                <div class="mock-progress"><div class="mock-progress-fill" id="prog-ag-gemini-pro" style="width:0%;background:var(--status-healthy)"></div></div>
+                                <div class="mock-card-footer">
+                                    <span class="mock-badge healthy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Healthy</span>
+                                    <span class="mock-reset"></span>
+                                </div>
+                            </div>
+                            <div class="mock-card">
+                                <div class="mock-card-header">
+                                    <div class="mock-card-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Gemini Flash</div>
+                                    <div class="mock-card-countdown">5h 32m</div>
+                                </div>
+                                <div class="mock-card-value" id="anim-ag-gemini-flash">0%</div>
+                                <div class="mock-card-sub">0% used</div>
+                                <div class="mock-progress"><div class="mock-progress-fill" id="prog-ag-gemini-flash" style="width:0%;background:var(--status-healthy)"></div></div>
+                                <div class="mock-card-footer">
+                                    <span class="mock-badge healthy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>Healthy</span>
+                                    <span class="mock-reset"></span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -3225,19 +3270,25 @@ a:hover { text-decoration: underline; }
             <details class="faq-item">
                 <summary class="faq-question">How do I get started?</summary>
                 <div class="faq-answer">
-                    <p>Install with one command: <code>curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>. Add your API keys to <code>~/.onwatch/.env</code> - set any combination of <code>SYNTHETIC_API_KEY</code>, <code>ZAI_API_KEY</code>, <code>ANTHROPIC_TOKEN</code>, <code>CODEX_TOKEN</code>, or <code>COPILOT_TOKEN</code>. onWatch polls each configured provider every 60 seconds, stores snapshots in SQLite, and serves a dashboard at <code>localhost:9211</code> with live countdowns, charts, and cross-provider views.</p>
+                    <p>Install with one command: <code>curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>. Add your API keys to <code>~/.onwatch/.env</code> - set any combination of <code>SYNTHETIC_API_KEY</code>, <code>ZAI_API_KEY</code>, <code>ANTHROPIC_TOKEN</code>, <code>CODEX_TOKEN</code>, <code>COPILOT_TOKEN</code>, or <code>ANTIGRAVITY_ENABLED=true</code>. onWatch polls each configured provider every 60 seconds, stores snapshots in SQLite, and serves a dashboard at <code>localhost:9211</code> with live countdowns, charts, and cross-provider views.</p>
                 </div>
             </details>
             <details class="faq-item">
                 <summary class="faq-question">Does onWatch work with Cline, Roo Code, Kilo Code, or Claude Code?</summary>
                 <div class="faq-answer">
-                    <p>Yes. onWatch monitors the API provider (Synthetic, Z.ai, Anthropic, Codex, or GitHub Copilot), not the coding tool. Any tool that uses these API keys-including Cline, Roo Code, Kilo Code, Claude Code, Cursor, Windsurf, GitHub Copilot, and others-will have its usage tracked automatically.</p>
+                    <p>Yes. onWatch monitors the API provider (Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, or Antigravity), not the coding tool. Any tool that uses these API keys-including Cline, Roo Code, Kilo Code, Claude Code, Cursor, GitHub Copilot, Antigravity, and others-will have its usage tracked automatically.</p>
                 </div>
             </details>
             <details class="faq-item">
                 <summary class="faq-question">How does Anthropic API tracking work?</summary>
                 <div class="faq-answer">
                     <p>Anthropic's Pro/Max plan exposes utilization percentages and reset times for <code>five_hour</code> and <code>seven_day</code> windows, plus per-model breakdowns (<code>seven_day_sonnet</code>, <code>seven_day_opus</code>). onWatch polls this data, stores historical snapshots, and adds what Anthropic doesn't show: usage trends over time, reset cycle detection, rate projections, and cross-provider context alongside Synthetic, Z.ai, Codex, and GitHub Copilot. Set <code>ANTHROPIC_TOKEN</code> in your <code>.env</code> or let onWatch auto-detect from Claude Code credentials.</p>
+                </div>
+            </details>
+            <details class="faq-item">
+                <summary class="faq-question">How does Antigravity tracking work?</summary>
+                <div class="faq-answer">
+                    <p>Antigravity provides access to multiple AI models (Claude, Gemini, GPT). onWatch auto-detects the Antigravity language server running on your machine by scanning for the process and extracting connection details. Set <code>ANTIGRAVITY_ENABLED=true</code> in your <code>.env</code> file. Models are grouped into logical quota pools (Claude+GPT, Gemini Pro, Gemini Flash) for cleaner tracking. For Docker deployments, configure <code>ANTIGRAVITY_BASE_URL</code> and <code>ANTIGRAVITY_CSRF_TOKEN</code> manually.</p>
                 </div>
             </details>
             <details class="faq-item">
@@ -3289,6 +3340,7 @@ a:hover { text-decoration: underline; }
                 <button class="filter-btn" data-filter="provider" data-value="zai">Z.ai</button>
                 <button class="filter-btn" data-filter="provider" data-value="codex">Codex</button>
                 <button class="filter-btn" data-filter="provider" data-value="copilot">Copilot</button>
+                <button class="filter-btn" data-filter="provider" data-value="antigravity">Antigravity</button>
                 <button class="filter-btn" data-filter="provider" data-value="both">All Providers</button>
                 <button class="filter-btn" data-filter="provider" data-value="all">All</button>
             </div>
@@ -3370,15 +3422,29 @@ a:hover { text-decoration: underline; }
                     <span class="gallery-caption-badge">Copilot</span>
                 </div>
             </div>
+            <div class="gallery-item fade-in visible hidden" data-theme="light" data-provider="antigravity" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/antigravity-light.png" alt="onWatch Antigravity dashboard in light mode - Claude+GPT, Gemini Pro, Gemini Flash quotas" loading="lazy">
+                <div class="gallery-caption">
+                    <span class="gallery-caption-text">Antigravity - Light Mode</span>
+                    <span class="gallery-caption-badge">Antigravity</span>
+                </div>
+            </div>
+            <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="antigravity" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/antigravity-dark.png" alt="onWatch Antigravity dashboard in dark mode - Claude+GPT, Gemini Pro, Gemini Flash quotas" loading="lazy">
+                <div class="gallery-caption">
+                    <span class="gallery-caption-text">Antigravity - Dark Mode</span>
+                    <span class="gallery-caption-badge">Antigravity</span>
+                </div>
+            </div>
             <div class="gallery-item fade-in visible hidden" data-theme="light" data-provider="both" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/all-light.png" alt="onWatch All Providers view in light mode - Anthropic, Synthetic, Z.ai, Codex, GitHub Copilot side-by-side" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/all-light.png" alt="onWatch All Providers view in light mode - Anthropic, Synthetic, Z.ai, Codex, GitHub Copilot, Antigravity side-by-side" loading="lazy">
                 <div class="gallery-caption">
                     <span class="gallery-caption-text">All Providers - Light Mode</span>
                     <span class="gallery-caption-badge">All</span>
                 </div>
             </div>
             <div class="gallery-item fade-in visible hidden" data-theme="dark" data-provider="both" onclick="openLightbox(this)" role="button" tabindex="0" aria-label="View full screenshot">
-                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/all-dark.png" alt="onWatch All Providers view in dark mode - Anthropic, Synthetic, Z.ai, Codex, GitHub Copilot side-by-side" loading="lazy">
+                <img class="gallery-img" src="https://raw.githubusercontent.com/onllm-dev/onwatch/main/docs/screenshots/all-dark.png" alt="onWatch All Providers view in dark mode - Anthropic, Synthetic, Z.ai, Codex, GitHub Copilot, Antigravity side-by-side" loading="lazy">
                 <div class="gallery-caption">
                     <span class="gallery-caption-text">All Providers - Dark Mode</span>
                     <span class="gallery-caption-badge">All</span>
@@ -3600,6 +3666,11 @@ a:hover { text-decoration: underline; }
             { id: 'anim-ant-7d', prog: 'prog-ant-7d', end: 31.0 },
             { id: 'anim-ant-son', prog: 'prog-ant-son', end: 1.0 }
         ],
+        antigravity: [
+            { id: 'anim-ag-claude', prog: 'prog-ag-claude', end: 40.0 },
+            { id: 'anim-ag-gemini-pro', prog: 'prog-ag-gemini-pro', end: 0.0 },
+            { id: 'anim-ag-gemini-flash', prog: 'prog-ag-gemini-flash', end: 0.0 }
+        ],
         all: [
             { id: 'anim-both-sub', prog: 'prog-both-sub', end: 11.4 },
             { id: 'anim-both-search', prog: 'prog-both-search', end: 95.2 },
@@ -3646,7 +3717,7 @@ a:hover { text-decoration: underline; }
         document.querySelectorAll('#mockup-tabs .mockup-tab').forEach(function(t) {
             t.classList.toggle('active', t.getAttribute('data-tab') === tab);
         });
-        ['synthetic', 'zai', 'anthropic', 'all'].forEach(function(v) {
+        ['synthetic', 'zai', 'anthropic', 'antigravity', 'all'].forEach(function(v) {
             var view = document.getElementById('mock-' + v);
             if (view) view.style.display = v === tab ? '' : 'none';
         });
