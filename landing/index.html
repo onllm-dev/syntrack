@@ -4394,6 +4394,21 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     roundArray(ant7dData);
     roundArray(antSonData);
 
+    /* ── Antigravity data ── */
+    var actAgClaude = genActivity(8888);
+    var actAgGeminiPro = genActivity(2222);
+    var actAgGeminiFlash = genActivity(3333);
+
+    /* Claude+GPT: ~2h cycle, 2h14m left → reset ~1h46m ago. Peaked around 55%, now at 40%. */
+    var agClaudeData = buildCurveWithReset(actAgClaude, 50, 25, 55, 40);
+    roundArray(agClaudeData);
+
+    /* Gemini Pro: 5h cycle, no reset in window. Low usage. */
+    var agGeminiProData = buildCurveWithBase(actAgGeminiPro, 0, 0);
+
+    /* Gemini Flash: 5h cycle, no reset in window. Low usage. */
+    var agGeminiFlashData = buildCurveWithBase(actAgGeminiFlash, 0, 0);
+
     /* ── Chart colors ── */
     var TEAL = '#0D9488';
     var PURPLE = '#8B5CF6';
@@ -4477,6 +4492,7 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     var synYMax = calcYMax([synSubData, synSearchData, synToolData]);
     var zaiYMax = calcYMax([zaiTokData, zaiTimeData, zaiToolData], 1.2);
     var antYMax = calcYMax([ant5hData, ant7dData, antSonData], 1.3);
+    var agYMax = calcYMax([agClaudeData, agGeminiProData, agGeminiFlashData], 1.3);
 
     var mainCanvas = document.getElementById('mock-chart-canvas');
     var synCanvas = document.getElementById('mock-chart-syn');
@@ -4563,6 +4579,7 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
     var synLegend = '<span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + TEAL + '"></span>Subscription</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + PURPLE + '"></span>Search</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + AMBER + '"></span>Tool Calls</span>';
     var zaiLegend = '<span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + BLUE + '"></span>Tokens</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + ROSE + '"></span>Time</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + EMERALD + '"></span>Tool Calls</span>';
     var antLegend = '<span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + CORAL + '"></span>Five-Hour</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + PINK + '"></span>Seven-Day</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + CYAN + '"></span>Sonnet</span>';
+    var agLegend = '<span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + CORAL + '"></span>Claude+GPT</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + EMERALD + '"></span>Gemini Pro</span><span class="mock-legend-item"><span class="mock-legend-dot" style="background:' + CYAN + '"></span>Gemini Flash</span>';
 
     window._switchChart = function(tab) {
         var single = document.getElementById('chart-single');
@@ -4600,6 +4617,19 @@ document.querySelectorAll('a[href^="#"]').forEach(function(a) {
                     makeDataset('Tool Calls', zaiToolData, EMERALD)
                 ];
                 mainChart.options.scales.y.max = zaiYMax;
+                mainChart.update();
+            }
+        } else if (tab === 'antigravity') {
+            if (single) single.style.display = '';
+            if (multi) multi.style.display = 'none';
+            if (legend) legend.innerHTML = agLegend;
+            if (mainChart) {
+                mainChart.data.datasets = [
+                    makeDataset('Claude+GPT', agClaudeData, CORAL),
+                    makeDataset('Gemini Pro', agGeminiProData, EMERALD),
+                    makeDataset('Gemini Flash', agGeminiFlashData, CYAN)
+                ];
+                mainChart.options.scales.y.max = agYMax;
                 mainChart.update();
             }
         } else {
