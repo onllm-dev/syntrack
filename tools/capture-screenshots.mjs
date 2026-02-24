@@ -18,10 +18,8 @@ const PROVIDERS = [
   { name: 'anthropic', tab: 'anthropic' },
   { name: 'synthetic', tab: 'synthetic' },
   { name: 'zai', tab: 'zai' },
-  { name: 'copilot', tab: 'copilot' },
   { name: 'codex', tab: 'codex' },
   { name: 'antigravity', tab: 'antigravity' },
-  { name: 'all', tab: 'both' },
 ];
 
 const THEMES = ['light', 'dark'];

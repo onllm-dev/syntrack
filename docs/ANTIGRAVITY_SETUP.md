@@ -1,18 +1,18 @@
-# Antigravity (Windsurf) Setup Guide
+# Antigravity Setup Guide
 
-Track your Windsurf AI code editor model quota usage with onWatch.
+Track your Antigravity AI model quota usage with onWatch.
 
 ---
 
 ## What is Antigravity?
 
-Antigravity is the internal name for the Windsurf/Codeium AI code editor's language server. onWatch can monitor your model quotas by connecting to the locally running language server process.
+[Antigravity](https://antigravity.google/) is an AI coding assistant that provides access to multiple AI models including Claude, Gemini, and GPT variants. onWatch can monitor your model quotas by connecting to the locally running Antigravity language server process.
 
 ---
 
 ## Prerequisites
 
-- Windsurf AI code editor installed and running
+- Antigravity installed and running
 - onWatch installed ([Quick Start](../README.md#quick-start))
 
 ---
@@ -148,7 +148,7 @@ The dashboard shows:
 
 ## Supported Models
 
-onWatch tracks all models available in your Windsurf subscription:
+onWatch tracks all models available in your Antigravity subscription:
 
 | Model ID | Display Name |
 |----------|--------------|
@@ -164,7 +164,7 @@ onWatch tracks all models available in your Windsurf subscription:
 
 ### "Antigravity agent not starting"
 
-1. Verify Windsurf is running:
+1. Verify Antigravity is running:
    ```bash
    ps aux | grep antigravity
    ```
@@ -178,7 +178,7 @@ onWatch tracks all models available in your Windsurf subscription:
 
 ### "No models showing"
 
-- Make sure you're logged into Windsurf
+- Make sure you're logged into Antigravity
 - Check that your subscription is active
 - Run onWatch in debug mode: `onwatch --debug`
 
@@ -192,7 +192,7 @@ The language server might be using a self-signed certificate. onWatch handles th
 
 ### "CSRF token invalid"
 
-The token changes when Windsurf restarts. For auto-detection mode, restart onWatch after restarting Windsurf:
+The token changes when Antigravity restarts. For auto-detection mode, restart onWatch after restarting Antigravity:
 
 ```bash
 onwatch stop && onwatch
