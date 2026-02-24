@@ -1,6 +1,6 @@
 # Screenshots
 
-Dashboard screenshots captured from a live onWatch v2.10.4 instance with real Anthropic, Synthetic, Z.ai, Codex, and GitHub Copilot (Beta) data. Each screenshot shows the top half of the dashboard (quota cards, usage insights, charts, and cycle history).
+Dashboard screenshots captured from a live onWatch v2.11.0 instance with real Anthropic, Synthetic, Z.ai, Codex, GitHub Copilot (Beta), and Antigravity data. Each screenshot shows the top half of the dashboard (quota cards, usage insights, charts, and cycle history).
 
 ## Anthropic Provider
 
@@ -37,11 +37,18 @@ Dashboard screenshots captured from a live onWatch v2.10.4 instance with real An
 | `copilot-light.png` | GitHub Copilot dashboard in light mode. Shows Chat (unlimited), Completions (unlimited), and Premium Requests quota cards with monthly reset tracking. |
 | `copilot-dark.png` | GitHub Copilot dashboard in dark mode. Features purple accent colors matching GitHub's Copilot branding. |
 
+## Antigravity Provider
+
+| File | Description |
+|------|-------------|
+| `antigravity-light.png` | Antigravity dashboard in light mode. Shows grouped quota cards for Claude+GPT and Gemini models with logging history and cycle overview. |
+| `antigravity-dark.png` | Antigravity dashboard in dark mode. Features model-specific colors (coral for Claude, green for Gemini). |
+
 ## All Providers View
 
 | File | Description |
 |------|-------------|
-| `all-light.png` | All Providers view in light mode. Anthropic, Synthetic, Z.ai, Codex, and GitHub Copilot (Beta) quotas side-by-side with combined insights. |
+| `all-light.png` | All Providers view in light mode. Anthropic, Synthetic, Z.ai, Codex, GitHub Copilot (Beta), and Antigravity quotas side-by-side with combined insights. |
 | `all-dark.png` | All Providers view in dark mode. |
 
 ## Legacy (pre-v2.1.0)
