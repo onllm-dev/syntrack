@@ -114,7 +114,8 @@ jobs:
         run: |
           gh release create "${{ inputs.tag }}" dist/* \
             --title "onWatch ${{ inputs.tag }}" \
-            --generate-notes
+            --generate-notes \
+            --clobber
 
   # Build and push Docker image (after release is created)
   docker:
