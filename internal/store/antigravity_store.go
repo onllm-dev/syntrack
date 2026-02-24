@@ -151,10 +151,10 @@ func (s *Store) QueryLatestAntigravity() (*api.AntigravitySnapshot, error) {
 
 // QueryAntigravityRange returns Antigravity snapshots within a time range.
 func (s *Store) QueryAntigravityRange(start, end time.Time, limit ...int) ([]*api.AntigravitySnapshot, error) {
-	// Order by DESC to get newest first, then apply limit to get most recent snapshots
+	// Order by ASC for chronological chart display (oldest to newest, left to right)
 	query := `SELECT id, captured_at, email, plan_name, prompt_credits, monthly_credits, model_count
 		FROM antigravity_snapshots
-		WHERE captured_at BETWEEN ? AND ? ORDER BY captured_at DESC`
+		WHERE captured_at BETWEEN ? AND ? ORDER BY captured_at ASC`
 	args := []interface{}{start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano)}
 	if len(limit) > 0 && limit[0] > 0 {
 		query += ` LIMIT ?`

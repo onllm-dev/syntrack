@@ -5635,11 +5635,11 @@ func (h *Handler) loggingHistoryAntigravity(w http.ResponseWriter, r *http.Reque
 	quotaNames := api.AntigravityQuotaGroupOrder()
 
 	// Convert snapshots to logging rows
-	// Query returns newest first (DESC), so iterate backwards (oldest to newest) for correct delta calculation
+	// Query returns oldest first (ASC), iterate forward for correct delta calculation
 	rows := make([]map[string]interface{}, 0, len(snapshots))
 	var prevGroupValues map[string]float64
 
-	for i := len(snapshots) - 1; i >= 0; i-- {
+	for i := 0; i < len(snapshots); i++ {
 		snap := snapshots[i]
 		groups := api.GroupAntigravityModelsByLogicalQuota(snap.Models)
 
