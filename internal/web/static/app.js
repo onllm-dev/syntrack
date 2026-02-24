@@ -53,6 +53,8 @@ function getCurrentProvider() {
   if (copilotGrid) return 'copilot';
   const codexGrid = document.getElementById('quota-grid-codex');
   if (codexGrid) return 'codex';
+  const antigravityGrid = document.getElementById('quota-grid-antigravity');
+  if (antigravityGrid) return 'antigravity';
   const grid = document.getElementById('quota-grid');
   return (grid && grid.dataset.provider) || 'synthetic';
 }
@@ -80,6 +82,7 @@ const State = {
   cyclesPage: 1,
   cyclesPageSize: 10,
   cyclesRange: 259200000,   // 3 days in ms (default)
+  cyclesBucket: 1,          // Polling history grouping bucket in minutes
   cyclesQuotaNames: [],     // dynamic quota column names
   // Sessions table state
   sessionsSort: { key: null, dir: 'desc' },
@@ -375,6 +378,11 @@ const renewalCategories = {
     { label: '5-Hour', groupBy: 'five_hour' },
     { label: 'Weekly', groupBy: 'seven_day' },
     { label: 'Review', groupBy: 'code_review' }
+  ],
+  antigravity: [
+    { label: 'Claude+GPT', groupBy: 'antigravity_claude_gpt' },
+    { label: 'Gemini Pro', groupBy: 'antigravity_gemini_pro' },
+    { label: 'Gemini Flash', groupBy: 'antigravity_gemini_flash' }
   ]
 };
 
@@ -391,7 +399,10 @@ const overviewQuotaDisplayNames = {
   extra_usage: 'Extra',
   premium_interactions: 'Premium',
   chat: 'Chat',
-  completions: 'Completions'
+  completions: 'Completions',
+  antigravity_claude_gpt: 'Claude + GPT Quota',
+  antigravity_gemini_pro: 'Gemini Pro Quota',
+  antigravity_gemini_flash: 'Gemini Flash Quota'
 };
 
 // ── Anthropic Dynamic Card Rendering ──
@@ -567,8 +578,7 @@ async function loadAnthropicModalChart(quotaName) {
   if (!ctx || typeof Chart === 'undefined') return;
   if (State.modalChart) { State.modalChart.destroy(); State.modalChart = null; }
 
-  const activeRange = document.querySelector('.range-btn[data-range].active');
-  const range = activeRange ? activeRange.dataset.range : '6h';
+  const range = State.currentRange || '6h';
 
   try {
     const res = await authFetch(`${API_BASE}/api/history?range=${range}&provider=anthropic`);
@@ -584,7 +594,7 @@ async function loadAnthropicModalChart(quotaName) {
     State.modalChart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        labels: data.map(d => formatChartXAxisLabel(d.capturedAt, range)),
         datasets: [(() => { const c = anthropicChartColorMap[quotaName] || { border: '#D97706', bg: 'rgba(217, 119, 6, 0.08)' }; return {
           label: anthropicDisplayNames[quotaName] || quotaName,
           data: chartData,
@@ -827,8 +837,9 @@ function openCopilotModal(quotaName, providerOverride) {
 }
 
 async function loadCopilotModalChart(quotaName) {
+  const range = State.currentRange || '6h';
   try {
-    const res = await authFetch(`${API_BASE}/api/history?range=6h&provider=copilot`);
+    const res = await authFetch(`${API_BASE}/api/history?range=${range}&provider=copilot`);
     if (!res.ok) return;
     const history = await res.json();
     if (!history || history.length === 0) return;
@@ -862,7 +873,7 @@ async function loadCopilotModalChart(quotaName) {
     State.modalChart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        labels: data.map(d => formatChartXAxisLabel(d.capturedAt, range)),
         datasets: [(() => { const c = copilotChartColorMap[quotaName] || { border: '#6e40c9', bg: 'rgba(110, 64, 201, 0.08)' }; return {
           label: copilotDisplayNames[quotaName] || quotaName,
           data: chartData,
@@ -908,6 +919,285 @@ async function loadCopilotModalCycles(quotaName) {
         <td>${formatDurationMins(durationMins)}</td>
         <td>${formatNumber(cycle.peakUsed || 0)}</td>
         <td>${formatNumber(cycle.totalDelta || 0)}</td>
+      </tr>`;
+    }).join('');
+  } catch (err) { /* modal cycles error — non-critical */ }
+}
+
+// ── Antigravity Dynamic Card Rendering ──
+
+// Antigravity model icons by model ID pattern
+const antigravityQuotaIcons = {
+  'claude': '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>',
+  'gemini': '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+  'gpt': '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
+  'default': '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>'
+};
+
+function getAntigravityIcon(modelId) {
+  const lower = (modelId || '').toLowerCase();
+  if (lower.includes('claude')) return antigravityQuotaIcons['claude'];
+  if (lower.includes('gpt')) return antigravityQuotaIcons['gpt'];
+  if (lower.includes('gemini')) return antigravityQuotaIcons['gemini'];
+  return antigravityQuotaIcons['default'];
+}
+
+function getAntigravityGroupColumns(quota) {
+  const labels = Array.isArray(quota.modelLabels) ? quota.modelLabels : [];
+  return [
+    labels[0] || '--',
+    labels[1] || '--',
+    labels[2] || '--'
+  ];
+}
+
+function renderAntigravityQuotaCards(quotas, containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.innerHTML = quotas.map((q, i) => {
+    const icon = getAntigravityIcon(q.modelId);
+    const displayName = q.displayName || q.label || q.modelId;
+    const usagePct = (q.usagePercent || 0).toFixed(1);
+    const status = q.status || 'healthy';
+    const statusCfg = statusConfig[status] || statusConfig.healthy;
+    const countdownId = `countdown-antigravity-${q.modelId}`;
+    const progressId = `progress-antigravity-${q.modelId}`;
+    const percentId = `percent-antigravity-${q.modelId}`;
+    const fractionId = `fraction-antigravity-${q.modelId}`;
+    const statusId = `status-antigravity-${q.modelId}`;
+    const resetId = `reset-antigravity-${q.modelId}`;
+
+    // Format the remaining percent
+    const remainingPct = (q.remainingPercent || 0).toFixed(1);
+    const fractionText = `${remainingPct}% remaining`;
+
+    return `<article class="quota-card antigravity-card" data-quota="${q.modelId}" data-provider="antigravity" role="button" tabindex="0" aria-label="View ${displayName} details" style="animation-delay: ${i * 60}ms">
+      <header class="card-header">
+        <h2 class="quota-title">
+          <svg class="quota-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${icon}</svg>
+          ${displayName}
+          ${q.isExhausted ? '<span class="exhausted-badge">Exhausted</span>' : ''}
+        </h2>
+        <span class="countdown" id="${countdownId}">${q.timeUntilResetSeconds > 0 ? formatDuration(q.timeUntilResetSeconds) : '--:--'}</span>
+      </header>
+      <div class="progress-stats">
+        <span class="usage-percent" id="${percentId}">${usagePct}%</span>
+        <span class="usage-fraction" id="${fractionId}">${fractionText}</span>
+      </div>
+      <div class="progress-wrapper">
+        <div class="progress-bar" role="progressbar" aria-valuenow="${Math.round(q.usagePercent || 0)}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-fill" id="${progressId}" style="width: ${usagePct}%" data-status="${status}"></div>
+        </div>
+      </div>
+      <footer class="card-footer">
+        <span class="status-badge" id="${statusId}" data-status="${status}">
+          <svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${statusCfg.icon}"/></svg>
+          ${statusCfg.label}
+        </span>
+        <span class="reset-time" id="${resetId}">${q.resetTime ? 'Resets: ' + formatDateTime(q.resetTime) : ''}</span>
+      </footer>
+    </article>`;
+  }).join('');
+
+  // Re-attach modal click handlers for new cards
+  container.querySelectorAll('.quota-card[role="button"]').forEach(card => {
+    const handler = () => {
+      const providerCol = card.closest('.provider-column');
+      const providerOverride = providerCol ? providerCol.dataset.provider : 'antigravity';
+      openAntigravityModal(card.dataset.quota, providerOverride);
+    };
+    card.addEventListener('click', handler);
+    card.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler(); }
+    });
+  });
+}
+
+function updateAntigravityCard(quota) {
+  const key = `antigravity-${quota.modelId}`;
+  const prev = State.currentQuotas[key];
+  State.currentQuotas[key] = {
+    percent: quota.usagePercent || 0,
+    remainingFraction: quota.remainingFraction,
+    remainingPercent: quota.remainingPercent,
+    isExhausted: quota.isExhausted,
+    status: quota.status || 'healthy',
+    resetTime: quota.resetTime,
+    timeUntilReset: quota.timeUntilReset,
+    timeUntilResetSeconds: quota.timeUntilResetSeconds || 0,
+    modelId: quota.modelId,
+    label: quota.label,
+    displayName: quota.displayName
+  };
+
+  const progressEl = document.getElementById(`progress-antigravity-${quota.modelId}`);
+  const percentEl = document.getElementById(`percent-antigravity-${quota.modelId}`);
+  const fractionEl = document.getElementById(`fraction-antigravity-${quota.modelId}`);
+  const statusEl = document.getElementById(`status-antigravity-${quota.modelId}`);
+  const resetEl = document.getElementById(`reset-antigravity-${quota.modelId}`);
+  const countdownEl = document.getElementById(`countdown-antigravity-${quota.modelId}`);
+
+  const usagePct = (quota.usagePercent || 0).toFixed(1);
+  const status = quota.status || 'healthy';
+
+  if (progressEl) {
+    progressEl.style.width = `${usagePct}%`;
+    progressEl.setAttribute('data-status', status);
+  }
+  if (percentEl) {
+    const oldVal = prev ? prev.percent : 0;
+    if (Math.abs(oldVal - quota.usagePercent) > 0.2) {
+      animateValue(percentEl, oldVal, quota.usagePercent, 400, v => `${v.toFixed(1)}%`);
+    } else {
+      percentEl.textContent = `${usagePct}%`;
+    }
+  }
+  if (fractionEl) {
+    const remainingPct = (quota.remainingPercent || 0).toFixed(1);
+    fractionEl.textContent = `${remainingPct}% remaining`;
+  }
+  if (statusEl) {
+    const config = statusConfig[status] || statusConfig.healthy;
+    statusEl.setAttribute('data-status', status);
+    statusEl.innerHTML = `<svg class="status-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="${config.icon}"/></svg>${config.label}`;
+  }
+  if (resetEl) {
+    resetEl.textContent = quota.resetTime ? `Resets: ${formatDateTime(quota.resetTime)}` : '';
+  }
+  if (countdownEl) {
+    if (quota.timeUntilResetSeconds > 0) {
+      countdownEl.textContent = formatDuration(quota.timeUntilResetSeconds);
+      countdownEl.classList.toggle('imminent', quota.timeUntilResetSeconds < 1800);
+      countdownEl.style.display = '';
+    } else {
+      countdownEl.style.display = 'none';
+    }
+  }
+}
+
+// Antigravity quota detail modal
+function openAntigravityModal(groupKey, providerOverride) {
+  const key = `antigravity-${groupKey}`;
+  const data = State.currentQuotas[key];
+  if (!data) return;
+
+  const modal = document.getElementById('detail-modal');
+  const titleEl = document.getElementById('modal-title');
+  const bodyEl = document.getElementById('modal-body');
+  if (!modal || !bodyEl) return;
+
+  const displayName = data.displayName || data.label || groupKey;
+  titleEl.textContent = displayName;
+
+  const usagePct = (data.percent || 0).toFixed(1);
+  const remainingPct = (data.remainingPercent || 0).toFixed(1);
+
+  bodyEl.innerHTML = `
+    <div class="modal-stats-grid">
+      <div class="modal-stat">
+        <span class="modal-stat-label">Usage</span>
+        <span class="modal-stat-value">${usagePct}%</span>
+      </div>
+      <div class="modal-stat">
+        <span class="modal-stat-label">Remaining</span>
+        <span class="modal-stat-value">${remainingPct}%</span>
+      </div>
+      <div class="modal-stat">
+        <span class="modal-stat-label">Status</span>
+        <span class="modal-stat-value" data-status="${data.status}">${(statusConfig[data.status] || statusConfig.healthy).label}</span>
+      </div>
+      <div class="modal-stat">
+        <span class="modal-stat-label">Resets In</span>
+        <span class="modal-stat-value">${data.timeUntilResetSeconds > 0 ? formatDuration(data.timeUntilResetSeconds) : '--'}</span>
+      </div>
+    </div>
+    <div class="modal-chart-container">
+      <canvas id="modal-chart" height="200"></canvas>
+    </div>
+    <h4 class="modal-section-title">Recent Cycles</h4>
+    <table class="modal-cycles-table">
+      <thead><tr><th>Cycle</th><th>Duration</th><th>Peak Used</th><th>Total Delta</th></tr></thead>
+      <tbody id="modal-cycles-tbody"><tr><td colspan="4">Loading...</td></tr></tbody>
+    </table>
+  `;
+
+  modal.classList.add('open');
+  document.body.classList.add('modal-open');
+  modal.querySelector('.modal-close')?.focus();
+
+  loadAntigravityModalChart(groupKey);
+  loadAntigravityModalCycles(groupKey);
+}
+
+async function loadAntigravityModalChart(groupKey) {
+  const range = State.currentRange || '6h';
+  try {
+    const res = await authFetch(`${API_BASE}/api/history?range=${range}&provider=antigravity`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const ctx = document.getElementById('modal-chart')?.getContext('2d');
+    if (!ctx || !data.datasets) return;
+
+    // Filter to the selected logical quota group dataset
+    const modelDataset = data.datasets.find(ds => ds.modelId === groupKey);
+    if (!modelDataset) return;
+
+    if (State.modalChart) State.modalChart.destroy();
+
+    State.modalChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.labels || [],
+        datasets: [{
+          label: modelDataset.label || groupKey,
+          data: modelDataset.data || [],
+          borderColor: '#6e40c9',
+          backgroundColor: 'rgba(110, 64, 201, 0.1)',
+          tension: 0.3,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, max: 100, title: { display: true, text: 'Usage %' } },
+          x: { title: { display: true, text: 'Time' } }
+        }
+      }
+    });
+  } catch (err) { /* modal chart error — non-critical */ }
+}
+
+async function loadAntigravityModalCycles(groupKey) {
+  try {
+    const res = await authFetch(`${API_BASE}/api/cycle-overview?groupBy=${groupKey}&provider=antigravity`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const tbody = document.getElementById('modal-cycles-tbody');
+    if (!tbody || !data.cycles) return;
+
+    if (data.cycles.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No cycles recorded yet</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.cycles.slice(0, 5).map((cycle, i) => {
+      const start = cycle.cycleStart ? new Date(cycle.cycleStart) : null;
+      const end = cycle.cycleEnd ? new Date(cycle.cycleEnd) : null;
+      const durationMins = start
+        ? Math.max(0, Math.round(((end || new Date()) - start) / 60000))
+        : 0;
+      const primary = (cycle.crossQuotas || []).find(cq => cq.name === groupKey);
+      const peak = primary ? primary.percent : 0;
+      return `<tr>
+        <td>#${data.cycles.length - i}</td>
+        <td>${formatDurationMins(durationMins)}</td>
+        <td>${formatNumber(peak)}%</td>
+        <td>${formatNumber(cycle.totalDelta || 0)}%</td>
       </tr>`;
     }).join('');
   } catch (err) { /* modal cycles error — non-critical */ }
@@ -1091,8 +1381,7 @@ async function loadCodexModalChart(quotaName) {
   if (!ctx || typeof Chart === 'undefined') return;
   if (State.modalChart) { State.modalChart.destroy(); State.modalChart = null; }
 
-  const activeRange = document.querySelector('.range-btn[data-range].active');
-  const range = activeRange ? activeRange.dataset.range : '6h';
+  const range = State.currentRange || '6h';
 
   try {
     const res = await authFetch(`${API_BASE}/api/history?range=${range}&provider=codex`);
@@ -1108,7 +1397,7 @@ async function loadCodexModalChart(quotaName) {
     State.modalChart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        labels: data.map(d => formatChartXAxisLabel(d.capturedAt, range)),
         datasets: [(() => { const c = codexChartColorMap[quotaName] || { border: '#0EA5E9', bg: 'rgba(14, 165, 233, 0.08)' }; return {
           label: codexDisplayNames[quotaName] || quotaName,
           data: chartData,
@@ -1194,6 +1483,26 @@ function formatDateTime(isoString) {
   if (typeof getEffectiveTimezone === 'function') {
     opts.timeZone = getEffectiveTimezone();
   }
+  return d.toLocaleString('en-US', opts);
+}
+
+function formatChartXAxisLabel(isoOrLabel, range) {
+  if (!isoOrLabel) return '';
+
+  const d = new Date(isoOrLabel);
+  if (Number.isNaN(d.getTime())) {
+    return isoOrLabel;
+  }
+
+  const tz = typeof getEffectiveTimezone === 'function' ? getEffectiveTimezone() : undefined;
+  const rangeKey = (range || '').toLowerCase();
+  const showDate = ['24h', '7d', '30d', '3d', '15d'].includes(rangeKey);
+
+  const opts = showDate
+    ? { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
+    : { hour: '2-digit', minute: '2-digit' };
+
+  if (tz) opts.timeZone = tz;
   return d.toLocaleString('en-US', opts);
 }
 
@@ -1598,6 +1907,14 @@ async function fetchCurrent() {
             data.codex.quotas.forEach(q => updateCodexCard(q));
           }
         }
+        if (data.antigravity && data.antigravity.quotas) {
+          const container = document.getElementById('quota-grid-antigravity-both');
+          if (container && container.children.length === 0) {
+            renderAntigravityQuotaCards(data.antigravity.quotas, 'quota-grid-antigravity-both');
+          } else {
+            data.antigravity.quotas.forEach(q => updateAntigravityCard(q));
+          }
+        }
       } else if (provider === 'copilot') {
         // Copilot response: { capturedAt: ..., quotas: [...] }
         if (data.quotas) {
@@ -1631,6 +1948,16 @@ async function fetchCurrent() {
             renderCodexQuotaCards(data.quotas, 'quota-grid-codex');
           } else {
             data.quotas.forEach(q => updateCodexCard(q));
+          }
+        }
+      } else if (provider === 'antigravity') {
+        // Antigravity response: { capturedAt: ..., quotas: [...] }
+        if (data.quotas) {
+          const container = document.getElementById('quota-grid-antigravity');
+          if (container && container.children.length === 0) {
+            renderAntigravityQuotaCards(data.quotas, 'quota-grid-antigravity');
+          } else {
+            data.quotas.forEach(q => updateAntigravityCard(q));
           }
         }
       } else if (provider === 'zai') {
@@ -2194,20 +2521,43 @@ async function fetchHistory(range) {
 
     if (provider === 'both') {
       // "both" response: { synthetic: [...], zai: [...] }
-      updateBothCharts(data);
+      updateBothCharts(data, range);
       return;
     }
 
     if (!State.chart) initChart();
     if (!State.chart) return;
 
-    State.chart.data.labels = data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+    if (provider === 'antigravity') {
+      // Antigravity history: { labels: [...], datasets: [...] }
+      const defaultColors = ['#D97757', '#10B981', '#3B82F6'];
+      State.chart.data.labels = (data.labels || []).map(label => formatChartXAxisLabel(label, range));
+      State.chart.data.datasets = (data.datasets || []).map((ds, idx) => ({
+        label: ds.label || ds.modelId,
+        data: ds.data || [],
+        borderColor: ds.borderColor || defaultColors[idx % defaultColors.length],
+        backgroundColor: (ds.borderColor || defaultColors[idx % defaultColors.length]) + '15',
+        fill: true,
+        tension: 0.4,
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        hidden: State.hiddenQuotas.has(ds.modelId)
+      }));
+      State.chartYMax = computeYMax(State.chart.data.datasets, State.chart);
+      State.chart.options.scales.y.max = State.chartYMax;
+      State.chart.update();
+      return;
+    }
+
+    const historyRows = Array.isArray(data) ? data : [];
+    State.chart.data.labels = historyRows.map(d => formatChartXAxisLabel(d.capturedAt, range));
 
     if (provider === 'anthropic') {
       // Anthropic history: array of { capturedAt, five_hour, seven_day, ... }
       // Dynamic datasets based on available quota keys
       const quotaKeys = new Set();
-      data.forEach(d => {
+      historyRows.forEach(d => {
         Object.keys(d).forEach(k => { if (k !== 'capturedAt') quotaKeys.add(k); });
       });
       const sortedKeys = [...quotaKeys].sort();
@@ -2216,14 +2566,14 @@ async function fetchHistory(range) {
         const color = anthropicChartColorMap[key] || anthropicChartColorFallback[fallbackIdx++ % anthropicChartColorFallback.length];
         return {
           label: anthropicDisplayNames[key] || key,
-          data: data.map(d => d[key] || 0),
+          data: historyRows.map(d => d[key] || 0),
           borderColor: color.border,
           backgroundColor: color.bg,
           fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4,
           hidden: State.hiddenQuotas.has(key)
         };
       });
-      State.chart.data.labels = data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+      State.chart.data.labels = historyRows.map(d => formatChartXAxisLabel(d.capturedAt, range));
       State.chartYMax = computeYMax(State.chart.data.datasets, State.chart);
       State.chart.options.scales.y.max = State.chartYMax;
       State.chart.update();
@@ -2234,7 +2584,7 @@ async function fetchHistory(range) {
       // Copilot history: array of { capturedAt, quotas: [...] } → transform to flat object
       // Extract quota keys and build datasets
       const quotaKeys = new Set();
-      data.forEach(d => {
+      historyRows.forEach(d => {
         if (d.quotas) d.quotas.forEach(q => quotaKeys.add(q.name));
       });
       const sortedKeys = [...quotaKeys].sort();
@@ -2243,7 +2593,7 @@ async function fetchHistory(range) {
         const color = copilotChartColorMap[key] || copilotChartColorFallback[fallbackIdx++ % copilotChartColorFallback.length];
         return {
           label: copilotDisplayNames[key] || key,
-          data: data.map(d => {
+          data: historyRows.map(d => {
             const q = d.quotas ? d.quotas.find(q => q.name === key) : null;
             return q ? (q.usagePercent || 0) : 0;
           }),
@@ -2253,7 +2603,7 @@ async function fetchHistory(range) {
           hidden: State.hiddenQuotas.has(key)
         };
       });
-      State.chart.data.labels = data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+      State.chart.data.labels = historyRows.map(d => formatChartXAxisLabel(d.capturedAt, range));
       State.chartYMax = computeYMax(State.chart.data.datasets, State.chart);
       State.chart.options.scales.y.max = State.chartYMax;
       State.chart.update();
@@ -2263,7 +2613,7 @@ async function fetchHistory(range) {
     if (provider === 'codex') {
       // Codex history: array of { capturedAt, five_hour, seven_day, ... }
       const quotaKeys = new Set();
-      data.forEach(d => {
+      historyRows.forEach(d => {
         Object.keys(d).forEach(k => { if (k !== 'capturedAt') quotaKeys.add(k); });
       });
       const sortedKeys = [...quotaKeys].sort();
@@ -2272,14 +2622,14 @@ async function fetchHistory(range) {
         const color = codexChartColorMap[key] || codexChartColorFallback[fallbackIdx++ % codexChartColorFallback.length];
         return {
           label: codexDisplayNames[key] || key,
-          data: data.map(d => d[key] || 0),
+          data: historyRows.map(d => d[key] || 0),
           borderColor: color.border,
           backgroundColor: color.bg,
           fill: true, tension: 0.4, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4,
           hidden: State.hiddenQuotas.has(key)
         };
       });
-      State.chart.data.labels = data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }));
+      State.chart.data.labels = historyRows.map(d => formatChartXAxisLabel(d.capturedAt, range));
       State.chartYMax = computeYMax(State.chart.data.datasets, State.chart);
       State.chart.options.scales.y.max = State.chartYMax;
       State.chart.update();
@@ -2296,13 +2646,13 @@ async function fetchHistory(range) {
         ];
       }
       State.chart.data.datasets[0].label = 'Tokens';
-      State.chart.data.datasets[0].data = data.map(d => d.tokensPercent);
+      State.chart.data.datasets[0].data = historyRows.map(d => d.tokensPercent);
       State.chart.data.datasets[0].hidden = State.hiddenQuotas.has('tokensLimit');
       State.chart.data.datasets[1].label = 'Time';
-      State.chart.data.datasets[1].data = data.map(d => d.timePercent);
+      State.chart.data.datasets[1].data = historyRows.map(d => d.timePercent);
       State.chart.data.datasets[1].hidden = State.hiddenQuotas.has('timeLimit');
       State.chart.data.datasets[2].label = 'Tool Calls';
-      State.chart.data.datasets[2].data = data.map(d => d.toolCallsPercent);
+      State.chart.data.datasets[2].data = historyRows.map(d => d.toolCallsPercent);
       State.chart.data.datasets[2].hidden = State.hiddenQuotas.has('toolCalls');
     } else {
       while (State.chart.data.datasets.length < 3) {
@@ -2310,13 +2660,13 @@ async function fetchHistory(range) {
       }
       while (State.chart.data.datasets.length > 3) State.chart.data.datasets.pop();
       State.chart.data.datasets[0].label = 'Subscription';
-      State.chart.data.datasets[0].data = data.map(d => d.subscriptionPercent);
+      State.chart.data.datasets[0].data = historyRows.map(d => d.subscriptionPercent);
       State.chart.data.datasets[0].hidden = State.hiddenQuotas.has('subscription');
       State.chart.data.datasets[1].label = 'Search';
-      State.chart.data.datasets[1].data = data.map(d => d.searchPercent);
+      State.chart.data.datasets[1].data = historyRows.map(d => d.searchPercent);
       State.chart.data.datasets[1].hidden = State.hiddenQuotas.has('search');
       State.chart.data.datasets[2].label = 'Tool Calls';
-      State.chart.data.datasets[2].data = data.map(d => d.toolCallsPercent);
+      State.chart.data.datasets[2].data = historyRows.map(d => d.toolCallsPercent);
       State.chart.data.datasets[2].hidden = State.hiddenQuotas.has('toolCalls');
     }
 
@@ -2330,7 +2680,7 @@ async function fetchHistory(range) {
 
 // ── "Both" Mode: Dual Charts ──
 
-function updateBothCharts(data) {
+function updateBothCharts(data, range = '6h') {
   const container = document.querySelector('.chart-container');
   if (!container) return;
 
@@ -2379,7 +2729,7 @@ function updateBothCharts(data) {
     State.chartSyn = new Chart(synCanvas, {
       type: 'line',
       data: {
-        labels: synData.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        labels: synData.map(d => formatChartXAxisLabel(d.capturedAt, range)),
         datasets: synDatasets
       },
       options: buildChartOptions(colors, computeYMax(synDatasets))
@@ -2399,7 +2749,7 @@ function updateBothCharts(data) {
     State.chartZai = new Chart(zaiCanvas, {
       type: 'line',
       data: {
-        labels: zaiData.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        labels: zaiData.map(d => formatChartXAxisLabel(d.capturedAt, range)),
         datasets: zaiDatasets
       },
       options: buildChartOptions(colors, computeYMax(zaiDatasets))
@@ -2429,7 +2779,7 @@ function updateBothCharts(data) {
     State.chartAnth = new Chart(anthCanvas, {
       type: 'line',
       data: {
-        labels: anthData.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        labels: anthData.map(d => formatChartXAxisLabel(d.capturedAt, range)),
         datasets: anthDatasets
       },
       options: buildChartOptions(colors, computeYMax(anthDatasets))
@@ -2467,7 +2817,7 @@ function updateBothCharts(data) {
     State.chartCodex = new Chart(codexCanvas, {
       type: 'line',
       data: {
-        labels: codexData.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        labels: codexData.map(d => formatChartXAxisLabel(d.capturedAt, range)),
         datasets: codexDatasets
       },
       options: buildChartOptions(colors, computeYMax(codexDatasets))
@@ -2504,15 +2854,39 @@ function buildChartOptions(colors, yMax) {
 async function fetchCycles() {
   const provider = getCurrentProvider();
 
-  // Use cycle-overview endpoint to get all quotas in one view
-  // Determine the groupBy based on provider (use first available renewal category)
+  // For Antigravity, use logging-history endpoint (polling snapshots)
+  // For other providers, use cycle-overview endpoint (reset cycles)
+  if (provider === 'antigravity') {
+    const url = `/api/logging-history?provider=antigravity&limit=200`;
+    try {
+      const res = await authFetch(url);
+      if (!res.ok) throw new Error('Failed to fetch logging history');
+      const data = await res.json();
+      // Transform logging history to cycle-like format for table rendering
+      State.allCyclesData = (data.logs || []).map(log => ({
+        cycleId: log.id,
+        cycleStart: log.capturedAt,
+        cycleEnd: log.capturedAt, // Point-in-time snapshot
+        totalDelta: 0,
+        crossQuotas: log.crossQuotas || [],
+      }));
+      State.cyclesQuotaNames = data.quotaNames || [];
+      State.cyclesPage = 1;
+      State.isLoggingHistory = true; // Flag to render differently
+      renderCyclesTable();
+    } catch (err) {
+      // logging history fetch error — table shows empty state
+    }
+    return;
+  }
+
+  // For other providers, use cycle-overview endpoint
   let groupBy = 'five_hour'; // default for Anthropic
   if (provider === 'synthetic') {
     groupBy = 'subscription';
   } else if (provider === 'zai') {
     groupBy = 'tokens';
   } else if (provider === 'both') {
-    // Use anthropic by default for "both" mode
     groupBy = 'five_hour';
   }
 
@@ -2525,10 +2899,91 @@ async function fetchCycles() {
     State.allCyclesData = data.cycles || [];
     State.cyclesQuotaNames = data.quotaNames || [];
     State.cyclesPage = 1;
+    State.isLoggingHistory = false;
     renderCyclesTable();
   } catch (err) {
     // cycles fetch error — table shows empty state
   }
+}
+
+function bucketStartISO(iso, bucketMinutes) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const bucketMs = Math.max(1, bucketMinutes) * 60 * 1000;
+  return new Date(Math.floor(d.getTime() / bucketMs) * bucketMs).toISOString();
+}
+
+function aggregateCyclesByBucket(rows, bucketMinutes) {
+  if (!Array.isArray(rows) || rows.length === 0 || bucketMinutes <= 1) return rows;
+
+  const grouped = new Map();
+  for (const row of rows) {
+    const bucketISO = bucketStartISO(row.cycleStart, bucketMinutes);
+    if (!bucketISO) continue;
+
+    if (!grouped.has(bucketISO)) {
+      grouped.set(bucketISO, {
+        cycleId: row.cycleId,
+        cycleStart: bucketISO,
+        cycleEnd: row.cycleEnd || null,
+        totalDelta: typeof row.totalDelta === 'number' ? row.totalDelta : 0,
+        crossQuotas: Array.isArray(row.crossQuotas)
+          ? row.crossQuotas.map(cq => ({
+              name: cq.name,
+              value: cq.value,
+              limit: cq.limit,
+              percent: cq.percent,
+              startPercent: cq.startPercent,
+              delta: cq.delta,
+            }))
+          : [],
+      });
+      continue;
+    }
+
+    const agg = grouped.get(bucketISO);
+    if (agg.cycleEnd == null) {
+      if (row.cycleEnd != null) {
+        agg.cycleEnd = row.cycleEnd;
+      }
+    } else if (row.cycleEnd != null && new Date(row.cycleEnd).getTime() > new Date(agg.cycleEnd).getTime()) {
+      agg.cycleEnd = row.cycleEnd;
+    }
+
+    if (typeof row.totalDelta === 'number') {
+      agg.totalDelta += row.totalDelta;
+    }
+
+    const byName = new Map((agg.crossQuotas || []).map(cq => [cq.name, cq]));
+    for (const cq of row.crossQuotas || []) {
+      if (!byName.has(cq.name)) {
+        byName.set(cq.name, {
+          name: cq.name,
+          value: cq.value,
+          limit: cq.limit,
+          percent: cq.percent,
+          startPercent: cq.startPercent,
+          delta: cq.delta,
+        });
+        continue;
+      }
+      const existing = byName.get(cq.name);
+      if ((cq.percent ?? -1) > (existing.percent ?? -1)) {
+        existing.value = cq.value;
+        existing.limit = cq.limit;
+        existing.percent = cq.percent;
+      }
+      if (typeof cq.delta === 'number') {
+        existing.delta = (typeof existing.delta === 'number' ? existing.delta : 0) + cq.delta;
+      }
+      if (typeof cq.startPercent === 'number' && (typeof existing.startPercent !== 'number' || cq.startPercent < existing.startPercent)) {
+        existing.startPercent = cq.startPercent;
+      }
+    }
+    agg.crossQuotas = [...byName.values()];
+  }
+
+  return [...grouped.values()].sort((a, b) => new Date(b.cycleStart).getTime() - new Date(a.cycleStart).getTime());
 }
 
 function renderCyclesTable() {
@@ -2540,16 +2995,27 @@ function renderCyclesTable() {
 
   const provider = getCurrentProvider();
   const quotaNames = State.cyclesQuotaNames;
-  const usePercent = provider === 'anthropic' || provider === 'copilot' || provider === 'codex';
+  const usePercent = provider === 'anthropic' || provider === 'copilot' || provider === 'codex' || provider === 'antigravity';
+  const isLoggingHistory = State.isLoggingHistory === true;
 
-  // Build dynamic header (similar to Cycle Overview)
-  let headerHtml = `
-    <tr>
-      <th data-sort-key="id" role="button" tabindex="0">Cycle <span class="sort-arrow"></span></th>
-      <th data-sort-key="start" role="button" tabindex="0">Start <span class="sort-arrow"></span></th>
-      <th data-sort-key="end" role="button" tabindex="0">End <span class="sort-arrow"></span></th>
-      <th data-sort-key="duration" role="button" tabindex="0">Duration <span class="sort-arrow"></span></th>
-      <th data-sort-key="totalDelta" role="button" tabindex="0">Total Δ${usePercent ? ' %' : ''} <span class="sort-arrow"></span></th>`;
+  // Build dynamic header
+  let headerHtml;
+  if (isLoggingHistory) {
+    // Logging history: simpler header with # and Time
+    headerHtml = `
+      <tr>
+        <th data-sort-key="id" role="button" tabindex="0"># <span class="sort-arrow"></span></th>
+        <th data-sort-key="start" role="button" tabindex="0">Time <span class="sort-arrow"></span></th>`;
+  } else {
+    // Cycle-based: full header with Start, End, Duration, Total Δ
+    headerHtml = `
+      <tr>
+        <th data-sort-key="id" role="button" tabindex="0">Cycle <span class="sort-arrow"></span></th>
+        <th data-sort-key="start" role="button" tabindex="0">Start <span class="sort-arrow"></span></th>
+        <th data-sort-key="end" role="button" tabindex="0">End <span class="sort-arrow"></span></th>
+        <th data-sort-key="duration" role="button" tabindex="0">Duration <span class="sort-arrow"></span></th>
+        <th data-sort-key="totalDelta" role="button" tabindex="0">Total Δ${usePercent ? ' %' : ''} <span class="sort-arrow"></span></th>`;
+  }
 
   quotaNames.forEach(qn => {
     const displayName = overviewQuotaDisplayNames[qn] || qn;
@@ -2576,6 +3042,38 @@ function renderCyclesTable() {
   let data = State.allCyclesData.filter(c =>
     new Date(c.cycleStart).getTime() >= cutoff || !c.cycleEnd
   );
+
+  // Apply bucket aggregation (not for logging history - already point-in-time)
+  const bucketMinutes = State.cyclesBucket || 1;
+  if (!isLoggingHistory) {
+    // Collapse duplicate active rows for cycle-based view
+    const activeRows = data.filter(c => !c.cycleEnd);
+    if (activeRows.length > 1) {
+      const startTimes = activeRows.map(r => new Date(r.cycleStart).getTime()).filter(Number.isFinite);
+      const earliestStart = startTimes.length ? Math.min(...startTimes) : Date.now();
+      const collapsedByQuota = new Map();
+      for (const row of activeRows) {
+        for (const cq of (row.crossQuotas || [])) {
+          const existing = collapsedByQuota.get(cq.name);
+          if (!existing || (cq.percent ?? -1) > (existing.percent ?? -1)) {
+            collapsedByQuota.set(cq.name, { ...cq });
+          }
+        }
+      }
+      const collapsedActive = {
+        cycleId: 'active',
+        cycleStart: new Date(earliestStart).toISOString(),
+        cycleEnd: null,
+        totalDelta: activeRows.reduce((sum, r) => sum + (typeof r.totalDelta === 'number' ? r.totalDelta : 0), 0),
+        crossQuotas: [...collapsedByQuota.values()],
+      };
+      data = [collapsedActive, ...data.filter(c => c.cycleEnd)];
+    }
+    data = aggregateCyclesByBucket(data, bucketMinutes);
+  } else if (bucketMinutes > 1) {
+    // For logging history with bucket > 1, aggregate snapshots into time buckets
+    data = aggregateCyclesByBucket(data, bucketMinutes);
+  }
 
   // Sort
   if (State.cyclesSort.key) {
@@ -2622,27 +3120,57 @@ function renderCyclesTable() {
     return valStr;
   };
 
-  const colCount = 5 + quotaNames.length;
+  const colCount = isLoggingHistory ? (2 + quotaNames.length) : (5 + quotaNames.length);
 
   if (pageData.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">No polling data in this range.</td></tr>`;
+    const emptyMsg = isLoggingHistory ? 'No logging data in this range.' : 'No polling data in this range.';
+    tbody.innerHTML = `<tr><td colspan="${colCount}" class="empty-state">${emptyMsg}</td></tr>`;
   } else {
     tbody.innerHTML = pageData.map(row => {
       const start = row.cycleStart || null;
       const end = row.cycleEnd || null;
       const startDate = start ? new Date(start) : null;
       const endDate = end ? new Date(end) : null;
-      const durationMs = (startDate && endDate) ? endDate - startDate : 0;
-      const durationHrs = durationMs / 3600000;
-      const duration = durationMs > 0 ? formatDuration(Math.floor(durationMs / 1000)) : '--';
       const suffix = usePercent ? '%' : '';
 
-      let html = `<tr>
-        <td>${row.cycleId}${!end ? ' <span class="badge">Active</span>' : ''}</td>
-        <td>${start ? formatDateTime(start) : '--'}</td>
-        <td>${end ? formatDateTime(end) : '<span class="badge">Active</span>'}</td>
-        <td>${duration}</td>
-        <td>${fmtCyclesWithRate(row.totalDelta, durationHrs, suffix)}</td>`;
+      let html;
+      if (isLoggingHistory) {
+        // Logging history: simpler row with # and Time
+        html = `<tr>
+          <td>${row.cycleId}</td>
+          <td>${start ? formatDateTime(start) : '--'}</td>`;
+      } else {
+        // Cycle view: full row with Start, End, Duration, Total Δ
+        // Calculate duration: for buckets > 1, use bucket window; otherwise use actual span
+        let durationMs, durationHrs, duration;
+        if (bucketMinutes > 1) {
+          durationMs = bucketMinutes * 60 * 1000;
+          durationHrs = bucketMinutes / 60;
+          duration = bucketMinutes >= 60 ? `${bucketMinutes / 60}h` : `${bucketMinutes}m`;
+        } else {
+          durationMs = (startDate && endDate) ? endDate - startDate : 0;
+          durationHrs = durationMs / 3600000;
+          duration = durationMs > 0 ? formatDuration(Math.floor(durationMs / 1000)) : '--';
+        }
+
+        // For active cycles (no end, or cycleId is -1 or 'active'), show "Active" badge
+        const isActive = !end || row.cycleId === -1 || row.cycleId === 'active';
+        let cycleLabel;
+        if (bucketMinutes > 1) {
+          cycleLabel = start ? formatDateTime(start) : '--';
+        } else if (isActive) {
+          cycleLabel = '<span class="badge">Active</span>';
+        } else {
+          cycleLabel = `${row.cycleId}`;
+        }
+
+        html = `<tr>
+          <td>${cycleLabel}</td>
+          <td>${start ? formatDateTime(start) : '--'}</td>
+          <td>${end ? formatDateTime(end) : '<span class="badge">Active</span>'}</td>
+          <td>${duration}</td>
+          <td>${fmtCyclesWithRate(row.totalDelta, durationHrs, suffix)}</td>`;
+      }
 
       quotaNames.forEach(qn => {
         const pct = getCrossQuotaPercent(row, qn);
@@ -2737,7 +3265,8 @@ function renderSessionsTable() {
   const isZai = provider === 'zai';
   const isAnthropic = provider === 'anthropic';
   const isCodex = provider === 'codex';
-  const colSpan = isBoth ? 6 : isZai ? 5 : isCodex ? 6 : 7;
+  const isAntigravity = provider === 'antigravity';
+  const colSpan = isBoth ? 6 : isZai ? 5 : isCodex ? 6 : isAntigravity ? 7 : 7;
 
   let data = State.allSessionsData.map((s, i) => ({ ...s, _computed: getSessionComputedFields(s), _index: i }));
 
@@ -2932,6 +3461,68 @@ function renderSessionsTable() {
               <div class="detail-item">
                 <span class="detail-label">${codexSessionLabels.search}</span>
                 <span class="detail-value">${fmtPct(session.startSearchRequests)} &rarr; ${fmtPct(session.maxSearchRequests)} (${fmtDelta(session.startSearchRequests, session.maxSearchRequests)})</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Snapshots</span>
+                <span class="detail-value">${session.snapshotCount || 0}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Snapshots/min</span>
+                <span class="detail-value">${c.snapshotsPerMin.toFixed(2)}</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Duration</span>
+                <span class="detail-value">${c.durationStr}</span>
+              </div>
+            </div>
+          </div>
+        </td>
+      </tr>`;
+      return mainRow + detailRow;
+    }).join('');
+  } else if (provider === 'antigravity') {
+    // Antigravity: show Session, Start, End, Duration, and grouped quota usage
+    tbody.innerHTML = pageData.map(session => {
+      const c = session._computed;
+      const isExpanded = State.expandedSessionId === session.id;
+      const fmtPct = (v) => v != null ? v.toFixed(1) + '%' : '-';
+      const fmtDelta = (start, end) => {
+        const d = (end || 0) - (start || 0);
+        return d >= 0 ? `+${d.toFixed(1)}%` : `${d.toFixed(1)}%`;
+      };
+      const fmtWithDelta = (start, max) => {
+        const pct = max != null ? max.toFixed(1) + '%' : '-';
+        if (start == null || max == null) return pct;
+        const d = max - start;
+        const delta = d >= 0 ? `+${d.toFixed(1)}%` : `${d.toFixed(1)}%`;
+        return `${pct} <span class="delta">(${delta})</span>`;
+      };
+
+      const mainRow = `<tr class="session-row" role="button" tabindex="0" data-session-id="${session.id}">
+        <td>${session.id.slice(0, 8)}${c.isActive ? ' <span class="badge">Active</span>' : ''}</td>
+        <td>${c.start.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
+        <td>${session.endedAt ? new Date(session.endedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Active'}</td>
+        <td>${c.durationStr}</td>
+        <td>${fmtWithDelta(session.startSubRequests, session.maxSubRequests)}</td>
+        <td>${fmtWithDelta(session.startSearchRequests, session.maxSearchRequests)}</td>
+        <td>${fmtWithDelta(session.startToolRequests, session.maxToolRequests)}</td>
+      </tr>`;
+
+      const detailRow = `<tr class="session-detail-row ${isExpanded ? 'expanded' : ''}" data-detail-for="${session.id}">
+        <td colspan="7">
+          <div class="session-detail-content">
+            <div class="session-detail-grid">
+              <div class="detail-item">
+                <span class="detail-label">Claude + GPT Quota</span>
+                <span class="detail-value">${fmtPct(session.startSubRequests)} &rarr; ${fmtPct(session.maxSubRequests)} (${fmtDelta(session.startSubRequests, session.maxSubRequests)})</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Gemini Pro Quota</span>
+                <span class="detail-value">${fmtPct(session.startSearchRequests)} &rarr; ${fmtPct(session.maxSearchRequests)} (${fmtDelta(session.startSearchRequests, session.maxSearchRequests)})</span>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Gemini Flash Quota</span>
+                <span class="detail-value">${fmtPct(session.startToolRequests)} &rarr; ${fmtPct(session.maxToolRequests)} (${fmtDelta(session.startToolRequests, session.maxToolRequests)})</span>
               </div>
               <div class="detail-item">
                 <span class="detail-label">Snapshots</span>
@@ -3146,8 +3737,7 @@ async function loadModalChart(quotaType, effectiveProvider) {
     State.modalChart = null;
   }
 
-  const activeRange = document.querySelector('.range-btn[data-range].active');
-  const range = activeRange ? activeRange.dataset.range : '6h';
+  const range = State.currentRange || '6h';
 
   const provider = effectiveProvider || getCurrentProvider();
   try {
@@ -3155,6 +3745,7 @@ async function loadModalChart(quotaType, effectiveProvider) {
     if (!res.ok) return;
     const data = await res.json();
     if (!Array.isArray(data) || data.length === 0) return;
+    const historyRows = data;
     let datasetKey;
     if (provider === 'zai') {
       datasetKey = quotaType === 'tokensLimit' ? 'tokensPercent' : quotaType === 'toolCalls' ? 'toolCallsPercent' : 'timePercent';
@@ -3166,7 +3757,7 @@ async function loadModalChart(quotaType, effectiveProvider) {
     const bgMap = { subscription: 'rgba(13,148,136,0.08)', search: 'rgba(245,158,11,0.08)', toolCalls: 'rgba(59,130,246,0.08)', tokensLimit: 'rgba(13,148,136,0.08)', timeLimit: 'rgba(245,158,11,0.08)' };
 
     const colors = getThemeColors();
-    const chartData = data.map(d => d[datasetKey]);
+    const chartData = historyRows.map(d => d[datasetKey]);
     const maxVal = Math.max(...chartData, 0);
     
     // Dynamic Y-axis: if max is 0 or very low, show up to 10%
@@ -3183,7 +3774,7 @@ async function loadModalChart(quotaType, effectiveProvider) {
     State.modalChart = new Chart(ctx, {
       type: 'line',
       data: {
-        labels: data.map(d => new Date(d.capturedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })),
+        labels: historyRows.map(d => formatChartXAxisLabel(d.capturedAt, range)),
         datasets: [{
           label: (provider === 'zai' ? { tokensLimit: 'Tokens Limit', timeLimit: 'Time Limit', toolCalls: 'Tool Calls' } : quotaNames)[quotaType] || quotaType,
           data: chartData,
@@ -3296,6 +3887,21 @@ function setupCycleFilters() {
       fetchCycles(); // Re-fetch with new range
     });
   }
+
+  // Grouping window pills (1m/5m/10m/30m)
+  const bucketPills = document.getElementById('cycles-bucket-pills');
+  if (bucketPills) {
+    bucketPills.addEventListener('click', (e) => {
+      const pill = e.target.closest('.filter-pill');
+      if (!pill) return;
+      bucketPills.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      const mins = parseInt(pill.dataset.bucketMinutes, 10);
+      State.cyclesBucket = Number.isFinite(mins) && mins > 0 ? mins : 1;
+      State.cyclesPage = 1;
+      renderCyclesTable();
+    });
+  }
 }
 
 function setupPasswordToggle() {
@@ -3317,17 +3923,18 @@ function getOverviewCategories() {
   if (provider === 'both') {
     // Merge all categories
     return [
-      ...renewalCategories.anthropic || [],
-      ...renewalCategories.synthetic || [],
-      ...renewalCategories.zai || [],
-      ...renewalCategories.copilot || [],
-      ...renewalCategories.codex || []
+      ...(renewalCategories.anthropic || []),
+      ...(renewalCategories.synthetic || []),
+      ...(renewalCategories.zai || []),
+      ...(renewalCategories.copilot || []),
+      ...renewalCategories.codex || [],
+      ...(renewalCategories.antigravity || [])
     ];
   }
   return renewalCategories[provider] || [];
 }
 
-function setupOverviewControls() {
+async function setupOverviewControls() {
   const pillsContainer = document.getElementById('overview-period-pills');
   if (!pillsContainer) return;
 
@@ -3364,6 +3971,12 @@ function setupOverviewControls() {
       renderOverviewTable();
     });
   }
+}
+
+// Truncate label for pill buttons
+function truncateLabel(str, maxLen) {
+  if (!str || str.length <= maxLen) return str;
+  return str.substring(0, maxLen - 1) + '…';
 }
 
 async function fetchCycleOverview() {
@@ -3498,8 +4111,12 @@ function renderOverviewTable() {
       const duration = durationMs > 0 ? formatDuration(Math.floor(durationMs / 1000)) : '--';
       const suffix = usePercent ? '%' : '';
 
+      // For active cycles (no end, or cycleId is -1 or 'active'), show "Active" badge
+      const isActive = !end || row.cycleId === -1 || row.cycleId === 'active';
+      const cycleLabel = isActive ? '<span class="badge">Active</span>' : `${row.cycleId}`;
+
       let html = `<tr>
-        <td>${row.cycleId}</td>
+        <td>${cycleLabel}</td>
         <td>${start ? formatDateTime(start) : '--'}</td>
         <td>${end ? formatDateTime(end) : '<span class="badge">Active</span>'}</td>
         <td>${duration}</td>
@@ -4496,7 +5113,7 @@ function addOverrideRow(quotaKey, provider, warning, critical, isAbsolute) {
 
 // ── Init ──
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   // Register service worker for PWA + push (all pages)
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(function() {});
@@ -4535,7 +5152,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupCycleFilters();
   setupPasswordToggle();
   setupTableControls();
-  setupOverviewControls();
+  await setupOverviewControls();
   setupHeaderActions();
   setupCardModals();
 
@@ -4549,6 +5166,15 @@ document.addEventListener('DOMContentLoaded', () => {
       fetchDeepInsights(),
       fetchHistory('6h'),
     ]);
+
+    // Antigravity first: preload overview + polling history immediately.
+    const activeProvider = getCurrentProvider();
+    if (activeProvider === 'antigravity') {
+      _lazyLoaded.add('.cycle-overview-section');
+      _lazyLoaded.add('.cycles-section');
+      fetchCycleOverview();
+      fetchCycles();
+    }
 
     // Below-fold: lazy-load when sections scroll into view
     lazyLoadOnVisible('.cycles-section', () => fetchCycles());

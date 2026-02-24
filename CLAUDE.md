@@ -1,6 +1,6 @@
 # onWatch
 
-Ultra-lightweight Go CLI tracking Anthropic/Synthetic/Z.ai/GitHub Copilot (Beta) quota usage. Polls endpoints → SQLite → Material Design 3 dashboard. Single binary via `embed.FS`, <50 MB RAM, TDD-first.
+Ultra-lightweight Go CLI tracking Anthropic/Synthetic/Z.ai/GitHub Copilot (Beta)/Antigravity quota usage. Polls endpoints → SQLite → Material Design 3 dashboard. Single binary via `embed.FS`, <50 MB RAM, TDD-first.
 
 ## Stack
 Go 1.25+ | SQLite (`modernc.org/sqlite`) | `net/http` | `html/template` + `embed.FS` | Chart.js (CDN) | `log/slog`
@@ -57,6 +57,17 @@ Note: Dynamic keys, `utilization` is %, null entries skipped.
 ```
 Note: Undocumented internal API. Monthly reset via `quota_reset_date_utc`. `premium_interactions` is the main quota (300 for Pro, 1500 for Pro+). `chat`/`completions` are typically unlimited.
 
+**Antigravity** `POST https://127.0.0.1:{port}/exa.language_server_pb.LanguageServerService/GetUserStatus` (local Connect RPC)
+```json
+{"userStatus":{
+  "email":"user@example.com",
+  "planStatus":{"availablePromptCredits":500,"planInfo":{"planName":"Pro","monthlyPromptCredits":1000}},
+  "cascadeModelConfigData":{"clientModelConfigs":[
+    {"label":"Claude Sonnet","modelOrAlias":{"model":"claude-4-5-sonnet"},
+     "quotaInfo":{"remainingFraction":0.75,"resetTime":"ISO8601"}}]}}}
+```
+Note: Local language server API. Auto-detected via process scanning (extracts `--csrf_token` and `--extension_server_port` from command line). Headers: `Content-Type: application/json`, `Connect-Protocol-Version: 1`, `X-Codeium-Csrf-Token: {token}`. For Docker, set `ANTIGRAVITY_BASE_URL` and `ANTIGRAVITY_CSRF_TOKEN` env vars.
+
 ## Commands
 ```bash
 ./app.sh --build        # Production binary
@@ -64,6 +75,8 @@ Note: Undocumented internal API. Monthly reset via `quota_reset_date_utc`. `prem
 ./app.sh --release      # Cross-compile 5 platforms → dist/
 go test -race ./...     # ALWAYS before commit
 ```
+
+**IMPORTANT:** This is a compiled Go project. ALWAYS run `./app.sh --build` before starting/testing the application. Never run `./onwatch` without building first - changes won't be reflected otherwise.
 
 ## CLI
 | Flag | Default | Description |
@@ -109,6 +122,29 @@ Dashboard thresholds (defaults, customizable via `/settings`): green (0-49%), ye
 | `chat` | Chat | #2ea043 |
 | `completions` | Completions | #58a6ff |
 
+## Antigravity Mappings (must match Go + JS)
+| Key | Display | Chart Color |
+|-----|---------|-------------|
+| `claude-4-5-sonnet` | Claude 4.5 Sonnet | #D97757 |
+| `claude-4-5-sonnet-thinking` | Claude 4.5 Sonnet (Thinking) | #A855F7 |
+| `gemini-3-pro` | Gemini 3 Pro | #10B981 |
+| `gemini-3-flash` | Gemini 3 Flash | #3B82F6 |
+
+Note: Model IDs are dynamic. Auto-detected from local language server process. For Docker environments, configure via environment variables (see Docker Configuration section below).
+
+## Docker Configuration (Antigravity)
+For containerized deployments where the Antigravity language server runs on the host:
+
+| Environment Variable | Description | Example |
+|---------------------|-------------|---------|
+| `ANTIGRAVITY_BASE_URL` | Base URL of the language server | `https://host.docker.internal:42100` |
+| `ANTIGRAVITY_CSRF_TOKEN` | CSRF token from host process | `abc123...` |
+
+To get the CSRF token from the host:
+```bash
+ps aux | grep antigravity | grep -o '\-\-csrf_token[= ][^ ]*' | sed 's/--csrf_token[= ]//'
+```
+
 ## Code References
 | Feature | Location |
 |---------|----------|
@@ -123,5 +159,9 @@ Dashboard thresholds (defaults, customizable via `/settings`): green (0-49%), ye
 | Copilot store | `internal/store/copilot_store.go` |
 | Copilot tracker | `internal/tracker/copilot_tracker.go` |
 | Copilot agent | `internal/agent/copilot_agent.go` |
+| Antigravity API | `internal/api/antigravity_client.go`, `antigravity_types.go` |
+| Antigravity store | `internal/store/antigravity_store.go` |
+| Antigravity tracker | `internal/tracker/antigravity_tracker.go` |
+| Antigravity agent | `internal/agent/antigravity_agent.go` |
 | Container detection | `internal/config/config.go:IsDockerEnvironment()` |
 | Design system | `design-system/onwatch/MASTER.md` |

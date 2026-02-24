@@ -819,9 +819,9 @@ button, input, select { font-family: inherit; }
 
 .insights-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 12px;
-  margin-bottom: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
 }
 .insights-stats:empty { display: none; }
 
@@ -865,8 +865,8 @@ button, input, select { font-family: inherit; }
 /* Insight Cards Grid */
 .insights-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
 }
 .insights-cards:empty { display: none; }
 
@@ -900,7 +900,7 @@ button, input, select { font-family: inherit; }
 .insight-card {
   border-radius: var(--radius-md);
   border: 1px solid var(--border-light);
-  padding: 16px;
+  padding: 12px;
   cursor: pointer;
   transition: all var(--transition-base);
   position: relative;
@@ -971,7 +971,7 @@ button, input, select { font-family: inherit; }
   grid-row: 2;
   grid-column: 1 / -1;
   align-self: center;
-  padding: 8px 0;
+  padding: 6px 0 4px;
 }
 
 .insight-card-chevron {
@@ -986,11 +986,11 @@ button, input, select { font-family: inherit; }
 .insight-card.expanded .insight-card-chevron { transform: rotate(180deg); }
 
 .insight-card-metric {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 700;
   font-family: var(--font-mono);
   color: var(--text-primary);
-  line-height: 1;
+  line-height: 1.1;
   text-align: center;
 }
 
@@ -1237,6 +1237,16 @@ button, input, select { font-family: inherit; }
   padding: 12px 14px;
   border-bottom: 1px solid var(--border-light);
   color: var(--text-primary);
+}
+
+/* Model name cells should wrap to prevent horizontal scroll */
+.data-table td.model-name,
+.data-table td:first-child {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 200px;
+  white-space: normal;
+  line-height: 1.4;
 }
 
 .data-table tr:last-child td { border-bottom: none; }

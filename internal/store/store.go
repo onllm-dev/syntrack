@@ -364,6 +364,48 @@ func (s *Store) createTables() error {
 		CREATE INDEX IF NOT EXISTS idx_codex_quota_values_snapshot ON codex_quota_values(snapshot_id);
 		CREATE INDEX IF NOT EXISTS idx_codex_cycles_name_start ON codex_reset_cycles(quota_name, cycle_start);
 		CREATE INDEX IF NOT EXISTS idx_codex_cycles_name_active ON codex_reset_cycles(quota_name) WHERE cycle_end IS NULL;
+
+		-- Antigravity-specific tables
+		CREATE TABLE IF NOT EXISTS antigravity_snapshots (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			captured_at TEXT NOT NULL,
+			email TEXT,
+			plan_name TEXT,
+			prompt_credits REAL,
+			monthly_credits INTEGER,
+			raw_json TEXT,
+			model_count INTEGER DEFAULT 0
+		);
+
+		CREATE TABLE IF NOT EXISTS antigravity_model_values (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			snapshot_id INTEGER NOT NULL,
+			model_id TEXT NOT NULL,
+			label TEXT,
+			remaining_fraction REAL NOT NULL DEFAULT 0,
+			remaining_percent REAL NOT NULL DEFAULT 0,
+			is_exhausted INTEGER NOT NULL DEFAULT 0,
+			reset_time TEXT,
+			FOREIGN KEY (snapshot_id) REFERENCES antigravity_snapshots(id)
+		);
+
+		CREATE TABLE IF NOT EXISTS antigravity_reset_cycles (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			model_id TEXT NOT NULL,
+			cycle_start TEXT NOT NULL,
+			cycle_end TEXT,
+			reset_time TEXT,
+			peak_usage REAL NOT NULL DEFAULT 0,
+			total_delta REAL NOT NULL DEFAULT 0
+		);
+
+		-- Antigravity indexes
+		CREATE INDEX IF NOT EXISTS idx_antigravity_snapshots_captured ON antigravity_snapshots(captured_at);
+		CREATE INDEX IF NOT EXISTS idx_antigravity_model_values_snapshot ON antigravity_model_values(snapshot_id);
+		CREATE INDEX IF NOT EXISTS idx_antigravity_model_values_model_id ON antigravity_model_values(model_id);
+		CREATE INDEX IF NOT EXISTS idx_antigravity_model_values_model_snapshot ON antigravity_model_values(model_id, snapshot_id);
+		CREATE INDEX IF NOT EXISTS idx_antigravity_cycles_model_start ON antigravity_reset_cycles(model_id, cycle_start);
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_antigravity_cycles_model_active_unique ON antigravity_reset_cycles(model_id) WHERE cycle_end IS NULL;
 	`
 
 	if _, err := s.db.Exec(schema); err != nil {
@@ -427,6 +469,19 @@ func (s *Store) migrateSchema() error {
 			// Table might not exist yet (new install) — ignore
 			if !strings.Contains(err.Error(), "no such table") {
 				return fmt.Errorf("failed to add time_usage_details to zai_snapshots: %w", err)
+			}
+		}
+	}
+
+	// Ensure newer Antigravity indexes exist for grouped queries.
+	for _, stmt := range []string{
+		`CREATE INDEX IF NOT EXISTS idx_antigravity_model_values_model_id ON antigravity_model_values(model_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_antigravity_model_values_model_snapshot ON antigravity_model_values(model_id, snapshot_id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_antigravity_cycles_model_active_unique ON antigravity_reset_cycles(model_id) WHERE cycle_end IS NULL`,
+	} {
+		if _, err := s.db.Exec(stmt); err != nil {
+			if !strings.Contains(err.Error(), "no such table") {
+				return fmt.Errorf("failed antigravity index migration: %w", err)
 			}
 		}
 	}

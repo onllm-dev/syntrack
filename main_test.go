@@ -19,6 +19,9 @@ func TestConfigLoad_WithOnlyCodexAuthFile_ReturnsValidationError(t *testing.T) {
 	t.Setenv("ANTHROPIC_TOKEN", "")
 	t.Setenv("COPILOT_TOKEN", "")
 	t.Setenv("CODEX_TOKEN", "")
+	t.Setenv("ANTIGRAVITY_ENABLED", "")
+	t.Setenv("ANTIGRAVITY_BASE_URL", "")
+	t.Setenv("ANTIGRAVITY_CSRF_TOKEN", "")
 
 	authPath := filepath.Join(codexHome, "auth.json")
 	if err := os.WriteFile(authPath, []byte(`{"tokens":{"access_token":"codex_oauth_access"}}`), 0o600); err != nil {
