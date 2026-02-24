@@ -12,7 +12,7 @@
             {{range .Providers}}
             <button class="provider-tab {{if eq . $.CurrentProvider}}active{{end}}"
                     data-provider="{{.}}" role="tab" aria-selected="{{if eq . $.CurrentProvider}}true{{else}}false{{end}}">
-                {{if eq . "synthetic"}}Synthetic{{else if eq . "zai"}}Z.ai{{else if eq . "anthropic"}}Anthropic{{else if eq . "copilot"}}Copilot{{else if eq . "codex"}}Codex{{else if eq . "both"}}All{{else}}{{.}}{{end}}
+                {{if eq . "synthetic"}}Synthetic{{else if eq . "zai"}}Z.ai{{else if eq . "anthropic"}}Anthropic{{else if eq . "copilot"}}Copilot{{else if eq . "codex"}}Codex{{else if eq . "antigravity"}}Antigravity{{else if eq . "both"}}All{{else}}{{.}}{{end}}
             </button>
             {{end}}
         </div>
@@ -57,7 +57,7 @@
             <h1 class="welcome-title">Dashboard</h1>
             <p class="welcome-subtitle">
                 {{if eq .CurrentProvider "both"}}Track all your API quotas in real time.
-                {{else}}Track your {{if eq .CurrentProvider "synthetic"}}Synthetic{{else if eq .CurrentProvider "zai"}}Z.ai{{else if eq .CurrentProvider "anthropic"}}Anthropic (Claude Code){{else if eq .CurrentProvider "copilot"}}GitHub Copilot{{else if eq .CurrentProvider "codex"}}Codex{{else}}{{.CurrentProvider}}{{end}} API quota usage in real time.
+                {{else}}Track your {{if eq .CurrentProvider "synthetic"}}Synthetic{{else if eq .CurrentProvider "zai"}}Z.ai{{else if eq .CurrentProvider "anthropic"}}Anthropic (Claude Code){{else if eq .CurrentProvider "copilot"}}GitHub Copilot{{else if eq .CurrentProvider "codex"}}Codex{{else if eq .CurrentProvider "antigravity"}}Antigravity{{else}}{{.CurrentProvider}}{{end}} API quota usage in real time.
                 {{end}}
             </p>
         </div>
@@ -134,6 +134,12 @@
                 <div class="quota-grid quota-grid-stacked" id="quota-grid-codex-both" data-provider="codex"></div>
             </section>
             {{end}}
+            {{if .HasAntigravity}}
+            <section class="provider-column" data-provider="antigravity">
+                <h3 class="provider-label">Antigravity</h3>
+                <div class="quota-grid quota-grid-stacked" id="quota-grid-antigravity-both" data-provider="antigravity"></div>
+            </section>
+            {{end}}
         </div>
         {{else if eq .CurrentProvider "copilot"}}
         <!-- Copilot quota cards (dynamically populated by JS) -->
@@ -144,6 +150,9 @@
         {{else if eq .CurrentProvider "codex"}}
         <!-- Codex quota cards (dynamically populated by JS) -->
         <div class="quota-grid" id="quota-grid-codex" data-provider="codex"></div>
+        {{else if eq .CurrentProvider "antigravity"}}
+        <!-- Antigravity quota cards (dynamically populated by JS) -->
+        <div class="quota-grid" id="quota-grid-antigravity" data-provider="antigravity"></div>
         {{else}}
         <div class="quota-grid" id="quota-grid" data-provider="{{.CurrentProvider}}">
             {{if eq .CurrentProvider "zai"}}
@@ -417,7 +426,7 @@
                         <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
                         <path d="M3 3v5h5"/>
                     </svg>
-                    Polling History
+                    Logging History
                 </h3>
                 <div class="cycles-filters-inline">
                     <div class="filter-group">
@@ -428,6 +437,15 @@
                             <button class="filter-pill" data-range="604800000">7d</button>
                             <button class="filter-pill" data-range="1296000000">15d</button>
                             <button class="filter-pill" data-range="2592000000">30d</button>
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <span class="filter-label">Group</span>
+                        <div class="filter-pills" id="cycles-bucket-pills" role="group" aria-label="Polling grouping window">
+                            <button class="filter-pill active" data-bucket-minutes="1">1m</button>
+                            <button class="filter-pill" data-bucket-minutes="5">5m</button>
+                            <button class="filter-pill" data-bucket-minutes="10">10m</button>
+                            <button class="filter-pill" data-bucket-minutes="30">30m</button>
                         </div>
                     </div>
                     <select class="page-size-select" id="cycles-page-size" aria-label="Rows per page">
@@ -499,6 +517,10 @@
                             {{else if eq .CurrentProvider "codex"}}
                             <th data-sort-key="sub" role="button" tabindex="0">5-Hour Limit <span class="sort-arrow"></span></th>
                             <th data-sort-key="search" role="button" tabindex="0">Weekly All-Model <span class="sort-arrow"></span></th>
+                            {{else if eq .CurrentProvider "antigravity"}}
+                            <th data-sort-key="sub" role="button" tabindex="0">Claude + GPT Quota <span class="sort-arrow"></span></th>
+                            <th data-sort-key="search" role="button" tabindex="0">Gemini Pro Quota <span class="sort-arrow"></span></th>
+                            <th data-sort-key="tool" role="button" tabindex="0">Gemini Flash Quota <span class="sort-arrow"></span></th>
                             {{else}}
                             <th data-sort-key="sub" role="button" tabindex="0">Sub Usage <span class="sort-arrow"></span></th>
                             <th data-sort-key="search" role="button" tabindex="0">Search Usage <span class="sort-arrow"></span></th>
@@ -512,6 +534,8 @@
                             <td colspan="5" class="empty-state">No sessions recorded yet.</td>
                             {{else if eq .CurrentProvider "codex"}}
                             <td colspan="6" class="empty-state">No sessions recorded yet.</td>
+                            {{else if eq .CurrentProvider "antigravity"}}
+                            <td colspan="7" class="empty-state">No sessions recorded yet.</td>
                             {{else}}
                             <td colspan="7" class="empty-state">No sessions recorded yet.</td>
                             {{end}}

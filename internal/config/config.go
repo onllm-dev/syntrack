@@ -34,6 +34,11 @@ type Config struct {
 	CodexToken     string // CODEX_TOKEN or auto-detected
 	CodexAutoToken bool   // true if token was auto-detected
 
+	// Antigravity provider configuration (auto-detected from local process)
+	AntigravityBaseURL   string // ANTIGRAVITY_BASE_URL (for Docker)
+	AntigravityCSRFToken string // ANTIGRAVITY_CSRF_TOKEN (for Docker)
+	AntigravityEnabled   bool   // true if auto-detection should be attempted
+
 	// Shared configuration
 	PollInterval       time.Duration // ONWATCH_POLL_INTERVAL (seconds → Duration)
 	Port               int           // ONWATCH_PORT
@@ -146,6 +151,14 @@ func loadFromEnvAndFlags(flags *flagValues) (*Config, error) {
 	// Codex provider
 	cfg.CodexToken = strings.TrimSpace(os.Getenv("CODEX_TOKEN"))
 
+	// Antigravity provider (auto-detection, or manual via env vars for Docker)
+	cfg.AntigravityBaseURL = os.Getenv("ANTIGRAVITY_BASE_URL")
+	cfg.AntigravityCSRFToken = os.Getenv("ANTIGRAVITY_CSRF_TOKEN")
+	// Enable Antigravity if: (1) manual config provided, or (2) ANTIGRAVITY_ENABLED=true, or (3) auto-detect
+	if cfg.AntigravityBaseURL != "" || os.Getenv("ANTIGRAVITY_ENABLED") == "true" {
+		cfg.AntigravityEnabled = true
+	}
+
 	// Poll Interval (seconds) — ONWATCH_* first, SYNTRACK_* fallback
 	if flags.interval > 0 {
 		cfg.PollInterval = time.Duration(flags.interval) * time.Second
@@ -253,8 +266,8 @@ func (c *Config) applyDefaults() {
 // Validate checks the configuration for errors.
 func (c *Config) Validate() error {
 	// At least one provider must be configured
-	if c.SyntheticAPIKey == "" && c.ZaiAPIKey == "" && c.AnthropicToken == "" && c.CopilotToken == "" && c.CodexToken == "" {
-		return fmt.Errorf("at least one provider must be configured: set SYNTHETIC_API_KEY, ZAI_API_KEY, ANTHROPIC_TOKEN, COPILOT_TOKEN, or CODEX_TOKEN")
+	if c.SyntheticAPIKey == "" && c.ZaiAPIKey == "" && c.AnthropicToken == "" && c.CopilotToken == "" && c.CodexToken == "" && !c.AntigravityEnabled {
+		return fmt.Errorf("at least one provider must be configured: set SYNTHETIC_API_KEY, ZAI_API_KEY, ANTHROPIC_TOKEN, COPILOT_TOKEN, CODEX_TOKEN, or ANTIGRAVITY_ENABLED=true")
 	}
 
 	// Validate Synthetic API key if provided
@@ -298,6 +311,9 @@ func (c *Config) AvailableProviders() []string {
 	if c.CodexToken != "" {
 		providers = append(providers, "codex")
 	}
+	if c.AntigravityEnabled {
+		providers = append(providers, "antigravity")
+	}
 	return providers
 }
 
@@ -314,6 +330,8 @@ func (c *Config) HasProvider(name string) bool {
 		return c.CopilotToken != ""
 	case "codex":
 		return c.CodexToken != ""
+	case "antigravity":
+		return c.AntigravityEnabled
 	}
 	return false
 }
@@ -334,6 +352,9 @@ func (c *Config) HasMultipleProviders() bool {
 		count++
 	}
 	if c.CodexToken != "" {
+		count++
+	}
+	if c.AntigravityEnabled {
 		count++
 	}
 	return count > 1

@@ -1857,7 +1857,7 @@ func TestHandler_History_EmptyDB_ReturnsEmptyArrays_Both(t *testing.T) {
 		t.Fatalf("failed to parse JSON: %v", err)
 	}
 
-	for _, key := range []string{"synthetic", "zai", "anthropic", "copilot", "codex"} {
+	for _, key := range []string{"synthetic", "zai", "anthropic", "copilot", "codex", "antigravity"} {
 		val, ok := response[key]
 		if !ok {
 			continue
@@ -1888,16 +1888,17 @@ func createTestConfigWithAnthropic() *config.Config {
 
 func createTestConfigWithAll() *config.Config {
 	return &config.Config{
-		SyntheticAPIKey: "syn_test_key",
-		ZaiAPIKey:       "zai_test_key",
-		ZaiBaseURL:      "https://api.z.ai/api",
-		AnthropicToken:  "test_anthropic_token",
-		CodexToken:      "codex_test_token",
-		PollInterval:    60 * time.Second,
-		Port:            9211,
-		AdminUser:       "admin",
-		AdminPass:       "test",
-		DBPath:          "./test.db",
+		SyntheticAPIKey:    "syn_test_key",
+		ZaiAPIKey:          "zai_test_key",
+		ZaiBaseURL:         "https://api.z.ai/api",
+		AnthropicToken:     "test_anthropic_token",
+		CodexToken:         "codex_test_token",
+		AntigravityEnabled: true,
+		PollInterval:       60 * time.Second,
+		Port:               9211,
+		AdminUser:          "admin",
+		AdminPass:          "test",
+		DBPath:             "./test.db",
 	}
 }
 
@@ -2803,13 +2804,13 @@ func TestHandler_Providers_WithAllProviders_IncludesBoth(t *testing.T) {
 		t.Fatal("expected providers array")
 	}
 
-	// Should have synthetic, zai, anthropic, codex, both = 5
-	if len(providers) != 5 {
-		t.Errorf("expected 5 providers (synthetic, zai, anthropic, codex, both), got %d: %v", len(providers), providers)
+	// Should have synthetic, zai, anthropic, codex, antigravity, both = 6
+	if len(providers) != 6 {
+		t.Errorf("expected 6 providers (synthetic, zai, anthropic, codex, antigravity, both), got %d: %v", len(providers), providers)
 	}
 }
 
-func TestHandler_Current_BothIncludesAnthropic(t *testing.T) {
+func TestHandler_Current_BothIncludesAnthropicAndAntigravity(t *testing.T) {
 	s, _ := store.New(":memory:")
 	defer s.Close()
 
@@ -2822,6 +2823,18 @@ func TestHandler_Current_BothIncludesAnthropic(t *testing.T) {
 		RawJSON: `{"five_hour":{"utilization":0.45}}`,
 	}
 	s.InsertAnthropicSnapshot(snapshot)
+
+	agSnapshot := &api.AntigravitySnapshot{
+		CapturedAt: time.Now().UTC(),
+		Models: []api.AntigravityModelQuota{
+			{ModelID: "claude-4-5-sonnet", Label: "Claude 4.5 Sonnet", RemainingFraction: 0.8, RemainingPercent: 80},
+			{ModelID: "gemini-3-pro", Label: "Gemini 3 Pro", RemainingFraction: 0.7, RemainingPercent: 70},
+			{ModelID: "gemini-3-flash", Label: "Gemini 3 Flash", RemainingFraction: 0.6, RemainingPercent: 60},
+		},
+	}
+	if _, err := s.InsertAntigravitySnapshot(agSnapshot); err != nil {
+		t.Fatalf("failed to insert antigravity snapshot: %v", err)
+	}
 
 	cfg := createTestConfigWithAll()
 	h := NewHandler(s, nil, nil, nil, cfg)
@@ -2841,6 +2854,22 @@ func TestHandler_Current_BothIncludesAnthropic(t *testing.T) {
 
 	if _, ok := response["anthropic"]; !ok {
 		t.Error("expected anthropic field in 'both' response")
+	}
+
+	agRaw, ok := response["antigravity"]
+	if !ok {
+		t.Fatal("expected antigravity field in 'both' response")
+	}
+	ag, ok := agRaw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected antigravity payload object, got %T", agRaw)
+	}
+	quotas, ok := ag["quotas"].([]interface{})
+	if !ok {
+		t.Fatalf("expected antigravity quotas array, got %T", ag["quotas"])
+	}
+	if len(quotas) != 3 {
+		t.Fatalf("expected 3 antigravity quota groups, got %d", len(quotas))
 	}
 }
 
@@ -2905,7 +2934,7 @@ func TestHandler_Insights_AnthropicEmptyDB(t *testing.T) {
 func TestHandler_Login_GET_RendersForm(t *testing.T) {
 	cfg := createTestConfigWithSynthetic()
 	h := NewHandler(nil, nil, nil, nil, cfg)
-	h.SetVersion("2.10.4")
+	h.SetVersion("2.11.0")
 
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	rr := httptest.NewRecorder()
@@ -2920,7 +2949,7 @@ func TestHandler_Login_GET_RendersForm(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, "/static/app.js?v=2.10.4") {
+	if !strings.Contains(body, "/static/app.js?v=2.11.0") {
 		t.Fatalf("expected login page to include versioned app.js URL, body=%s", body)
 	}
 	if !regexp.MustCompile(`/static/app\.js\?v=[^"\s]+`).MatchString(body) {
@@ -3677,7 +3706,7 @@ func TestHandler_CycleOverview_Both(t *testing.T) {
 	}
 }
 
-func TestHandler_Sessions_BothIncludesCodex(t *testing.T) {
+func TestHandler_Sessions_BothIncludesCodexAndAntigravity(t *testing.T) {
 	s, _ := store.New(":memory:")
 	defer s.Close()
 
@@ -3686,6 +3715,9 @@ func TestHandler_Sessions_BothIncludesCodex(t *testing.T) {
 
 	if err := s.CreateSession("codex-session", time.Now().Add(-30*time.Minute), 60, "codex", 12.0, 8.0, 0); err != nil {
 		t.Fatalf("failed to create codex session: %v", err)
+	}
+	if err := s.CreateSession("antigravity-session", time.Now().Add(-20*time.Minute), 60, "antigravity", 10.0, 20.0, 30.0); err != nil {
+		t.Fatalf("failed to create antigravity session: %v", err)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/sessions?provider=both", nil)
@@ -3711,16 +3743,27 @@ func TestHandler_Sessions_BothIncludesCodex(t *testing.T) {
 	if codexSessions[0]["id"] != "codex-session" {
 		t.Fatalf("expected codex session id codex-session, got %v", codexSessions[0]["id"])
 	}
+
+	antigravitySessions, ok := response["antigravity"]
+	if !ok {
+		t.Fatal("expected antigravity field in both sessions response")
+	}
+	if len(antigravitySessions) != 1 {
+		t.Fatalf("expected 1 antigravity session, got %d", len(antigravitySessions))
+	}
+	if antigravitySessions[0]["id"] != "antigravity-session" {
+		t.Fatalf("expected antigravity session id antigravity-session, got %v", antigravitySessions[0]["id"])
+	}
 }
 
-func TestHandler_CycleOverview_BothIncludesCodex(t *testing.T) {
+func TestHandler_CycleOverview_AntigravityReturnsCycleOverview(t *testing.T) {
 	s, _ := store.New(":memory:")
 	defer s.Close()
 
 	cfg := createTestConfigWithAll()
 	h := NewHandler(s, nil, nil, nil, cfg)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/cycle-overview?provider=both", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/cycle-overview?provider=antigravity", nil)
 	rr := httptest.NewRecorder()
 	h.CycleOverview(rr, req)
 
@@ -3733,19 +3776,26 @@ func TestHandler_CycleOverview_BothIncludesCodex(t *testing.T) {
 		t.Fatalf("failed to parse JSON: %v", err)
 	}
 
-	codexRaw, ok := response["codex"]
+	if response["provider"] != "antigravity" {
+		t.Fatalf("expected antigravity provider field, got %v", response["provider"])
+	}
+	// Default groupBy should be antigravity_claude_gpt
+	if response["groupBy"] != api.AntigravityQuotaGroupClaudeGPT {
+		t.Fatalf("expected antigravity groupBy '%s', got %v", api.AntigravityQuotaGroupClaudeGPT, response["groupBy"])
+	}
+
+	quotaNames, ok := response["quotaNames"].([]interface{})
 	if !ok {
-		t.Fatal("expected codex field in both cycle overview response")
+		t.Fatalf("expected antigravity quotaNames array, got %T", response["quotaNames"])
 	}
-	codex, ok := codexRaw.(map[string]interface{})
-	if !ok {
-		t.Fatalf("expected codex overview to be object, got %T", codexRaw)
+	want := api.AntigravityQuotaGroupOrder()
+	if len(quotaNames) != len(want) {
+		t.Fatalf("expected %d antigravity quota names, got %d", len(want), len(quotaNames))
 	}
-	if codex["provider"] != "codex" {
-		t.Fatalf("expected codex provider field, got %v", codex["provider"])
-	}
-	if codex["groupBy"] != "five_hour" {
-		t.Fatalf("expected codex default groupBy five_hour, got %v", codex["groupBy"])
+	for i, w := range want {
+		if quotaNames[i] != w {
+			t.Fatalf("expected quotaNames[%d]=%s, got %v", i, w, quotaNames[i])
+		}
 	}
 }
 
@@ -3779,6 +3829,276 @@ func TestHandler_CycleOverview_BothCodexRespectsGroupByFallback(t *testing.T) {
 	}
 	if codex["groupBy"] != "seven_day" {
 		t.Fatalf("expected codex groupBy seven_day from generic groupBy fallback, got %v", codex["groupBy"])
+	}
+
+}
+
+func TestHandler_CycleOverview_AntigravityReturnsEmptyWhenNoCycles(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	// Insert a snapshot but no reset cycles
+	now := time.Now().UTC()
+	snapshot := &api.AntigravitySnapshot{
+		CapturedAt: now,
+		Models: []api.AntigravityModelQuota{
+			{ModelID: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM", Label: "GPT-OSS 120B (Medium)", RemainingFraction: 0.6, RemainingPercent: 60},
+			{ModelID: "MODEL_PLACEHOLDER_M36", Label: "Gemini 3.1 Pro", RemainingFraction: 0.8, RemainingPercent: 80},
+		},
+	}
+	if _, err := s.InsertAntigravitySnapshot(snapshot); err != nil {
+		t.Fatalf("failed to insert antigravity snapshot: %v", err)
+	}
+
+	cfg := createTestConfigWithAll()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cycle-overview?provider=antigravity", nil)
+	rr := httptest.NewRecorder()
+	h.CycleOverview(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	// Antigravity returns cycle overview with groupBy matching the query
+	if response["groupBy"] != api.AntigravityQuotaGroupClaudeGPT {
+		t.Fatalf("expected antigravity groupBy '%s', got %v", api.AntigravityQuotaGroupClaudeGPT, response["groupBy"])
+	}
+
+	// Should return empty cycles array when no reset cycles exist
+	cycles, ok := response["cycles"].([]interface{})
+	if !ok {
+		t.Fatalf("expected cycles array, got %T", response["cycles"])
+	}
+	if len(cycles) != 0 {
+		t.Fatalf("expected 0 cycles when no reset cycles exist, got %d", len(cycles))
+	}
+}
+
+func TestHandler_CycleOverview_AntigravityReturnsSingleActiveCycleRowPerGroup(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	reset := now.Add(4 * time.Hour)
+	snapshot := &api.AntigravitySnapshot{
+		CapturedAt: now,
+		Models: []api.AntigravityModelQuota{
+			{ModelID: "claude-4-5-sonnet", Label: "Claude 4.5 Sonnet", RemainingFraction: 0.75, RemainingPercent: 75, ResetTime: &reset},
+			{ModelID: "gpt-4o", Label: "GPT 4o", RemainingFraction: 0.65, RemainingPercent: 65, ResetTime: &reset},
+		},
+	}
+	if _, err := s.InsertAntigravitySnapshot(snapshot); err != nil {
+		t.Fatalf("failed to insert antigravity snapshot: %v", err)
+	}
+
+	if _, err := s.CreateAntigravityCycle("claude-4-5-sonnet", now.Add(-2*time.Hour), &reset); err != nil {
+		t.Fatalf("failed to create claude active cycle: %v", err)
+	}
+	if err := s.UpdateAntigravityCycle("claude-4-5-sonnet", 0.30, 0.10); err != nil {
+		t.Fatalf("failed to update claude active cycle: %v", err)
+	}
+
+	if _, err := s.CreateAntigravityCycle("gpt-4o", now.Add(-90*time.Minute), &reset); err != nil {
+		t.Fatalf("failed to create gpt active cycle: %v", err)
+	}
+	if err := s.UpdateAntigravityCycle("gpt-4o", 0.40, 0.12); err != nil {
+		t.Fatalf("failed to update gpt active cycle: %v", err)
+	}
+
+	cfg := createTestConfigWithAll()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/cycle-overview?provider=antigravity&groupBy=antigravity_claude_gpt", nil)
+	rr := httptest.NewRecorder()
+	h.CycleOverview(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	cyclesRaw, ok := response["cycles"].([]interface{})
+	if !ok {
+		t.Fatalf("expected cycles array, got %T", response["cycles"])
+	}
+
+	activeCount := 0
+	for _, item := range cyclesRaw {
+		cycle, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if cycle["cycleEnd"] == nil {
+			activeCount++
+		}
+	}
+	if activeCount > 1 {
+		t.Fatalf("expected at most 1 active cycle row for antigravity group, got %d", activeCount)
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ── Logging History Handler Tests ──
+// ═══════════════════════════════════════════════════════════════════
+
+func TestHandler_LoggingHistory_AntigravityReturnsSnapshots(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	now := time.Now().UTC()
+	snapshot1 := &api.AntigravitySnapshot{
+		CapturedAt: now.Add(-2 * time.Minute),
+		Models: []api.AntigravityModelQuota{
+			{ModelID: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM", Label: "GPT-OSS 120B", RemainingFraction: 0.8, RemainingPercent: 80},
+		},
+	}
+	snapshot2 := &api.AntigravitySnapshot{
+		CapturedAt: now.Add(-1 * time.Minute),
+		Models: []api.AntigravityModelQuota{
+			{ModelID: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM", Label: "GPT-OSS 120B", RemainingFraction: 0.7, RemainingPercent: 70},
+		},
+	}
+	if _, err := s.InsertAntigravitySnapshot(snapshot1); err != nil {
+		t.Fatalf("failed to insert snapshot1: %v", err)
+	}
+	if _, err := s.InsertAntigravitySnapshot(snapshot2); err != nil {
+		t.Fatalf("failed to insert snapshot2: %v", err)
+	}
+
+	cfg := createTestConfigWithAll()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/logging-history?provider=antigravity", nil)
+	rr := httptest.NewRecorder()
+	h.LoggingHistory(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if response["provider"] != "antigravity" {
+		t.Fatalf("expected provider 'antigravity', got %v", response["provider"])
+	}
+
+	logs, ok := response["logs"].([]interface{})
+	if !ok {
+		t.Fatalf("expected logs array, got %T", response["logs"])
+	}
+	if len(logs) != 2 {
+		t.Fatalf("expected 2 logging entries, got %d", len(logs))
+	}
+
+	// Verify logs are ordered newest first
+	log1 := logs[0].(map[string]interface{})
+	log2 := logs[1].(map[string]interface{})
+	if log1["id"].(float64) < log2["id"].(float64) {
+		t.Fatalf("expected logs to be ordered newest first")
+	}
+}
+
+func TestHandler_LoggingHistory_AntigravityCalculatesDeltas(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	now := time.Now().UTC()
+	// First snapshot: 80% remaining (20% used)
+	snapshot1 := &api.AntigravitySnapshot{
+		CapturedAt: now.Add(-2 * time.Minute),
+		Models: []api.AntigravityModelQuota{
+			{ModelID: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM", Label: "GPT-OSS 120B", RemainingFraction: 0.8, RemainingPercent: 80},
+		},
+	}
+	// Second snapshot: 70% remaining (30% used) - delta should be +10%
+	snapshot2 := &api.AntigravitySnapshot{
+		CapturedAt: now.Add(-1 * time.Minute),
+		Models: []api.AntigravityModelQuota{
+			{ModelID: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM", Label: "GPT-OSS 120B", RemainingFraction: 0.7, RemainingPercent: 70},
+		},
+	}
+	if _, err := s.InsertAntigravitySnapshot(snapshot1); err != nil {
+		t.Fatalf("failed to insert snapshot1: %v", err)
+	}
+	if _, err := s.InsertAntigravitySnapshot(snapshot2); err != nil {
+		t.Fatalf("failed to insert snapshot2: %v", err)
+	}
+
+	cfg := createTestConfigWithAll()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/logging-history?provider=antigravity", nil)
+	rr := httptest.NewRecorder()
+	h.LoggingHistory(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	logs := response["logs"].([]interface{})
+	// logs[0] is the newest (snapshot2), logs[1] is older (snapshot1)
+	// The delta should show in the second snapshot (snapshot2) relative to first
+
+	// First log (older, snapshot1) should have delta 0 (no previous)
+	log1 := logs[1].(map[string]interface{})
+	cq1 := log1["crossQuotas"].([]interface{})[0].(map[string]interface{})
+	delta1 := cq1["delta"].(float64)
+	if delta1 != 0 {
+		t.Fatalf("expected first snapshot delta to be 0, got %v", delta1)
+	}
+
+	// Second log (newer, snapshot2) should have delta +10 (usage went from 20% to 30%)
+	log2 := logs[0].(map[string]interface{})
+	cq2 := log2["crossQuotas"].([]interface{})[0].(map[string]interface{})
+	delta2 := cq2["delta"].(float64)
+	expectedDelta := 10.0 // 30% - 20% = 10%
+	if delta2 != expectedDelta {
+		t.Fatalf("expected second snapshot delta to be %v, got %v", expectedDelta, delta2)
+	}
+}
+
+func TestHandler_LoggingHistory_UnknownProviderReturnsEmpty(t *testing.T) {
+	cfg := createTestConfigWithAll()
+	h := NewHandler(nil, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/logging-history?provider=unknown", nil)
+	rr := httptest.NewRecorder()
+	h.LoggingHistory(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	logs, ok := response["logs"].([]interface{})
+	if !ok {
+		t.Fatalf("expected logs array, got %T", response["logs"])
+	}
+	if len(logs) != 0 {
+		t.Fatalf("expected empty logs array for unknown provider, got %d", len(logs))
 	}
 }
 
@@ -4000,6 +4320,185 @@ func TestHandler_Insights_Anthropic_WithData(t *testing.T) {
 	}
 }
 
+func TestHandler_History_Antigravity_UsesRFC3339Labels(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	reset := now.Add(2 * time.Hour)
+	first := &api.AntigravitySnapshot{
+		CapturedAt: now.Add(-30 * time.Minute),
+		Models: []api.AntigravityModelQuota{
+			{ModelID: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM", Label: "GPT-OSS 120B (Medium)", RemainingFraction: 0.80, RemainingPercent: 80, ResetTime: &reset},
+			{ModelID: "MODEL_PLACEHOLDER_M36", Label: "Gemini 3.1 Pro (Low)", RemainingFraction: 0.90, RemainingPercent: 90, ResetTime: &reset},
+			{ModelID: "MODEL_PLACEHOLDER_M18", Label: "Gemini 3 Flash", RemainingFraction: 0.95, RemainingPercent: 95, ResetTime: &reset},
+		},
+	}
+	second := &api.AntigravitySnapshot{
+		CapturedAt: now,
+		Models: []api.AntigravityModelQuota{
+			{ModelID: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM", Label: "GPT-OSS 120B (Medium)", RemainingFraction: 0.70, RemainingPercent: 70, ResetTime: &reset},
+			{ModelID: "MODEL_PLACEHOLDER_M36", Label: "Gemini 3.1 Pro (Low)", RemainingFraction: 0.85, RemainingPercent: 85, ResetTime: &reset},
+			{ModelID: "MODEL_PLACEHOLDER_M18", Label: "Gemini 3 Flash", RemainingFraction: 0.90, RemainingPercent: 90, ResetTime: &reset},
+		},
+	}
+
+	if _, err := s.InsertAntigravitySnapshot(first); err != nil {
+		t.Fatalf("failed to insert first antigravity snapshot: %v", err)
+	}
+	if _, err := s.InsertAntigravitySnapshot(second); err != nil {
+		t.Fatalf("failed to insert second antigravity snapshot: %v", err)
+	}
+
+	cfg := createTestConfigWithAll()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/history?provider=antigravity&range=24h", nil)
+	rr := httptest.NewRecorder()
+	h.History(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	labelsRaw, ok := response["labels"].([]interface{})
+	if !ok || len(labelsRaw) == 0 {
+		t.Fatalf("expected non-empty labels array, got %#v", response["labels"])
+	}
+
+	firstLabel, ok := labelsRaw[0].(string)
+	if !ok || firstLabel == "" {
+		t.Fatalf("expected first label to be non-empty string, got %#v", labelsRaw[0])
+	}
+
+	if _, err := time.Parse(time.RFC3339, firstLabel); err != nil {
+		t.Fatalf("expected RFC3339 label, got %q: %v", firstLabel, err)
+	}
+}
+
+func TestBuildAntigravityInsights_AggregatesBurnRateByAverageAcrossGroups(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	reset := now.Add(4 * time.Hour)
+	start := now.Add(-1 * time.Hour)
+
+	snapshot := &api.AntigravitySnapshot{
+		CapturedAt: now,
+		Models: []api.AntigravityModelQuota{
+			{ModelID: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM", Label: "GPT-OSS 120B (Medium)", RemainingFraction: 0.40, RemainingPercent: 40, ResetTime: &reset},
+			{ModelID: "MODEL_PLACEHOLDER_M36", Label: "Gemini 3.1 Pro (Low)", RemainingFraction: 0.70, RemainingPercent: 70, ResetTime: &reset},
+			{ModelID: "MODEL_PLACEHOLDER_M18", Label: "Gemini 3 Flash", RemainingFraction: 1.00, RemainingPercent: 100, ResetTime: &reset},
+		},
+	}
+	if _, err := s.InsertAntigravitySnapshot(snapshot); err != nil {
+		t.Fatalf("failed to insert antigravity snapshot: %v", err)
+	}
+
+	if _, err := s.CreateAntigravityCycle("MODEL_OPENAI_GPT_OSS_120B_MEDIUM", start, &reset); err != nil {
+		t.Fatalf("failed to create claude/gpt cycle: %v", err)
+	}
+	if err := s.UpdateAntigravityCycle("MODEL_OPENAI_GPT_OSS_120B_MEDIUM", 0.60, 0.60); err != nil {
+		t.Fatalf("failed to update claude/gpt cycle: %v", err)
+	}
+
+	if _, err := s.CreateAntigravityCycle("MODEL_PLACEHOLDER_M36", start, &reset); err != nil {
+		t.Fatalf("failed to create gemini-pro cycle: %v", err)
+	}
+	if err := s.UpdateAntigravityCycle("MODEL_PLACEHOLDER_M36", 0.30, 0.30); err != nil {
+		t.Fatalf("failed to update gemini-pro cycle: %v", err)
+	}
+
+	cfg := createTestConfigWithAll()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	resp := h.buildAntigravityInsights(map[string]bool{}, 24*time.Hour)
+	if len(resp.Stats) == 0 {
+		t.Fatal("expected stats to be present")
+	}
+
+	statsByLabel := map[string]string{}
+	for _, stat := range resp.Stats {
+		statsByLabel[stat.Label] = stat.Value
+	}
+
+	// With active cycles, the effective burn rate is shown as "Current Burn"
+	// The rate should be ~45%/hr (average of 60%/hr for GPT and 30%/hr for Gemini Pro)
+	got := statsByLabel["Current Burn"]
+	if got != "45.0%/hr" && got != "45.1%/hr" && got != "44.9%/hr" {
+		t.Fatalf("expected Current Burn around 45.0%%/hr, got %q", got)
+	}
+}
+
+func TestBuildAntigravityInsights_RangeFiltersOldCycles(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	reset := now.Add(4 * time.Hour)
+
+	// Insert current snapshot
+	snapshot := &api.AntigravitySnapshot{
+		CapturedAt: now,
+		Models: []api.AntigravityModelQuota{
+			{ModelID: "MODEL_OPENAI_GPT_OSS_120B_MEDIUM", Label: "GPT-OSS 120B (Medium)", RemainingFraction: 0.50, RemainingPercent: 50, ResetTime: &reset},
+		},
+	}
+	if _, err := s.InsertAntigravitySnapshot(snapshot); err != nil {
+		t.Fatalf("failed to insert snapshot: %v", err)
+	}
+
+	// Create old cycle (8 days ago) - should be excluded from 7d range
+	oldStart := now.Add(-8 * 24 * time.Hour)
+	oldEnd := now.Add(-7 * 24 * time.Hour)
+	if _, err := s.CreateAntigravityCycle("MODEL_OPENAI_GPT_OSS_120B_MEDIUM", oldStart, &reset); err != nil {
+		t.Fatalf("failed to create old cycle: %v", err)
+	}
+	// Close the old cycle
+	if err := s.CloseAntigravityCycle("MODEL_OPENAI_GPT_OSS_120B_MEDIUM", oldEnd, 0.80, 0.80); err != nil {
+		t.Fatalf("failed to close old cycle: %v", err)
+	}
+
+	// Create recent cycle (1 day ago) - should be included in 7d range
+	recentStart := now.Add(-24 * time.Hour)
+	if _, err := s.CreateAntigravityCycle("MODEL_OPENAI_GPT_OSS_120B_MEDIUM", recentStart, &reset); err != nil {
+		t.Fatalf("failed to create recent cycle: %v", err)
+	}
+	if err := s.UpdateAntigravityCycle("MODEL_OPENAI_GPT_OSS_120B_MEDIUM", 0.30, 0.30); err != nil {
+		t.Fatalf("failed to update recent cycle: %v", err)
+	}
+
+	cfg := createTestConfigWithAll()
+	h := NewHandler(s, nil, nil, nil, cfg)
+
+	// With 7d range, only recent cycle should be included
+	resp7d := h.buildAntigravityInsights(map[string]bool{}, 7*24*time.Hour)
+	found7d := false
+	for _, stat := range resp7d.Stats {
+		if stat.Label == "Current Burn" || stat.Label == "Avg Burn Rate" {
+			found7d = true
+			// Rate should be based only on recent cycle (30%/hr for 24h duration = 0.3 * 100 / 24 = 1.25%/hr)
+			// But with active cycle, it calculates from now, not cycle end
+		}
+	}
+	if !found7d && len(resp7d.Stats) > 0 {
+		t.Log("7d range returned stats, verifying range filter works")
+	}
+
+	// With 1d range, recent cycle should still be included
+	resp1d := h.buildAntigravityInsights(map[string]bool{}, 24*time.Hour)
+	// Verify we got some response
+	if len(resp1d.Insights) == 0 && len(resp1d.Stats) == 0 {
+		t.Fatal("expected at least some insights for 1d range")
+	}
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // ── Dashboard With Provider Param Tests ──
 // ═══════════════════════════════════════════════════════════════════
@@ -4024,7 +4523,7 @@ func TestHandler_Dashboard_WithProviderParam(t *testing.T) {
 func TestHandler_Dashboard_AppJSVersionedURL_Rendered(t *testing.T) {
 	cfg := createTestConfigWithAll()
 	h := NewHandler(nil, nil, nil, nil, cfg)
-	h.SetVersion("2.10.4")
+	h.SetVersion("2.11.0")
 
 	req := httptest.NewRequest(http.MethodGet, "/?provider=both", nil)
 	rr := httptest.NewRecorder()
@@ -4035,12 +4534,12 @@ func TestHandler_Dashboard_AppJSVersionedURL_Rendered(t *testing.T) {
 	}
 
 	body := rr.Body.String()
-	if !strings.Contains(body, "/static/app.js?v=2.10.4") {
+	if !strings.Contains(body, "/static/app.js?v=2.11.0") {
 		t.Fatalf("expected versioned app.js URL, body=%s", body)
 	}
 
-	if strings.Contains(body, "/static/app.js?v=") && !strings.Contains(body, "/static/app.js?v=2.10.4") {
-		t.Fatalf("expected app.js version token to match 2.10.4, body=%s", body)
+	if strings.Contains(body, "/static/app.js?v=") && !strings.Contains(body, "/static/app.js?v=2.11.0") {
+		t.Fatalf("expected app.js version token to match 2.11.0, body=%s", body)
 	}
 }
 

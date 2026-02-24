@@ -2,9 +2,9 @@
 
 ### **[onwatch.onllm.dev](https://onwatch.onllm.dev)**
 
-**onWatch** is a free, open-source CLI tool that tracks [Synthetic](https://synthetic.new), [Z.ai](https://z.ai), [Anthropic](https://anthropic.com) (Claude Code), [Codex](https://openai.com/codex), and [GitHub Copilot](https://github.com/features/copilot) API quota usage in real time. It runs as a lightweight background agent (<50 MB RAM with all five providers polling in parallel), stores historical data in SQLite, and serves a Material Design 3 web dashboard with dark/light mode.
+**onWatch** is a free, open-source CLI tool that tracks [Synthetic](https://synthetic.new), [Z.ai](https://z.ai), [Anthropic](https://anthropic.com) (Claude Code), [Codex](https://openai.com/codex), [GitHub Copilot](https://github.com/features/copilot), and Antigravity API quota usage in real time. It runs as a lightweight background agent (<50 MB RAM with all six providers polling in parallel), stores historical data in SQLite, and serves a Material Design 3 web dashboard with dark/light mode.
 
-onWatch fills the gap between "current usage snapshot" and the historical, per-cycle, cross-session intelligence that developers actually need. It works with any tool that uses Synthetic, Z.ai, Anthropic, Codex, or GitHub Copilot API keys, including **Cline**, **Roo Code**, **Kilo Code**, **Claude Code**, **Codex CLI**, **Cursor**, **Windsurf**, **GitHub Copilot**, and others.
+onWatch fills the gap between "current usage snapshot" and the historical, per-cycle, cross-session intelligence that developers actually need. It works with any tool that uses Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, or Antigravity API keys, including **Cline**, **Roo Code**, **Kilo Code**, **Claude Code**, **Codex CLI**, **Cursor**, **GitHub Copilot**, **Antigravity**, and others.
 
 **Zero telemetry. Single binary. All data stays on your machine.**
 
@@ -14,7 +14,7 @@ onWatch fills the gap between "current usage snapshot" and the historical, per-c
 [![Go 1.25+](https://img.shields.io/badge/Go-1.25+-00ADD8?style=for-the-badge&logo=go&logoColor=white)](https://go.dev)
 [![Platform](https://img.shields.io/badge/macOS%20%7C%20Linux%20%7C%20Windows-orange?style=for-the-badge&logo=apple&logoColor=white)](#quick-start)
 [![Website](https://img.shields.io/badge/onwatch.onllm.dev-7C3AED?style=for-the-badge&logo=globe&logoColor=white)](https://onwatch.onllm.dev)
-[![Version](https://img.shields.io/badge/Version-v2.10.4-0EA5E9?style=for-the-badge)](https://github.com/onllm-dev/onwatch/releases/tag/v2.10.4)
+[![Version](https://img.shields.io/badge/Version-v2.11.0-0EA5E9?style=for-the-badge)](https://github.com/onllm-dev/onwatch/releases/tag/v2.11.0)
 [![Downloads](https://img.shields.io/github/downloads/onllm-dev/onwatch/total?style=for-the-badge&logo=github&logoColor=white&label=Downloads&color=181717)](https://github.com/onllm-dev/onwatch/releases)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/prakersh)
 
@@ -80,6 +80,7 @@ At least one provider key is required. Configure any combination to track them i
 Provider setup guides:
 - [Codex Setup Guide](docs/CODEX_SETUP.md)
 - [Copilot Setup Guide](docs/COPILOT_SETUP.md)
+- [Antigravity Setup Guide](docs/ANTIGRAVITY_SETUP.md)
 
 ### Run
 
@@ -117,6 +118,7 @@ Open **http://localhost:9211** and log in with your `.env` credentials.
 - **Anthropic** -- Dynamic quota cards (5-Hour, 7-Day, 7-Day Sonnet, Monthly, etc.) with utilization percentages and OAuth token auto-refresh
 - **Codex** -- Dynamic quota cards (5-Hour, 7-Day) with OAuth auth-state refresh and historical cycle analytics
 - **GitHub Copilot (Beta)** -- Premium Interactions, Chat, and Completions quota cards with monthly reset tracking
+- **Antigravity** -- Multi-model quota cards (Claude, Gemini, GPT) with grouped quota pools, logging history, and cycle overview
 - **All** -- Side-by-side view of all configured providers
 - **PWA installable** -- Install onWatch from your browser for a native app experience (Beta)
 
@@ -148,7 +150,7 @@ Each quota card shows: usage vs. limit with progress bar, live countdown to rese
 
 | Audience                                                                                                                 | Pain Point                                                                          | How onWatch Helps                                                                                       |
 | ------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **Solo developers & freelancers** using Claude Code, Cline, Roo Code, or Kilo Code with Anthropic/Synthetic/Z.ai/Codex/Copilot | Budget anxiety -- no visibility into quota burn rate, surprise throttling mid-task  | Real-time rate projections, historical trends, live countdowns so you never get throttled unexpectedly  |
+| **Solo developers & freelancers** using Claude Code, Cline, Roo Code, or Kilo Code with Anthropic/Synthetic/Z.ai/Codex/Copilot/Antigravity | Budget anxiety -- no visibility into quota burn rate, surprise throttling mid-task  | Real-time rate projections, historical trends, live countdowns so you never get throttled unexpectedly  |
 | **Small dev teams (3-20 people)** sharing API keys                                                                       | No shared visibility into who's consuming what, impossible to budget next month     | Shared dashboard with session tracking, cycle history for budget planning                               |
 | **DevOps & platform engineers**                                                                                          | Shadow AI usage with no FinOps for coding API subscriptions                         | Lightweight sidecar (<50 MB), SQLite data source for Grafana, REST API for monitoring stack integration |
 | **Privacy-conscious developers** in regulated industries                                                                 | Can't use SaaS analytics that phone home; need local, auditable monitoring          | Single binary, local SQLite, zero telemetry, GPL-3.0 source code, works air-gapped                      |
@@ -181,43 +183,43 @@ Set `COPILOT_TOKEN` in your `.env` with a GitHub Personal Access Token (classic)
 
 ### Does onWatch work with Cline, Roo Code, Kilo Code, or Claude Code?
 
-Yes. onWatch monitors the API provider (Synthetic, Z.ai, Anthropic, Codex, or GitHub Copilot), not the coding tool. Any tool that uses a Synthetic, Z.ai, Anthropic, Codex, or Copilot API key -- including Cline, Roo Code, Kilo Code, Claude Code, Codex CLI, Cursor, Windsurf, GitHub Copilot, and others -- will have its usage tracked automatically.
+Yes. onWatch monitors the API provider (Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, or Antigravity), not the coding tool. Any tool that uses a Synthetic, Z.ai, Anthropic, Codex, Copilot, or Antigravity API key -- including Cline, Roo Code, Kilo Code, Claude Code, Codex CLI, Cursor, GitHub Copilot, Antigravity, and others -- will have its usage tracked automatically.
 
 ### Does onWatch send any data to external servers?
 
-No. Zero telemetry. All data stays in a local SQLite file. The only outbound calls are to the Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quota APIs you configure. Fully auditable on [GitHub](https://github.com/onllm-dev/onwatch) (GPL-3.0).
+No. Zero telemetry. All data stays in a local SQLite file. The only outbound calls are to the Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, and Antigravity quota APIs you configure (Antigravity connects to localhost only). Fully auditable on [GitHub](https://github.com/onllm-dev/onwatch) (GPL-3.0).
 
 ### How much memory does onWatch use?
 
-<50 MB under all conditions (typically ~34 MB idle, ~43 MB under heavy load). Measured with all five agents (Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot) polling in parallel. Lighter than a single browser tab. See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed benchmarks.
+<50 MB under all conditions (typically ~34 MB idle, ~43 MB under heavy load). Measured with all six agents (Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, Antigravity) polling in parallel. Lighter than a single browser tab. See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed benchmarks.
 
 ---
 
 ## Architecture
 
 ```text
-                  ┌──────────────┐
-                  │  Dashboard   │
-                  │  :9211       │
-                  └──────┬───────┘
-                  ┌──────┴───────┐
-                  │   SQLite     │
-                  │   (WAL)      │
-                  └──┬──┬──┬──┬──┬─┘
-       ┌────────────┘  │  │  │  └────────────┐
-  ┌────┴─────┐  ┌──────┴──┐  ┌──────┴──┐  ┌──────┴──┐  ┌──────┴──┐
-  │ Synthetic│  │  Z.ai   │  │Anthropic│  │  Codex  │  │ Copilot │
-  │  Agent   │  │  Agent  │  │  Agent  │  │  Agent  │  │  Agent  │
-  └────┬─────┘  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘
-  ┌────┴─────┐  ┌────┴────┐  ┌────┴────┐  ┌────┴────┐  ┌────┴────┐
-  │ Synthetic│  │  Z.ai   │  │Anthropic│  │chatgpt  │  │ GitHub  │
-  │  API     │  │  API    │  │OAuth API│  │OAuth API│  │Copilot  │
-  └──────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────┘
+                       ┌──────────────┐
+                       │  Dashboard   │
+                       │  :9211       │
+                       └──────┬───────┘
+                       ┌──────┴───────┐
+                       │   SQLite     │
+                       │   (WAL)      │
+                       └──┬──┬──┬──┬──┬──┬─┘
+       ┌─────────────────┘  │  │  │  │  └─────────────────┐
+  ┌────┴─────┐  ┌──────┴──┐  ┌──────┴──┐  ┌──────┴──┐  ┌──────┴──┐  ┌────┴─────┐
+  │ Synthetic│  │  Z.ai   │  │Anthropic│  │  Codex  │  │ Copilot │  │Antigrav. │
+  │  Agent   │  │  Agent  │  │  Agent  │  │  Agent  │  │  Agent  │  │  Agent   │
+  └────┬─────┘  └────┬────┘  └────┬────┘  └────┬────┘  └────┬────┘  └────┬─────┘
+  ┌────┴─────┐  ┌────┴────┐  ┌────┴────┐  ┌────┴────┐  ┌────┴────┐  ┌────┴─────┐
+  │ Synthetic│  │  Z.ai   │  │Anthropic│  │chatgpt  │  │ GitHub  │  │ Local    │
+  │  API     │  │  API    │  │OAuth API│  │OAuth API│  │Copilot  │  │ RPC      │
+  └──────────┘  └─────────┘  └─────────┘  └─────────┘  └─────────┘  └──────────┘
 ```
 
 All agents run as parallel goroutines. Each polls its API at the configured interval and writes snapshots. The dashboard reads from the shared store.
 
-**Measured RAM (all five agents running in parallel):** ~34 MB idle, ~43 MB under heavy load. Single binary, all assets embedded via `embed.FS`.
+**Measured RAM (all six agents running in parallel):** ~34 MB idle, ~43 MB under heavy load. Single binary, all assets embedded via `embed.FS`.
 
 ---
 
@@ -234,18 +236,21 @@ All agents run as parallel goroutines. Each polls its API at the configured inte
 
 Additional environment variables:
 
-| Variable             | Description                                            |
-| -------------------- | ------------------------------------------------------ |
-| `ANTHROPIC_TOKEN`    | Anthropic OAuth token (auto-detected from Claude Code) |
-| `CODEX_TOKEN`        | Codex OAuth access token (recommended for Codex-only)  |
-| `COPILOT_TOKEN`      | GitHub Copilot PAT with `copilot` scope (Beta)         |
-| `SYNTHETIC_API_KEY`  | Synthetic API key                                      |
-| `ZAI_API_KEY`        | Z.ai API key                                           |
-| `ZAI_BASE_URL`       | Z.ai base URL (default: `https://api.z.ai/api`)        |
-| `ONWATCH_ADMIN_USER` | Dashboard username (default: `admin`)                  |
-| `ONWATCH_ADMIN_PASS` | Initial dashboard password (default: `changeme`)       |
-| `ONWATCH_LOG_LEVEL`  | Log level: debug, info, warn, error                    |
-| `ONWATCH_HOST`       | Bind address (default: `0.0.0.0`)                      |
+| Variable                 | Description                                            |
+| ------------------------ | ------------------------------------------------------ |
+| `ANTHROPIC_TOKEN`        | Anthropic OAuth token (auto-detected from Claude Code) |
+| `CODEX_TOKEN`            | Codex OAuth access token (recommended for Codex-only)  |
+| `COPILOT_TOKEN`          | GitHub Copilot PAT with `copilot` scope (Beta)         |
+| `ANTIGRAVITY_ENABLED`    | Enable Antigravity provider (auto-detects local server)|
+| `ANTIGRAVITY_BASE_URL`   | Antigravity base URL (for Docker/manual config)        |
+| `ANTIGRAVITY_CSRF_TOKEN` | Antigravity CSRF token (for Docker/manual config)      |
+| `SYNTHETIC_API_KEY`      | Synthetic API key                                      |
+| `ZAI_API_KEY`            | Z.ai API key                                           |
+| `ZAI_BASE_URL`           | Z.ai base URL (default: `https://api.z.ai/api`)        |
+| `ONWATCH_ADMIN_USER`     | Dashboard username (default: `admin`)                  |
+| `ONWATCH_ADMIN_PASS`     | Initial dashboard password (default: `changeme`)       |
+| `ONWATCH_LOG_LEVEL`      | Log level: debug, info, warn, error                    |
+| `ONWATCH_HOST`           | Bind address (default: `0.0.0.0`)                      |
 
 CLI flags override environment variables.
 
@@ -253,7 +258,7 @@ CLI flags override environment variables.
 
 ## API Endpoints
 
-All endpoints require authentication (session cookie or Basic Auth). Append `?provider=synthetic|zai|anthropic|codex|copilot|both` to select the provider.
+All endpoints require authentication (session cookie or Basic Auth). Append `?provider=synthetic|zai|anthropic|codex|copilot|antigravity|both` to select the provider.
 
 | Endpoint                        | Method      | Description                                    |
 | ------------------------------- | ----------- | ---------------------------------------------- |

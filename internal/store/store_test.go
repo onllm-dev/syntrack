@@ -64,6 +64,47 @@ func TestStore_BoundedCache(t *testing.T) {
 	}
 }
 
+func TestStore_AntigravityActiveCycleUniqueIndexExists(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	rows, err := s.db.Query("PRAGMA index_list('antigravity_reset_cycles')")
+	if err != nil {
+		t.Fatalf("failed to query index list: %v", err)
+	}
+	defer rows.Close()
+
+	found := false
+	for rows.Next() {
+		var seq int
+		var name string
+		var unique int
+		var origin string
+		var partial int
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			t.Fatalf("failed to scan index row: %v", err)
+		}
+		if name == "idx_antigravity_cycles_model_active_unique" {
+			found = true
+			if unique != 1 {
+				t.Fatalf("expected index %s to be unique", name)
+			}
+			if partial != 1 {
+				t.Fatalf("expected index %s to be partial", name)
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("index list iteration failed: %v", err)
+	}
+	if !found {
+		t.Fatal("expected idx_antigravity_cycles_model_active_unique index to exist")
+	}
+}
+
 func TestStore_InsertSnapshot(t *testing.T) {
 	s, err := New(":memory:")
 	if err != nil {

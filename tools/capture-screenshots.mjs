@@ -20,6 +20,7 @@ const PROVIDERS = [
   { name: 'zai', tab: 'zai' },
   { name: 'copilot', tab: 'copilot' },
   { name: 'codex', tab: 'codex' },
+  { name: 'antigravity', tab: 'antigravity' },
   { name: 'all', tab: 'both' },
 ];
 

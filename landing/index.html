@@ -12,8 +12,8 @@
       gtag('config', 'G-HLLYRRWW4R');
     </script>
     <title>onWatch - Multi-Provider AI API Intelligence · Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot</title>
-    <meta name="description" content="onWatch is the intelligence layer for multi-provider AI API management. Track usage across Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot with cross-provider insights, pattern detection, rate projections, and reset cycle intelligence - a ~13 MB Go binary, <50 MB RAM, zero telemetry.">
-    <meta name="keywords" content="onWatch, AI API intelligence, multi-provider API tracking, Synthetic API monitor, Z.ai API tracker, Anthropic API monitoring, Codex API monitoring, GitHub Copilot quota tracker, cross-provider insights, AI coding API usage, quota monitoring tool, open source API monitor, Cline quota tracker, Claude Code API usage, intelligent provider switching, API budget tracker, self-hosted API monitoring, reset cycle detection, rate projection, Go CLI tool, API quota dashboard">
+    <meta name="description" content="onWatch is the intelligence layer for multi-provider AI API management. Track usage across Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, and Antigravity with cross-provider insights, pattern detection, rate projections, and reset cycle intelligence - a ~13 MB Go binary, <50 MB RAM, zero telemetry.">
+    <meta name="keywords" content="onWatch, AI API intelligence, multi-provider API tracking, Synthetic API monitor, Z.ai API tracker, Anthropic API monitoring, Codex API monitoring, GitHub Copilot quota tracker, Antigravity quota tracker, cross-provider insights, AI coding API usage, quota monitoring tool, open source API monitor, Cline quota tracker, Claude Code API usage, intelligent provider switching, API budget tracker, self-hosted API monitoring, reset cycle detection, rate projection, Go CLI tool, API quota dashboard">
     <link rel="canonical" href="https://onwatch.onllm.dev">
 
     <!-- Open Graph -->
@@ -44,11 +44,11 @@
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "onWatch",
-      "description": "The intelligence layer for multi-provider AI API management. Tracks usage across Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot with cross-provider insights, pattern detection, consumption rate projections, reset cycle intelligence, and a Material Design 3 web dashboard. ~13 MB Go binary, <50 MB RAM, zero telemetry.",
+      "description": "The intelligence layer for multi-provider AI API management. Tracks usage across Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, and Antigravity with cross-provider insights, pattern detection, consumption rate projections, reset cycle intelligence, and a Material Design 3 web dashboard. ~13 MB Go binary, <50 MB RAM, zero telemetry.",
       "url": "https://onwatch.onllm.dev",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "macOS, Linux, Windows",
-      "softwareVersion": "2.10.4",
+      "softwareVersion": "2.11.0",
       "license": "https://www.gnu.org/licenses/gpl-3.0.en.html",
       "isAccessibleForFree": true,
       "offers": {
@@ -73,7 +73,8 @@
         "Automatic quota reset cycle detection",
         "Consumption rate projections and time-to-exhaustion",
         "Per-session usage tracking",
-        "Multi-provider support: Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot",
+        "Multi-provider support: Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, and Antigravity",
+        "Antigravity multi-model quota tracking (Claude, Gemini, GPT)",
         "Unified All Providers view showing all providers side-by-side",
         "Live countdown timers for quota resets",
         "Material Design 3 dashboard with dark and light mode",
@@ -88,7 +89,7 @@
         "Configurable delivery channels: email, push, or both",
         "Built-in self-update via CLI or dashboard"
       ],
-      "keywords": "AI API intelligence, multi-provider API tracking, Synthetic API, Z.ai, Anthropic, Codex, GitHub Copilot, AI coding tools, usage monitoring, open source, Cline, Claude Code, cross-provider insights, API budget tracker, self-hosted"
+      "keywords": "AI API intelligence, multi-provider API tracking, Synthetic API, Z.ai, Anthropic, Codex, GitHub Copilot, Antigravity, AI coding tools, usage monitoring, open source, Cline, Claude Code, cross-provider insights, API budget tracker, self-hosted"
     }
     </script>
 
@@ -127,7 +128,7 @@
           "name": "What is the Both view and why does it matter?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "The All Providers view is onWatch's cross-provider unified dashboard that shows Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quotas side-by-side in a single view. It lets you compare headroom across providers at a glance - for example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence."
+            "text": "The All Providers view is onWatch's cross-provider unified dashboard that shows Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, and Antigravity quotas side-by-side in a single view. It lets you compare headroom across providers at a glance - for example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence."
           }
         },
         {
@@ -135,7 +136,7 @@
           "name": "Does onWatch send any data to external servers?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "No. onWatch has zero telemetry. All usage data is stored locally in a SQLite file on your machine. The only outbound network calls are to the Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quota APIs you configure. No analytics, no tracking pixels, no cloud dependencies. The tool is fully open-source (GPL-3.0) and auditable on GitHub."
+            "text": "No. onWatch has zero telemetry. All usage data is stored locally in a SQLite file on your machine. The only outbound network calls are to the Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, and Antigravity quota APIs you configure. No analytics, no tracking pixels, no cloud dependencies. The tool is fully open-source (GPL-3.0) and auditable on GitHub."
           }
         },
         {
@@ -143,7 +144,7 @@
           "name": "How much memory does onWatch use?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "onWatch uses <50 MB RAM under all conditions (typically ~34 MB idle, ~43 MB under heavy load), measured with all five agents (Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot) polling in parallel. It's designed to run as a background daemon with minimal resource usage: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), and polling buffer (1 MB). This is lighter than a single browser tab."
+            "text": "onWatch uses <50 MB RAM under all conditions (typically ~34 MB idle, ~43 MB under heavy load), measured with all six agents (Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, Antigravity) polling in parallel. It's designed to run as a background daemon with minimal resource usage: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), and polling buffer (1 MB). This is lighter than a single browser tab."
           }
         },
         {
@@ -2308,7 +2309,7 @@ a:hover { text-decoration: underline; }
                 </span>
             </div>
             <h1>The <span class="accent">intelligence</span> layer for your AI API stack</h1>
-            <p class="hero-desc">Track API usage across Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot in one place. onWatch polls every provider's quotas, stores historical data locally, and surfaces patterns, projections, and cross-provider context-so you always know where your budget stands and which provider has headroom. Get notified via email or push notifications when quotas approach limits.</p>
+            <p class="hero-desc">Track API usage across Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, and Antigravity in one place. onWatch polls every provider's quotas, stores historical data locally, and surfaces patterns, projections, and cross-provider context-so you always know where your budget stands and which provider has headroom. Get notified via email or push notifications when quotas approach limits.</p>
             <div class="hero-actions">
                 <a href="#install" class="btn-primary">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
@@ -2328,7 +2329,7 @@ a:hover { text-decoration: underline; }
                 <code><span class="install-prefix">$</span> curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>
                 <span class="copy-hint">Copy</span>
             </div>
-            <p class="hero-meta"><span id="hero-version">v2.10.4</span> &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; <50 MB RAM &middot; ~13 MB Binary</p>
+            <p class="hero-meta"><span id="hero-version">v2.11.0</span> &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; <50 MB RAM &middot; ~13 MB Binary</p>
         </div>
 
         <!-- Dashboard Mockup -->
@@ -2578,7 +2579,7 @@ a:hover { text-decoration: underline; }
     <div class="container">
         <div class="fade-in" style="text-align:center;margin-bottom:40px;">
             <div class="section-label">Providers</div>
-            <h2 class="section-title">Five providers, one dashboard</h2>
+            <h2 class="section-title">Six providers, one dashboard</h2>
             <p class="section-desc" style="margin-left:auto;margin-right:auto;">Each provider has different quotas, reset cycles, and gotchas. onWatch handles the complexity.</p>
         </div>
         <div class="provider-grid fade-in">
@@ -2656,6 +2657,21 @@ a:hover { text-decoration: underline; }
                     <li><strong>completions</strong> - unlimited</li>
                 </ul>
                 <div class="provider-card-note">Uses GitHub PAT with copilot scope. Monthly reset cycle detection.</div>
+            </div>
+            <!-- Antigravity -->
+            <div class="provider-card provider-card--antigravity">
+                <div class="provider-card-head">
+                    <div class="provider-card-icon" style="background:#D97757;">
+                        <svg viewBox="0 0 24 24" fill="#fff"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                    </div>
+                    <div class="provider-card-name">Antigravity</div>
+                </div>
+                <ul class="provider-card-quotas">
+                    <li><strong>Claude models</strong> - Sonnet, Opus quotas</li>
+                    <li><strong>Gemini models</strong> - Pro, Flash quotas</li>
+                    <li><strong>GPT models</strong> - GPT-4 variants</li>
+                </ul>
+                <div class="provider-card-note">Auto-detects local language server. Groups models into logical quota pools.</div>
             </div>
         </div>
         <!-- Cross-provider banner -->
@@ -3227,19 +3243,19 @@ a:hover { text-decoration: underline; }
             <details class="faq-item">
                 <summary class="faq-question">What is the Both view and why does it matter?</summary>
                 <div class="faq-answer">
-                    <p>The All Providers view is onWatch's cross-provider unified dashboard. It shows Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quotas side-by-side so you can compare headroom across providers at a glance. For example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence-provider dashboards only show their own data.</p>
+                    <p>The All Providers view is onWatch's cross-provider unified dashboard. It shows Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, and Antigravity quotas side-by-side so you can compare headroom across providers at a glance. For example, if your Synthetic search quota is at 95% but Z.ai tokens are at 34%, you know to route work to Z.ai. No other tool provides this cross-provider intelligence-provider dashboards only show their own data.</p>
                 </div>
             </details>
             <details class="faq-item">
                 <summary class="faq-question">Does onWatch send any data to external servers?</summary>
                 <div class="faq-answer">
-                    <p>No. onWatch has zero telemetry. All usage data is stored locally in a SQLite file on your machine. The only outbound network calls are to the Synthetic, Z.ai, Anthropic, Codex, and GitHub Copilot quota APIs you configure. No analytics, no tracking, no cloud. The source code is fully auditable on <a href="https://github.com/onllm-dev/onwatch" target="_blank" rel="noopener noreferrer">GitHub</a> (GPL-3.0).</p>
+                    <p>No. onWatch has zero telemetry. All usage data is stored locally in a SQLite file on your machine. The only outbound network calls are to the Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, and Antigravity quota APIs you configure. No analytics, no tracking, no cloud. The source code is fully auditable on <a href="https://github.com/onllm-dev/onwatch" target="_blank" rel="noopener noreferrer">GitHub</a> (GPL-3.0).</p>
                 </div>
             </details>
             <details class="faq-item">
                 <summary class="faq-question">How much memory does onWatch use?</summary>
                 <div class="faq-answer">
-                    <p>onWatch uses <50 MB RAM under all conditions (typically ~34 MB idle, ~43 MB under heavy load), measured with all five agents (Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot) polling in parallel. Breakdown: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), polling buffer (1 MB). This is lighter than a single browser tab and designed to run as a background daemon indefinitely.</p>
+                    <p>onWatch uses <50 MB RAM under all conditions (typically ~34 MB idle, ~43 MB under heavy load), measured with all six agents (Synthetic, Z.ai, Anthropic, Codex, GitHub Copilot, Antigravity) polling in parallel. Breakdown: Go runtime (5 MB), SQLite in-process (2 MB), HTTP server (1 MB), polling buffer (1 MB). This is lighter than a single browser tab and designed to run as a background daemon indefinitely.</p>
                 </div>
             </details>
             <details class="faq-item">

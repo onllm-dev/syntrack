@@ -63,6 +63,7 @@ func NewServer(port int, handler *Handler, logger *slog.Logger, username, passwo
 	mux.HandleFunc("/api/settings/smtp/test", handler.SMTPTest)
 	mux.HandleFunc("/api/password", handler.ChangePassword)
 	mux.HandleFunc("/api/cycle-overview", handler.CycleOverview)
+	mux.HandleFunc("/api/logging-history", handler.LoggingHistory)
 	mux.HandleFunc("/api/update/check", handler.CheckUpdate)
 	mux.HandleFunc("/api/update/apply", handler.ApplyUpdate)
 	mux.HandleFunc("/api/push/vapid", handler.PushVAPIDKey)

@@ -601,6 +601,13 @@ has_codex_key() {
     [[ -n "$val" && "$val" != "your_codex_token_here" ]]
 }
 
+# Check if Antigravity is enabled
+has_antigravity_enabled() {
+    local val
+    val=$(env_get ANTIGRAVITY_ENABLED)
+    [[ "$val" == "true" ]]
+}
+
 # Append Anthropic config to existing .env
 append_anthropic_to_env() {
     local key="$1"
@@ -609,6 +616,16 @@ append_anthropic_to_env() {
         echo ""
         echo "# Anthropic token (Claude Code — auto-detected or manual)"
         echo "ANTHROPIC_TOKEN=${key}"
+    } >> "$env_file"
+}
+
+# Append Antigravity config to existing .env
+append_antigravity_to_env() {
+    local env_file="${INSTALL_DIR}/.env"
+    {
+        echo ""
+        echo "# Antigravity (Windsurf) - auto-detected from local process"
+        echo "ANTIGRAVITY_ENABLED=true"
     } >> "$env_file"
 }
 
@@ -628,19 +645,20 @@ interactive_setup() {
         SETUP_USERNAME="${SETUP_USERNAME:-admin}"
         SETUP_PASSWORD=""  # Don't show existing password
 
-        local has_syn=false has_zai=false has_anth=false has_codex=false
+        local has_syn=false has_zai=false has_anth=false has_codex=false has_anti=false
         has_synthetic_key && has_syn=true
         has_zai_key && has_zai=true
         has_anthropic_key && has_anth=true
         has_codex_key && has_codex=true
+        has_antigravity_enabled && has_anti=true
 
-        if $has_syn && $has_zai && $has_anth && $has_codex; then
+        if $has_syn && $has_zai && $has_anth && $has_codex && $has_anti; then
             # All providers configured — nothing to do
             info "Existing .env found — all providers configured"
             return
         fi
 
-        if ! $has_syn && ! $has_zai && ! $has_anth && ! $has_codex; then
+        if ! $has_syn && ! $has_zai && ! $has_anth && ! $has_codex && ! $has_anti; then
             # .env exists but no keys at all — run full setup
             warn "Existing .env found but no API keys configured"
             info "Running interactive setup..."
@@ -659,6 +677,7 @@ interactive_setup() {
             $has_zai && configured="${configured}Z.ai "
             $has_anth && configured="${configured}Anthropic "
             $has_codex && configured="${configured}Codex "
+            $has_anti && configured="${configured}Antigravity "
             info "Existing .env found — configured: ${configured}"
             printf "\n"
 
@@ -734,6 +753,27 @@ interactive_setup() {
                 fi
             fi
 
+            if ! $has_anti; then
+                # Try to detect if Antigravity (Windsurf) is running
+                if pgrep -f "antigravity" >/dev/null 2>&1; then
+                    printf "  ${GREEN}✓${NC} Windsurf (Antigravity) detected running\n"
+                    local add_anti
+                    add_anti=$(prompt_with_default "Enable Antigravity tracking? (Y/n)" "Y")
+                    if [[ "$add_anti" =~ ^[Yy] ]] || [[ -z "$add_anti" ]]; then
+                        append_antigravity_to_env
+                        ok "Added Antigravity provider to .env"
+                    fi
+                else
+                    local add_anti
+                    add_anti=$(prompt_with_default "Add Antigravity (Windsurf) provider? (y/N)" "N")
+                    if [[ "$add_anti" =~ ^[Yy] ]]; then
+                        append_antigravity_to_env
+                        ok "Added Antigravity provider to .env"
+                        printf "  ${DIM}Note: Windsurf must be running for auto-detection${NC}\n"
+                    fi
+                fi
+            fi
+
             $_opened_fd3 && exec 3<&- || true
             return
         fi
@@ -758,12 +798,13 @@ interactive_setup() {
         "Z.ai only" \
         "Anthropic (Claude Code) only" \
         "Codex only" \
+        "Antigravity (Windsurf) only" \
         "Multiple (choose one at a time)" \
         "All available")
 
-    local synthetic_key="" zai_key="" zai_base_url="" anthropic_token="" codex_token=""
+    local synthetic_key="" zai_key="" zai_base_url="" anthropic_token="" codex_token="" antigravity_enabled=""
 
-    if [[ "$provider_choice" == "5" ]]; then
+    if [[ "$provider_choice" == "6" ]]; then
         # ── Multiple: ask for each provider individually ──
         local add_it
         add_it=$(prompt_with_default "Add Synthetic provider? (y/N)" "N")
@@ -790,8 +831,14 @@ interactive_setup() {
             codex_token=$(collect_codex_config)
         fi
 
+        add_it=$(prompt_with_default "Add Antigravity (Windsurf) provider? (y/N)" "N")
+        if [[ "$add_it" =~ ^[Yy] ]]; then
+            antigravity_enabled="true"
+            printf "  ${DIM}Antigravity auto-detects the running Windsurf process${NC}\n"
+        fi
+
         # Validate at least one provider selected
-        if [[ -z "$synthetic_key" && -z "$zai_key" && -z "$anthropic_token" && -z "$codex_token" ]]; then
+        if [[ -z "$synthetic_key" && -z "$zai_key" && -z "$anthropic_token" && -z "$codex_token" && -z "$antigravity_enabled" ]]; then
             printf "  ${RED}No providers selected. Please select at least one.${NC}\n"
             # Re-run provider selection by recursion-safe retry
             printf "\n"
@@ -822,6 +869,12 @@ interactive_setup() {
                 fi
             fi
             if [[ -z "$synthetic_key" && -z "$zai_key" && -z "$anthropic_token" && -z "$codex_token" ]]; then
+                add_it=$(prompt_with_default "Add Antigravity (Windsurf) provider? (y/N)" "N")
+                if [[ "$add_it" =~ ^[Yy] ]]; then
+                    antigravity_enabled="true"
+                fi
+            fi
+            if [[ -z "$synthetic_key" && -z "$zai_key" && -z "$anthropic_token" && -z "$codex_token" && -z "$antigravity_enabled" ]]; then
                 fail "At least one provider is required"
             fi
         fi
@@ -829,13 +882,13 @@ interactive_setup() {
         # ── Single provider or All ──
 
         # ── Synthetic API Key ──
-        if [[ "$provider_choice" == "1" || "$provider_choice" == "6" ]]; then
+        if [[ "$provider_choice" == "1" || "$provider_choice" == "7" ]]; then
             printf "\n  ${DIM}Get your key: https://synthetic.new/settings/api${NC}\n"
             synthetic_key=$(prompt_secret "Synthetic API key (syn_...)" validate_synthetic_key)
         fi
 
         # ── Z.ai API Key ──
-        if [[ "$provider_choice" == "2" || "$provider_choice" == "6" ]]; then
+        if [[ "$provider_choice" == "2" || "$provider_choice" == "7" ]]; then
             local zai_result
             zai_result=$(collect_zai_config)
             zai_key=$(echo "$zai_result" | head -1)
@@ -843,13 +896,19 @@ interactive_setup() {
         fi
 
         # ── Anthropic Token ──
-        if [[ "$provider_choice" == "3" || "$provider_choice" == "6" ]]; then
+        if [[ "$provider_choice" == "3" || "$provider_choice" == "7" ]]; then
             anthropic_token=$(collect_anthropic_config)
         fi
 
         # ── Codex Token ──
-        if [[ "$provider_choice" == "4" || "$provider_choice" == "6" ]]; then
+        if [[ "$provider_choice" == "4" || "$provider_choice" == "7" ]]; then
             codex_token=$(collect_codex_config)
+        fi
+
+        # ── Antigravity (Windsurf) ──
+        if [[ "$provider_choice" == "5" || "$provider_choice" == "7" ]]; then
+            antigravity_enabled="true"
+            printf "\n  ${GREEN}✓${NC} Antigravity enabled (auto-detects running Windsurf process)\n"
         fi
     fi
 
@@ -930,6 +989,12 @@ interactive_setup() {
             echo ""
         fi
 
+        if [[ -n "$antigravity_enabled" ]]; then
+            echo "# Antigravity (Windsurf) - auto-detected from local process"
+            echo "ANTIGRAVITY_ENABLED=true"
+            echo ""
+        fi
+
         echo "# Dashboard credentials"
         echo "ONWATCH_ADMIN_USER=${SETUP_USERNAME}"
         echo "ONWATCH_ADMIN_PASS=${SETUP_PASSWORD}"
@@ -950,16 +1015,18 @@ interactive_setup() {
         2) provider_label="Z.ai" ;;
         3) provider_label="Anthropic" ;;
         4) provider_label="Codex" ;;
-        5)
+        5) provider_label="Antigravity" ;;
+        6)
             # Multiple — build label from selected providers
             local parts=()
             [[ -n "$synthetic_key" ]] && parts+=("Synthetic")
             [[ -n "$zai_key" ]] && parts+=("Z.ai")
             [[ -n "$anthropic_token" ]] && parts+=("Anthropic")
             [[ -n "$codex_token" ]] && parts+=("Codex")
+            [[ -n "$antigravity_enabled" ]] && parts+=("Antigravity")
             provider_label=$(IFS=", "; echo "${parts[*]}")
             ;;
-        6) provider_label="All providers" ;;
+        7) provider_label="All providers" ;;
     esac
 
     local masked_pass

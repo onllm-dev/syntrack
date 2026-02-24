@@ -604,6 +604,24 @@ func run() error {
 		logger.Info("Codex API client configured")
 	}
 
+	var antigravityClient *api.AntigravityClient
+	if cfg.HasProvider("antigravity") {
+		if cfg.AntigravityBaseURL != "" {
+			// Manual configuration (Docker mode)
+			conn := &api.AntigravityConnection{
+				BaseURL:   cfg.AntigravityBaseURL,
+				CSRFToken: cfg.AntigravityCSRFToken,
+				Protocol:  "https",
+			}
+			antigravityClient = api.NewAntigravityClient(logger, api.WithAntigravityConnection(conn))
+			logger.Info("Antigravity API client configured (manual)", "baseURL", cfg.AntigravityBaseURL)
+		} else {
+			// Auto-detection mode
+			antigravityClient = api.NewAntigravityClient(logger)
+			logger.Info("Antigravity API client configured (auto-detect)")
+		}
+	}
+
 	// Create components
 	tr := tracker.New(db, logger)
 
@@ -677,6 +695,18 @@ func run() error {
 		})
 	}
 
+	// Create Antigravity tracker
+	var antigravityTr *tracker.AntigravityTracker
+	if cfg.HasProvider("antigravity") {
+		antigravityTr = tracker.NewAntigravityTracker(db, logger)
+	}
+
+	var antigravityAg *agent.AntigravityAgent
+	if antigravityClient != nil {
+		antigravitySm := agent.NewSessionManager(db, "antigravity", idleTimeout, logger)
+		antigravityAg = agent.NewAntigravityAgent(antigravityClient, db, antigravityTr, cfg.PollInterval, logger, antigravitySm)
+	}
+
 	// Create notification engine
 	notifier := notify.New(db, logger)
 	notifier.SetEncryptionKey(deriveEncryptionKey(cfg.AdminPassHash))
@@ -699,6 +729,9 @@ func run() error {
 	}
 	if codexAg != nil {
 		codexAg.SetNotifier(notifier)
+	}
+	if antigravityAg != nil {
+		antigravityAg.SetNotifier(notifier)
 	}
 
 	// Wire polling checks — agents skip poll when telemetry disabled
@@ -733,6 +766,9 @@ func run() error {
 	if codexAg != nil {
 		codexAg.SetPollingCheck(func() bool { return isPollingEnabled("codex") })
 	}
+	if antigravityAg != nil {
+		antigravityAg.SetPollingCheck(func() bool { return isPollingEnabled("antigravity") })
+	}
 
 	// Wire reset callbacks to trackers
 	tr.SetOnReset(func(quotaName string) {
@@ -758,6 +794,11 @@ func run() error {
 			notifier.Check(notify.QuotaStatus{Provider: "codex", QuotaKey: quotaName, ResetOccurred: true})
 		})
 	}
+	if antigravityTr != nil {
+		antigravityTr.SetOnReset(func(modelID string) {
+			notifier.Check(notify.QuotaStatus{Provider: "antigravity", QuotaKey: modelID, ResetOccurred: true})
+		})
+	}
 
 	handler := web.NewHandler(db, tr, logger, nil, cfg, zaiTr)
 	handler.SetVersion(version)
@@ -770,6 +811,9 @@ func run() error {
 	}
 	if codexTr != nil {
 		handler.SetCodexTracker(codexTr)
+	}
+	if antigravityTr != nil {
+		handler.SetAntigravityTracker(antigravityTr)
 	}
 	updater := update.NewUpdater(version, logger)
 	handler.SetUpdater(updater)
@@ -868,7 +912,23 @@ func run() error {
 		}()
 	}
 
-	if ag == nil && zaiAg == nil && anthropicAg == nil && copilotAg == nil && codexAg == nil {
+	if antigravityAg != nil {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					logger.Error("Antigravity agent panicked", "panic", r)
+					agentErr <- fmt.Errorf("antigravity agent panic: %v", r)
+				}
+			}()
+			time.Sleep(1000 * time.Millisecond) // stagger to avoid SQLite BUSY
+			logger.Info("Starting Antigravity agent", "interval", cfg.PollInterval)
+			if err := antigravityAg.Run(ctx); err != nil {
+				agentErr <- fmt.Errorf("antigravity agent error: %w", err)
+			}
+		}()
+	}
+
+	if ag == nil && zaiAg == nil && anthropicAg == nil && copilotAg == nil && codexAg == nil && antigravityAg == nil {
 		logger.Info("No agents configured")
 	}
 
@@ -1289,6 +1349,9 @@ func printBanner(cfg *config.Config, version string) {
 			label = "Codex (auto):      "
 		}
 		fmt.Printf("%s%s\n", label, redactAPIKey(cfg.CodexToken))
+	}
+	if cfg.HasProvider("antigravity") {
+		fmt.Printf("Antigravity:       %s\n", "auto-detect")
 	}
 	fmt.Println()
 }

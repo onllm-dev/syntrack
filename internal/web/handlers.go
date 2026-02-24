@@ -51,26 +51,27 @@ type Notifier interface {
 
 // Handler handles HTTP requests for the web dashboard
 type Handler struct {
-	store            *store.Store
-	tracker          *tracker.Tracker
-	zaiTracker       *tracker.ZaiTracker
-	anthropicTracker *tracker.AnthropicTracker
-	copilotTracker   *tracker.CopilotTracker
-	codexTracker     *tracker.CodexTracker
-	updater          *update.Updater
-	notifier         Notifier
-	logger           *slog.Logger
-	dashboardTmpl    *template.Template
-	loginTmpl        *template.Template
-	settingsTmpl     *template.Template
-	sessions         *SessionStore
-	config           *config.Config
-	version          string
-	smtpTestMu       sync.Mutex
-	smtpTestLastSent time.Time
-	pushTestMu       sync.Mutex
-	pushTestLastSent time.Time
-	rateLimiter      *LoginRateLimiter // Per-IP rate limiting for login attempts
+	store              *store.Store
+	tracker            *tracker.Tracker
+	zaiTracker         *tracker.ZaiTracker
+	anthropicTracker   *tracker.AnthropicTracker
+	copilotTracker     *tracker.CopilotTracker
+	codexTracker       *tracker.CodexTracker
+	antigravityTracker *tracker.AntigravityTracker
+	updater            *update.Updater
+	notifier           Notifier
+	logger             *slog.Logger
+	dashboardTmpl      *template.Template
+	loginTmpl          *template.Template
+	settingsTmpl       *template.Template
+	sessions           *SessionStore
+	config             *config.Config
+	version            string
+	smtpTestMu         sync.Mutex
+	smtpTestLastSent   time.Time
+	pushTestMu         sync.Mutex
+	pushTestLastSent   time.Time
+	rateLimiter        *LoginRateLimiter // Per-IP rate limiting for login attempts
 }
 
 // NewHandler creates a new Handler instance
@@ -134,6 +135,11 @@ func (h *Handler) SetCopilotTracker(t *tracker.CopilotTracker) {
 // SetCodexTracker sets the Codex tracker for usage summary enrichment.
 func (h *Handler) SetCodexTracker(t *tracker.CodexTracker) {
 	h.codexTracker = t
+}
+
+// SetAntigravityTracker sets the Antigravity tracker for usage summary enrichment.
+func (h *Handler) SetAntigravityTracker(t *tracker.AntigravityTracker) {
+	h.antigravityTracker = t
 }
 
 // SetUpdater sets the updater for self-update functionality.
@@ -439,6 +445,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	hasAnthropic := hasVisibleProvider("anthropic")
 	hasCopilot := hasVisibleProvider("copilot")
 	hasCodex := hasVisibleProvider("codex")
+	hasAntigravity := hasVisibleProvider("antigravity")
 	data := map[string]interface{}{
 		"Title":           "Dashboard",
 		"Providers":       providers,
@@ -449,6 +456,7 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		"HasAnthropic":    hasAnthropic,
 		"HasCopilot":      hasCopilot,
 		"HasCodex":        hasCodex,
+		"HasAntigravity":  hasAntigravity,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -480,6 +488,8 @@ func (h *Handler) Current(w http.ResponseWriter, r *http.Request) {
 		h.currentCopilot(w, r)
 	case "codex":
 		h.currentCodex(w, r)
+	case "antigravity":
+		h.currentAntigravity(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -502,6 +512,9 @@ func (h *Handler) currentBoth(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.config.HasProvider("codex") {
 		response["codex"] = h.buildCodexCurrent()
+	}
+	if h.config.HasProvider("antigravity") {
+		response["antigravity"] = h.buildAntigravityCurrent()
 	}
 	respondJSON(w, http.StatusOK, response)
 }
@@ -833,6 +846,8 @@ func (h *Handler) History(w http.ResponseWriter, r *http.Request) {
 		h.historyCopilot(w, r)
 	case "codex":
 		h.historyCodex(w, r)
+	case "antigravity":
+		h.historyAntigravity(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -1119,6 +1134,8 @@ func (h *Handler) Cycles(w http.ResponseWriter, r *http.Request) {
 		h.cyclesCopilot(w, r)
 	case "codex":
 		h.cyclesCodex(w, r)
+	case "antigravity":
+		h.cyclesAntigravity(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -1201,6 +1218,24 @@ func (h *Handler) cyclesBoth(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		response["codex"] = codexCycles
+	}
+
+	if h.config.HasProvider("antigravity") {
+		modelIDs, err := h.store.QueryAllAntigravityModelIDs()
+		if err == nil {
+			var antigravityCycles []map[string]interface{}
+			for _, modelID := range modelIDs {
+				if active, err := h.store.QueryActiveAntigravityCycle(modelID); err == nil && active != nil {
+					antigravityCycles = append(antigravityCycles, antigravityCycleToMap(active))
+				}
+				if history, err := h.store.QueryAntigravityCycleHistory(modelID, 50); err == nil {
+					for _, c := range history {
+						antigravityCycles = append(antigravityCycles, antigravityCycleToMap(c))
+					}
+				}
+			}
+			response["antigravity"] = antigravityCycles
+		}
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -1712,6 +1747,9 @@ func (h *Handler) sessionsBoth(w http.ResponseWriter, r *http.Request) {
 	if h.config.HasProvider("codex") {
 		response["codex"] = buildSessionList("codex")
 	}
+	if h.config.HasProvider("antigravity") {
+		response["antigravity"] = buildSessionList("antigravity")
+	}
 
 	respondJSON(w, http.StatusOK, response)
 }
@@ -1807,6 +1845,8 @@ func (h *Handler) Insights(w http.ResponseWriter, r *http.Request) {
 		h.insightsCopilot(w, r, rangeDur)
 	case "codex":
 		h.insightsCodex(w, r, rangeDur)
+	case "antigravity":
+		h.insightsAntigravity(w, r, rangeDur)
 	default:
 	}
 }
@@ -1830,6 +1870,9 @@ func (h *Handler) insightsBoth(w http.ResponseWriter, r *http.Request, rangeDur 
 	}
 	if h.config.HasProvider("codex") {
 		response["codex"] = h.buildCodexInsights(hidden, rangeDur)
+	}
+	if h.config.HasProvider("antigravity") {
+		response["antigravity"] = h.buildAntigravityInsights(hidden, rangeDur)
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -3808,6 +3851,8 @@ func (h *Handler) CycleOverview(w http.ResponseWriter, r *http.Request) {
 		h.cycleOverviewCopilot(w, r)
 	case "codex":
 		h.cycleOverviewCodex(w, r)
+	case "antigravity":
+		h.cycleOverviewAntigravity(w, r)
 	default:
 		respondError(w, http.StatusBadRequest, fmt.Sprintf("unknown provider: %s", provider))
 	}
@@ -4591,6 +4636,393 @@ func codexQuotaDisplayOrder(name string) int {
 	}
 }
 
+// currentAntigravity returns current Antigravity quota status.
+func (h *Handler) currentAntigravity(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, h.buildAntigravityCurrent())
+}
+
+// buildAntigravityCurrent builds the Antigravity current quota response map.
+func (h *Handler) buildAntigravityCurrent() map[string]interface{} {
+	now := time.Now().UTC()
+	response := map[string]interface{}{
+		"capturedAt": now.Format(time.RFC3339),
+		"quotas":     []interface{}{},
+		"pools":      []interface{}{},
+	}
+
+	if h.store == nil {
+		return response
+	}
+
+	latest, err := h.store.QueryLatestAntigravity()
+	if err != nil {
+		h.logger.Error("failed to query latest Antigravity snapshot", "error", err)
+		return response
+	}
+
+	if latest == nil {
+		return response
+	}
+
+	response["capturedAt"] = latest.CapturedAt.Format(time.RFC3339)
+	if latest.Email != "" {
+		response["email"] = latest.Email
+	}
+	if latest.PlanName != "" {
+		response["planName"] = latest.PlanName
+	}
+	if latest.PromptCredits > 0 || latest.MonthlyCredits > 0 {
+		response["promptCredits"] = latest.PromptCredits
+		response["monthlyCredits"] = latest.MonthlyCredits
+	}
+
+	groups := api.GroupAntigravityModelsByLogicalQuota(latest.Models)
+	quotas := make([]map[string]interface{}, 0, len(groups))
+	for _, g := range groups {
+		status := antigravityUsageStatus(g.UsagePercent)
+		qMap := map[string]interface{}{
+			"modelId":           g.GroupKey,
+			"quotaGroup":        g.GroupKey,
+			"label":             g.DisplayName,
+			"displayName":       g.DisplayName,
+			"remainingFraction": g.RemainingFraction,
+			"remainingPercent":  g.RemainingPercent,
+			"usagePercent":      g.UsagePercent,
+			"isExhausted":       g.IsExhausted,
+			"status":            status,
+			"models":            g.ModelIDs,
+			"modelLabels":       g.Labels,
+			"color":             g.Color,
+		}
+		if g.ResetTime != nil {
+			timeUntilReset := g.TimeUntilReset
+			if timeUntilReset < 0 {
+				timeUntilReset = 0
+			}
+			qMap["resetTime"] = g.ResetTime.Format(time.RFC3339)
+			qMap["timeUntilReset"] = formatDuration(timeUntilReset)
+			qMap["timeUntilResetSeconds"] = int64(timeUntilReset.Seconds())
+		}
+
+		if h.antigravityTracker != nil {
+			groupRate := 0.0
+			groupProjected := 0.0
+			for _, modelID := range g.ModelIDs {
+				if summary, err := h.antigravityTracker.UsageSummary(modelID); err == nil && summary != nil {
+					groupRate += summary.CurrentRate
+					groupProjected += summary.ProjectedUsage
+				}
+			}
+			qMap["currentRate"] = groupRate
+			qMap["projectedUsage"] = groupProjected
+		}
+		quotas = append(quotas, qMap)
+	}
+	response["quotas"] = quotas
+	response["pools"] = quotas
+
+	var lowestPool map[string]interface{}
+	lowestRemaining := 101.0
+	for _, q := range quotas {
+		if remaining, ok := q["remainingPercent"].(float64); ok && remaining < lowestRemaining {
+			lowestRemaining = remaining
+			lowestPool = q
+		}
+	}
+	if lowestPool != nil {
+		response["lowestPool"] = lowestPool
+	}
+
+	return response
+}
+
+func antigravityUsageStatus(usagePercent float64) string {
+	switch {
+	case usagePercent >= 95:
+		return "critical"
+	case usagePercent >= 80:
+		return "danger"
+	case usagePercent >= 50:
+		return "warning"
+	default:
+		return "healthy"
+	}
+}
+
+// insightsAntigravity returns Antigravity-specific deep analytics.
+func (h *Handler) insightsAntigravity(w http.ResponseWriter, r *http.Request, rangeDur time.Duration) {
+	hidden := h.getHiddenInsightKeys()
+	respondJSON(w, http.StatusOK, h.buildAntigravityInsights(hidden, rangeDur))
+}
+
+// buildAntigravityInsights builds Antigravity insights focused on burn rates and exhaustion forecast.
+func (h *Handler) buildAntigravityInsights(hidden map[string]bool, rangeDur time.Duration) insightsResponse {
+	resp := insightsResponse{Stats: []insightStat{}, Insights: []insightItem{}}
+
+	if h.store == nil {
+		return resp
+	}
+
+	now := time.Now().UTC()
+	rangeStart := now.Add(-rangeDur)
+	latest, err := h.store.QueryLatestAntigravity()
+	if err != nil || latest == nil {
+		return resp
+	}
+
+	groups := api.GroupAntigravityModelsByLogicalQuota(latest.Models)
+	snapshots, err := h.store.QueryAntigravityHistory(rangeStart, now)
+	if err != nil {
+		snapshots = nil
+	}
+
+	type burnRateStats struct {
+		avgCompleted float64
+		current      float64
+		hasCompleted bool
+		hasCurrent   bool
+	}
+
+	burnRatesByGroup := map[string]burnRateStats{}
+	for _, group := range groups {
+		stats := burnRateStats{}
+
+		for _, modelID := range group.ModelIDs {
+			cycles, err := h.store.QueryAntigravityCycleHistory(modelID, 200)
+			if err == nil {
+				var sum float64
+				var count int
+				for _, cycle := range cycles {
+					if cycle == nil || cycle.CycleEnd == nil {
+						continue
+					}
+					// Filter by selected time range
+					if cycle.CycleStart.Before(rangeStart) {
+						continue
+					}
+					dur := cycle.CycleEnd.Sub(cycle.CycleStart)
+					if dur <= 0 || cycle.TotalDelta <= 0 {
+						continue
+					}
+					rate := (cycle.TotalDelta * 100) / dur.Hours()
+					if rate <= 0 {
+						continue
+					}
+					sum += rate
+					count++
+				}
+				if count > 0 {
+					stats.avgCompleted += sum / float64(count)
+					stats.hasCompleted = true
+				}
+			}
+
+			if active, err := h.store.QueryActiveAntigravityCycle(modelID); err == nil && active != nil {
+				dur := now.Sub(active.CycleStart)
+				if dur > 0 && active.TotalDelta > 0 {
+					rate := (active.TotalDelta * 100) / dur.Hours()
+					if rate > 0 {
+						stats.current += rate
+						stats.hasCurrent = true
+					}
+				}
+			}
+		}
+
+		burnRatesByGroup[group.GroupKey] = stats
+	}
+
+	totalAvgBurn := 0.0
+	totalCurrentBurn := 0.0
+	avgBurnCount := 0
+	currentBurnCount := 0
+	for _, group := range groups {
+		stats := burnRatesByGroup[group.GroupKey]
+		if stats.hasCompleted {
+			totalAvgBurn += stats.avgCompleted
+			avgBurnCount++
+		}
+		if stats.hasCurrent {
+			totalCurrentBurn += stats.current
+			currentBurnCount++
+		}
+	}
+	if avgBurnCount > 0 {
+		totalAvgBurn = totalAvgBurn / float64(avgBurnCount)
+	}
+	if currentBurnCount > 0 {
+		totalCurrentBurn = totalCurrentBurn / float64(currentBurnCount)
+	}
+
+	// Show effective burn rate (current if active, otherwise historical average)
+	effectiveBurn := totalCurrentBurn
+	burnLabel := "Current Burn"
+	if effectiveBurn <= 0 && totalAvgBurn > 0 {
+		effectiveBurn = totalAvgBurn
+		burnLabel = "Avg Burn Rate"
+	}
+	if !hidden["avg_burn_rate"] && effectiveBurn > 0 {
+		resp.Stats = append(resp.Stats, insightStat{
+			Label: burnLabel,
+			Value: fmt.Sprintf("%.1f%%/hr", effectiveBurn),
+		})
+	}
+
+	var globalEta *time.Time
+
+	for _, group := range groups {
+		stats := burnRatesByGroup[group.GroupKey]
+		groupRate := stats.current
+		if groupRate <= 0 && stats.hasCompleted {
+			groupRate = stats.avgCompleted
+		}
+
+		severity := "info"
+		metric := "No burn"
+		sublabel := fmt.Sprintf("%.0f%% left", group.RemainingPercent)
+
+		if groupRate > 0 {
+			metric = fmt.Sprintf("%.1f%%/hr", groupRate)
+			hoursToZero := group.RemainingPercent / groupRate
+			if hoursToZero > 0 {
+				eta := now.Add(time.Duration(hoursToZero * float64(time.Hour)))
+
+				if group.ResetTime != nil && eta.Before(*group.ResetTime) {
+					severity = "critical"
+					sublabel = fmt.Sprintf("Exhausts %s", eta.Format("Jan 2 15:04"))
+					if globalEta == nil || eta.Before(*globalEta) {
+						t := eta
+						globalEta = &t
+					}
+				} else {
+					if groupRate >= 5 {
+						severity = "warning"
+					}
+					sublabel = fmt.Sprintf("~%s left", formatDuration(time.Duration(hoursToZero*float64(time.Hour))))
+				}
+			}
+		}
+
+		if !hidden["burn_group_"+group.GroupKey] {
+			resp.Insights = append(resp.Insights, insightItem{
+				Key:      "burn_group_" + group.GroupKey,
+				Title:    group.DisplayName,
+				Metric:   metric,
+				Sublabel: sublabel,
+				Severity: severity,
+			})
+		}
+	}
+
+	// Only show exhaustion warning if there's an impending burndown
+	if globalEta != nil && !hidden["exhaustion_warning"] {
+		resp.Stats = append(resp.Stats, insightStat{
+			Label: "Exhausts By",
+			Value: globalEta.Format("Jan 2 15:04"),
+		})
+	}
+
+	if len(snapshots) >= 2 && !hidden["coverage"] {
+		first := snapshots[0]
+		last := snapshots[len(snapshots)-1]
+		dur := last.CapturedAt.Sub(first.CapturedAt)
+		resp.Insights = append(resp.Insights, insightItem{
+			Key:      "coverage",
+			Title:    "Coverage",
+			Metric:   formatDuration(dur),
+			Sublabel: fmt.Sprintf("%d polls", len(snapshots)),
+			Severity: "info",
+		})
+	}
+
+	return resp
+}
+
+// truncateName truncates a name to maxLen characters with ellipsis.
+func truncateName(name string, maxLen int) string {
+	if len(name) <= maxLen {
+		return name
+	}
+	return name[:maxLen-1] + "..."
+}
+
+// historyAntigravity returns Antigravity usage history with per-model datasets.
+func (h *Handler) historyAntigravity(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"labels":   []string{},
+			"datasets": []interface{}{},
+		})
+		return
+	}
+
+	duration, err := parseTimeRange(r.URL.Query().Get("range"))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	end := time.Now().UTC()
+	start := end.Add(-duration)
+
+	snapshots, err := h.store.QueryAntigravityRange(start, end)
+	if err != nil {
+		h.logger.Error("failed to query antigravity history", "error", err)
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"labels":   []string{},
+			"datasets": []interface{}{},
+		})
+		return
+	}
+
+	if len(snapshots) == 0 {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"labels":   []string{},
+			"datasets": []interface{}{},
+		})
+		return
+	}
+
+	step := downsampleStep(len(snapshots), maxChartPoints)
+	var labels []string
+	for i := 0; i < len(snapshots); i += step {
+		labels = append(labels, snapshots[i].CapturedAt.Format(time.RFC3339))
+	}
+
+	groupKeys := api.AntigravityQuotaGroupOrder()
+	groupedSeries := make(map[string][]float64, len(groupKeys))
+	for _, key := range groupKeys {
+		groupedSeries[key] = make([]float64, 0, len(labels))
+	}
+
+	for i := 0; i < len(snapshots); i += step {
+		groups := api.GroupAntigravityModelsByLogicalQuota(snapshots[i].Models)
+		valueByGroup := make(map[string]float64, len(groups))
+		for _, g := range groups {
+			valueByGroup[g.GroupKey] = g.UsagePercent
+		}
+		for _, key := range groupKeys {
+			groupedSeries[key] = append(groupedSeries[key], valueByGroup[key])
+		}
+	}
+
+	datasets := make([]map[string]interface{}, 0, len(groupKeys))
+	for _, key := range groupKeys {
+		datasets = append(datasets, map[string]interface{}{
+			"modelId":     key,
+			"label":       api.AntigravityQuotaGroupDisplayName(key),
+			"data":        groupedSeries[key],
+			"borderColor": api.AntigravityQuotaGroupColor(key),
+			"fill":        false,
+		})
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"labels":   labels,
+		"datasets": datasets,
+	})
+}
+
 func codexRemainingStatus(remaining float64) string {
 	switch {
 	case remaining <= 5:
@@ -4698,6 +5130,62 @@ func codexCycleToMap(cycle *store.CodexResetCycle) map[string]interface{} {
 	}
 	if cycle.ResetsAt != nil {
 		result["resetsAt"] = cycle.ResetsAt.Format(time.RFC3339)
+	}
+	return result
+}
+
+func (h *Handler) cyclesAntigravity(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+
+	modelID := r.URL.Query().Get("type")
+	if modelID == "" {
+		// If no model specified, return empty array
+		respondJSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+
+	response := []map[string]interface{}{}
+
+	active, err := h.store.QueryActiveAntigravityCycle(modelID)
+	if err != nil {
+		h.logger.Error("failed to query active Antigravity cycle", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query cycles")
+		return
+	}
+	if active != nil {
+		response = append(response, antigravityCycleToMap(active))
+	}
+
+	history, err := h.store.QueryAntigravityCycleHistory(modelID, 200)
+	if err != nil {
+		h.logger.Error("failed to query Antigravity cycle history", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query cycles")
+		return
+	}
+	for _, cycle := range history {
+		response = append(response, antigravityCycleToMap(cycle))
+	}
+
+	respondJSON(w, http.StatusOK, response)
+}
+
+func antigravityCycleToMap(cycle *store.AntigravityResetCycle) map[string]interface{} {
+	result := map[string]interface{}{
+		"id":         cycle.ID,
+		"modelId":    cycle.ModelID,
+		"cycleStart": cycle.CycleStart.Format(time.RFC3339),
+		"cycleEnd":   nil,
+		"peakUsage":  cycle.PeakUsage,
+		"totalDelta": cycle.TotalDelta,
+	}
+	if cycle.CycleEnd != nil {
+		result["cycleEnd"] = cycle.CycleEnd.Format(time.RFC3339)
+	}
+	if cycle.ResetTime != nil {
+		result["resetTime"] = cycle.ResetTime.Format(time.RFC3339)
 	}
 	return result
 }
@@ -5062,6 +5550,137 @@ func (h *Handler) cycleOverviewCodex(w http.ResponseWriter, r *http.Request) {
 		"provider":   "codex",
 		"quotaNames": quotaNames,
 		"cycles":     cycleOverviewRowsToJSON(rows),
+	})
+}
+
+func normalizeAntigravityGroupBy(groupBy string) string {
+	switch groupBy {
+	case api.AntigravityQuotaGroupClaudeGPT, api.AntigravityQuotaGroupGeminiPro, api.AntigravityQuotaGroupGeminiFlash:
+		return groupBy
+	}
+
+	if groupBy != "" {
+		mapped := api.AntigravityQuotaGroupForModel(groupBy, groupBy)
+		switch mapped {
+		case api.AntigravityQuotaGroupClaudeGPT, api.AntigravityQuotaGroupGeminiPro, api.AntigravityQuotaGroupGeminiFlash:
+			return mapped
+		}
+	}
+
+	return api.AntigravityQuotaGroupClaudeGPT
+}
+
+// cycleOverviewAntigravity returns Antigravity cycle overview with cross-quota data.
+func (h *Handler) cycleOverviewAntigravity(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"cycles": []interface{}{}})
+		return
+	}
+
+	groupBy := normalizeAntigravityGroupBy(r.URL.Query().Get("groupBy"))
+	limit := parseCycleOverviewLimit(r)
+
+	rows, err := h.store.QueryAntigravityCycleOverview(groupBy, limit)
+	if err != nil {
+		h.logger.Error("failed to query Antigravity cycle overview", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query cycle overview")
+		return
+	}
+
+	quotaNames := api.AntigravityQuotaGroupOrder()
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"groupBy":    groupBy,
+		"provider":   "antigravity",
+		"quotaNames": quotaNames,
+		"cycles":     cycleOverviewRowsToJSON(rows),
+	})
+}
+
+// LoggingHistory returns polling snapshots (logging history) for providers.
+// This is separate from cycle-overview which shows reset cycles.
+func (h *Handler) LoggingHistory(w http.ResponseWriter, r *http.Request) {
+	provider := r.URL.Query().Get("provider")
+	switch provider {
+	case "antigravity":
+		h.loggingHistoryAntigravity(w, r)
+	default:
+		// For other providers, logging history is not yet implemented
+		respondJSON(w, http.StatusOK, map[string]interface{}{"logs": []interface{}{}})
+	}
+}
+
+// loggingHistoryAntigravity returns Antigravity polling snapshots with deltas.
+func (h *Handler) loggingHistoryAntigravity(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"logs": []interface{}{}})
+		return
+	}
+
+	limit := parseCycleOverviewLimit(r)
+	if limit <= 0 {
+		limit = 200
+	}
+
+	// Query recent snapshots (polling logs)
+	now := time.Now().UTC()
+	start := now.Add(-30 * 24 * time.Hour) // Last 30 days
+	snapshots, err := h.store.QueryAntigravityRange(start, now, limit)
+	if err != nil {
+		h.logger.Error("failed to query Antigravity snapshots", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query logging history")
+		return
+	}
+
+	quotaNames := api.AntigravityQuotaGroupOrder()
+
+	// Convert snapshots to logging rows
+	// Query returns newest first (DESC), so iterate backwards (oldest to newest) for correct delta calculation
+	rows := make([]map[string]interface{}, 0, len(snapshots))
+	var prevGroupValues map[string]float64
+
+	for i := len(snapshots) - 1; i >= 0; i-- {
+		snap := snapshots[i]
+		groups := api.GroupAntigravityModelsByLogicalQuota(snap.Models)
+
+		// Build cross-quota values for this snapshot
+		crossQuotas := []map[string]interface{}{}
+		groupValues := map[string]float64{}
+
+		for _, group := range groups {
+			usedPercent := 100.0 - group.RemainingPercent
+			groupValues[group.GroupKey] = usedPercent
+
+			delta := 0.0
+			if prevGroupValues != nil {
+				delta = usedPercent - prevGroupValues[group.GroupKey]
+			}
+
+			crossQuotas = append(crossQuotas, map[string]interface{}{
+				"name":    group.GroupKey,
+				"percent": usedPercent,
+				"delta":   delta,
+			})
+		}
+
+		row := map[string]interface{}{
+			"id":          snap.ID,
+			"capturedAt":  snap.CapturedAt.Format(time.RFC3339),
+			"crossQuotas": crossQuotas,
+		}
+		rows = append(rows, row)
+		prevGroupValues = groupValues
+	}
+
+	// Reverse to show newest first
+	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+		rows[i], rows[j] = rows[j], rows[i]
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"provider":   "antigravity",
+		"quotaNames": quotaNames,
+		"logs":       rows,
 	})
 }
 
