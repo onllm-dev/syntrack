@@ -48,7 +48,7 @@
       "url": "https://onwatch.onllm.dev",
       "applicationCategory": "DeveloperApplication",
       "operatingSystem": "macOS, Linux, Windows",
-      "softwareVersion": "2.11.0",
+      "softwareVersion": "2.11.2",
       "license": "https://www.gnu.org/licenses/gpl-3.0.en.html",
       "isAccessibleForFree": true,
       "offers": {
@@ -104,7 +104,7 @@
           "name": "How do I get started with onWatch?",
           "acceptedAnswer": {
             "@type": "Answer",
-            "text": "Install with one command: curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash. Add your API keys to ~/.onwatch/.env - set any combination of SYNTHETIC_API_KEY, ZAI_API_KEY, ANTHROPIC_TOKEN, CODEX_TOKEN, or COPILOT_TOKEN. onWatch polls each configured provider every 60 seconds, stores snapshots in SQLite, and serves a Material Design 3 dashboard at localhost:9211 with live countdowns, charts, and cross-provider views."
+            "text": "On macOS/Linux, install with: curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash. On Windows, run in PowerShell: irm https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.ps1 | iex. The installer guides you through configuring API providers interactively. onWatch polls each configured provider every 60 seconds, stores snapshots in SQLite, and serves a Material Design 3 dashboard at localhost:9211 with live countdowns, charts, and cross-provider views."
           }
         },
         {
@@ -685,6 +685,32 @@ a:hover { text-decoration: underline; }
 .hero-install:hover .copy-hint { color: var(--accent-teal); }
 .hero-install.copied { border-color: var(--status-healthy); }
 .hero-install.copied .copy-hint { background: var(--status-healthy-bg); color: var(--status-healthy); }
+
+.hero-install-group {
+  display: flex;
+  gap: 12px;
+  max-width: 1200px;
+  margin: 0 auto 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.hero-install-group .hero-install {
+  flex: 1;
+  min-width: 320px;
+  max-width: 560px;
+  margin: 0;
+}
+.install-platform {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-teal);
+  padding: 2px 6px;
+  background: var(--accent-teal-muted);
+  border-radius: 4px;
+}
 
 .hero-meta {
   font-size: 13px;
@@ -2325,11 +2351,19 @@ a:hover { text-decoration: underline; }
                 </a>
             </div>
             <div class="install-label">One-command install</div>
-            <div class="hero-install" onclick="copyHeroCmd(this)" title="Click to copy" role="button" tabindex="0" aria-label="Copy install command">
-                <code><span class="install-prefix">$</span> curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>
-                <span class="copy-hint">Copy</span>
+            <div class="hero-install-group">
+                <div class="hero-install" onclick="copyHeroCmd(this)" title="Click to copy" role="button" tabindex="0" aria-label="Copy Mac/Linux install command" data-cmd="curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash">
+                    <span class="install-platform">Mac &amp; Linux</span>
+                    <code><span class="install-prefix">$</span> curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash</code>
+                    <span class="copy-hint">Copy</span>
+                </div>
+                <div class="hero-install" onclick="copyHeroCmd(this)" title="Click to copy" role="button" tabindex="0" aria-label="Copy Windows install command" data-cmd="irm https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.ps1 | iex">
+                    <span class="install-platform">Windows</span>
+                    <code><span class="install-prefix">PS&gt;</span> irm https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.ps1 | iex</code>
+                    <span class="copy-hint">Copy</span>
+                </div>
             </div>
-            <p class="hero-meta"><span id="hero-version">v2.11.0</span> &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; <50 MB RAM &middot; ~13 MB Binary</p>
+            <p class="hero-meta"><span id="hero-version">v2.11.2</span> &middot; Go &middot; GPL-3.0 &middot; Zero Telemetry &middot; <50 MB RAM &middot; ~13 MB Binary</p>
         </div>
 
         <!-- Dashboard Mockup -->
@@ -3129,18 +3163,18 @@ a:hover { text-decoration: underline; }
         <div class="fade-in" style="text-align:center;margin-bottom:40px;">
             <div class="section-label">Quick Start</div>
             <h2 class="section-title">Get up and running in minutes</h2>
-            <p class="section-desc" style="margin-left:auto;margin-right:auto;">Choose the method that works best for you. Supports macOS (ARM64, AMD64) and Linux (AMD64, ARM64).</p>
+            <p class="section-desc" style="margin-left:auto;margin-right:auto;">Choose the method that works best for you. Supports macOS, Linux, and Windows.</p>
         </div>
 
         <div class="install-methods">
-            <!-- Method 1: One-liner Install -->
+            <!-- Method 1: One-liner Install (macOS & Linux) -->
             <div class="install-method recommended fade-in">
                 <div class="method-badge">Recommended</div>
                 <div class="method-header">
                     <div class="method-icon teal">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
                     </div>
-                    <div class="method-title">One-Line Install</div>
+                    <div class="method-title">macOS &amp; Linux</div>
                 </div>
                 <p class="method-desc">Auto-detects your OS and architecture, downloads the binary to <code>~/.onwatch/</code>, creates <code>.env</code> config, sets up a systemd service (Linux) or self-daemonizes (macOS), adds to PATH, and starts tracking.</p>
                 <div class="method-code" style="margin-bottom:12px;">
@@ -3167,7 +3201,42 @@ a:hover { text-decoration: underline; }
                 </div>
             </div>
 
-            <!-- Method 2: Manual Download -->
+            <!-- Method 2: Windows & Docker -->
+            <div class="install-method fade-in">
+                <div class="method-header">
+                    <div class="method-icon blue">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    </div>
+                    <div class="method-title">Windows &amp; Docker</div>
+                </div>
+                <p class="method-desc">PowerShell installer for Windows with interactive setup and auto-detection of Claude Code/Codex credentials. Docker for containerized deployments with distroless image (~12 MB), non-root user, and persistent data volume.</p>
+                <div class="method-code" style="margin-bottom:12px;">
+                    <div class="method-code-header">
+                        <span class="method-code-lang">Windows (PowerShell)</span>
+                        <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
+                    </div>
+                    <div class="method-code-body"><span class="code-comment"># Interactive installer - auto-detects credentials</span>
+<span class="code-cmd">irm</span> https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.ps1 | <span class="code-cmd">iex</span>
+
+<span class="code-comment"># Manage: onwatch, onwatch stop, onwatch --debug</span></div>
+                </div>
+                <div class="method-code">
+                    <div class="method-code-header">
+                        <span class="method-code-lang">Docker</span>
+                        <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
+                    </div>
+                    <div class="method-code-body"><span class="code-comment"># Clone &amp; configure</span>
+<span class="code-cmd">git</span> clone https://github.com/onllm-dev/onwatch.git
+<span class="code-cmd">cd</span> onwatch && <span class="code-cmd">cp</span> .env.docker.example .env
+<span class="code-cmd">nano</span> .env              <span class="code-comment"># add your API keys</span>
+
+<span class="code-comment"># Run with Docker Compose</span>
+<span class="code-cmd">docker-compose</span> up -d
+<span class="code-cmd">docker-compose</span> logs -f  <span class="code-comment"># view logs</span></div>
+                </div>
+            </div>
+
+            <!-- Method 3: Manual Download -->
             <div class="install-method fade-in">
                 <div class="method-header">
                     <div class="method-icon peach">
@@ -3199,32 +3268,6 @@ a:hover { text-decoration: underline; }
 <span class="code-cmd">systemctl</span> stop onwatch       <span class="code-comment"># stop</span>
 <span class="code-cmd">systemctl</span> status onwatch     <span class="code-comment"># check status</span>
 <span class="code-cmd">journalctl</span> -u onwatch -f     <span class="code-comment"># live logs</span></div>
-                </div>
-            </div>
-
-            <!-- Method 3: Docker -->
-            <div class="install-method fade-in">
-                <div class="method-header">
-                    <div class="method-icon blue">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12.5c0 .8-.3 1.5-.8 2-.3-.5-.8-.9-1.4-1.1-.2-.8-.7-1.5-1.3-2 .5-.3.9-.8 1.1-1.3.8-.2 1.5-.7 2-1.3.5.5.9 1.2.9 2 0 .4-.1.7-.2 1 .5.2.7.7.7 1.2z"/><rect x="1" y="8" width="4" height="4"/><rect x="6" y="8" width="4" height="4"/><rect x="11" y="8" width="4" height="4"/><rect x="6" y="3" width="4" height="4"/><rect x="11" y="3" width="4" height="4"/><rect x="16" y="8" width="4" height="4"/></svg>
-                    </div>
-                    <div class="method-title">Docker</div>
-                </div>
-                <p class="method-desc">Run in a container with Docker Compose. Distroless image (~12 MB), non-root user, persistent data volume.</p>
-                <div class="method-code">
-                    <div class="method-code-header">
-                        <span class="method-code-lang">docker</span>
-                        <button class="method-code-copy" onclick="copyMethodCode(this)" aria-label="Copy">Copy</button>
-                    </div>
-                    <div class="method-code-body"><span class="code-comment"># Clone &amp; configure</span>
-<span class="code-cmd">git</span> clone https://github.com/onllm-dev/onwatch.git
-<span class="code-cmd">cd</span> onwatch
-<span class="code-cmd">cp</span> .env.docker.example .env
-<span class="code-cmd">nano</span> .env              <span class="code-comment"># add your API keys</span>
-
-<span class="code-comment"># Run with Docker Compose</span>
-<span class="code-cmd">docker-compose</span> up -d
-<span class="code-cmd">docker-compose</span> logs -f  <span class="code-comment"># view logs</span></div>
                 </div>
             </div>
 
@@ -3767,7 +3810,7 @@ function copyMethodCode(btn) {
 
 /* Copy hero install command */
 function copyHeroCmd(el) {
-    var cmd = 'curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash';
+    var cmd = el.getAttribute('data-cmd') || 'curl -fsSL https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.sh | bash';
     navigator.clipboard.writeText(cmd).then(function() {
         el.classList.add('copied');
         el.querySelector('.copy-hint').textContent = 'Copied!';
