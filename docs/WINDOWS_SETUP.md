@@ -297,6 +297,23 @@ nssm remove onwatch confirm
 
 ## Troubleshooting
 
+### Windows Defender False Positive
+
+Windows Defender may flag `onwatch.exe` as `Program:Win32/Wacapew.A!ml`. **This is a false positive.**
+
+**Why this happens:** Go binaries are statically compiled, bundling the entire runtime into a single ~13MB executable. This structure - combined with the binary's network operations (HTTP server, API polling) - triggers machine learning heuristics designed to detect packed or obfuscated malware. This is a [known issue](https://go.dev/doc/faq#virus) affecting many legitimate Go applications.
+
+**Our status:** We have submitted onwatch.exe to Microsoft for analysis and whitelisting. This process typically takes 1-2 weeks.
+
+**Workaround:** Add an exclusion in Windows Defender:
+1. Open **Windows Security** → **Virus & threat protection**
+2. Under "Virus & threat protection settings", click **Manage settings**
+3. Scroll to **Exclusions** → **Add or remove exclusions**
+4. Click **Add an exclusion** → **Folder**
+5. Add: `C:\Users\<your-username>\.onwatch`
+
+The source code is fully auditable at [github.com/onllm-dev/onwatch](https://github.com/onllm-dev/onwatch) (GPL-3.0).
+
 ### "At least one provider must be configured"
 
 This error means your `.env` file is missing or has no API keys configured.
