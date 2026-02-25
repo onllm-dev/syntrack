@@ -617,7 +617,9 @@ ONWATCH_POLL_INTERVAL=$pollInterval
 ONWATCH_PORT=$($script:SetupPort)
 "@
 
-    Set-Content -Path $envFile -Value $envContent -Encoding UTF8
+    # Write without BOM - PowerShell 5.1's -Encoding UTF8 adds BOM which breaks godotenv
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($envFile, $envContent, $utf8NoBom)
     Write-Ok "Created $envFile"
 
     # Summary
