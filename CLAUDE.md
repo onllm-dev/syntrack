@@ -96,6 +96,7 @@ gh release create vX.Y.Z \
   dist/onwatch-linux-amd64 \
   dist/onwatch-linux-arm64 \
   dist/onwatch-windows-amd64.exe \
+  install.bat \
   Dockerfile \
   docker-compose.yml \
   .env.docker.example \
@@ -109,11 +110,17 @@ gh release create vX.Y.Z \
 - `onwatch-linux-amd64` (Linux x64)
 - `onwatch-linux-arm64` (Linux ARM64)
 - `onwatch-windows-amd64.exe` (Windows x64)
+- `install.bat` (Windows installer launcher)
 - `Dockerfile`
 - `docker-compose.yml`
 - `.env.docker.example`
 
 **NEVER create a release without binaries.** Users depend on pre-built binaries for installation.
+
+**Windows Installation:**
+- Users can run `install.bat` (downloads and runs PowerShell installer)
+- Or run directly in PowerShell: `irm https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.ps1 | iex`
+- The binary now shows setup instructions if double-clicked without configuration
 
 ## CLI
 | Flag | Default | Description |

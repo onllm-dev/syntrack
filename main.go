@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	_ "embed"
@@ -44,6 +45,22 @@ func init() {
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+
+		// On Windows, if the error is about missing configuration and we're likely
+		// running from a double-click (no arguments), show installation instructions
+		// and wait for user input before closing the window.
+		if runtime.GOOS == "windows" && len(os.Args) == 1 {
+			if strings.Contains(err.Error(), "provider must be configured") {
+				fmt.Fprintln(os.Stderr, "")
+				fmt.Fprintln(os.Stderr, "To set up onWatch, run the PowerShell installer:")
+				fmt.Fprintln(os.Stderr, "  irm https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.ps1 | iex")
+				fmt.Fprintln(os.Stderr, "")
+				fmt.Fprintln(os.Stderr, "Or download install.bat from GitHub releases and double-click it.")
+				fmt.Fprintln(os.Stderr, "")
+				fmt.Fprint(os.Stderr, "Press Enter to exit...")
+				bufio.NewReader(os.Stdin).ReadBytes('\n')
+			}
+		}
 		os.Exit(1)
 	}
 }

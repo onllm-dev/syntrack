@@ -187,7 +187,7 @@ detect_platform() {
         Linux)   OS="linux" ;;
         Darwin)  OS="darwin" ;;
         MINGW*|MSYS*|CYGWIN*)
-            fail "Windows detected. Download manually: https://github.com/$REPO/releases" ;;
+            fail "Windows detected. Use PowerShell installer instead:\n       irm https://raw.githubusercontent.com/onllm-dev/onwatch/main/install.ps1 | iex" ;;
         *) fail "Unsupported OS: $os (supported: Linux, macOS)" ;;
     esac
 
