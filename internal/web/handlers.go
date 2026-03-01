@@ -5633,8 +5633,17 @@ func (h *Handler) loggingHistoryRangeAndLimit(r *http.Request) (time.Time, time.
 	if limit <= 0 {
 		limit = 200
 	}
+
+	// Parse range parameter (in days, default 30)
+	rangeDays := 30
+	if rangeStr := r.URL.Query().Get("range"); rangeStr != "" {
+		if parsed, err := strconv.Atoi(rangeStr); err == nil && parsed > 0 && parsed <= 30 {
+			rangeDays = parsed
+		}
+	}
+
 	now := time.Now().UTC()
-	start := now.Add(-30 * 24 * time.Hour)
+	start := now.Add(-time.Duration(rangeDays) * 24 * time.Hour)
 	return start, now, limit
 }
 

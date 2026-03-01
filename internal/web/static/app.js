@@ -2856,7 +2856,9 @@ async function fetchCycles() {
   const loggingHistoryProviders = new Set(['synthetic', 'zai', 'anthropic', 'copilot', 'codex', 'antigravity']);
 
   if (loggingHistoryProviders.has(provider)) {
-    const url = `/api/logging-history?provider=${provider}&limit=200`;
+    // Convert range from ms to days (min 1, max 30)
+    const rangeDays = Math.min(30, Math.max(1, Math.ceil(State.cyclesRange / (24 * 60 * 60 * 1000))));
+    const url = `/api/logging-history?provider=${provider}&limit=200&range=${rangeDays}`;
     try {
       const res = await authFetch(url);
       if (!res.ok) throw new Error('Failed to fetch logging history');
