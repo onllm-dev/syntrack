@@ -160,6 +160,51 @@ func TestZaiStore_QueryZaiRange_Empty(t *testing.T) {
 	}
 }
 
+func TestZaiStore_QueryZaiRange_WithLimitReturnsLatestChronological(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	base := time.Date(2026, 2, 27, 9, 0, 0, 0, time.UTC)
+	for i := 0; i < 5; i++ {
+		snapshot := &api.ZaiSnapshot{
+			CapturedAt:       base.Add(time.Duration(i) * time.Minute),
+			TimeLimit:        1000,
+			TimeUnit:         1,
+			TimeNumber:       1000,
+			TimeUsage:        float64(i),
+			TimeCurrentValue: float64(i),
+			TimeRemaining:    float64(1000 - i),
+			TimePercentage:   i,
+			TokensLimit:      200,
+			TokensUnit:       1,
+			TokensNumber:     200,
+			TokensUsage:      float64(i),
+			TokensPercentage: i,
+		}
+		if _, err := s.InsertZaiSnapshot(snapshot); err != nil {
+			t.Fatalf("InsertZaiSnapshot[%d] failed: %v", i, err)
+		}
+	}
+
+	snapshots, err := s.QueryZaiRange(base.Add(-time.Minute), base.Add(10*time.Minute), 2)
+	if err != nil {
+		t.Fatalf("QueryZaiRange with limit failed: %v", err)
+	}
+	if len(snapshots) != 2 {
+		t.Fatalf("expected 2 snapshots, got %d", len(snapshots))
+	}
+
+	if !snapshots[0].CapturedAt.Equal(base.Add(3 * time.Minute)) {
+		t.Fatalf("expected first limited snapshot at t+3m, got %s", snapshots[0].CapturedAt)
+	}
+	if !snapshots[1].CapturedAt.Equal(base.Add(4 * time.Minute)) {
+		t.Fatalf("expected second limited snapshot at t+4m, got %s", snapshots[1].CapturedAt)
+	}
+}
+
 func TestZaiStore_CreateAndCloseCycle(t *testing.T) {
 	s, err := New(":memory:")
 	if err != nil {

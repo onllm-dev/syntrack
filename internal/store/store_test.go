@@ -233,6 +233,42 @@ func TestStore_QueryRange_Empty(t *testing.T) {
 	}
 }
 
+func TestStore_QueryRange_WithLimitReturnsLatestChronological(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	base := time.Date(2026, 2, 27, 8, 0, 0, 0, time.UTC)
+	for i := 0; i < 5; i++ {
+		snapshot := &api.Snapshot{
+			CapturedAt: base.Add(time.Duration(i) * time.Minute),
+			Sub:        api.QuotaInfo{Limit: 100, Requests: float64(i), RenewsAt: base},
+			Search:     api.QuotaInfo{Limit: 50, Requests: float64(i), RenewsAt: base},
+			ToolCall:   api.QuotaInfo{Limit: 200, Requests: float64(i), RenewsAt: base},
+		}
+		if _, err := s.InsertSnapshot(snapshot); err != nil {
+			t.Fatalf("InsertSnapshot[%d] failed: %v", i, err)
+		}
+	}
+
+	snapshots, err := s.QueryRange(base.Add(-time.Minute), base.Add(10*time.Minute), 2)
+	if err != nil {
+		t.Fatalf("QueryRange with limit failed: %v", err)
+	}
+	if len(snapshots) != 2 {
+		t.Fatalf("expected 2 snapshots, got %d", len(snapshots))
+	}
+
+	if !snapshots[0].CapturedAt.Equal(base.Add(3 * time.Minute)) {
+		t.Fatalf("expected first limited snapshot at t+3m, got %s", snapshots[0].CapturedAt)
+	}
+	if !snapshots[1].CapturedAt.Equal(base.Add(4 * time.Minute)) {
+		t.Fatalf("expected second limited snapshot at t+4m, got %s", snapshots[1].CapturedAt)
+	}
+}
+
 func TestStore_CreateAndCloseSession(t *testing.T) {
 	s, err := New(":memory:")
 	if err != nil {

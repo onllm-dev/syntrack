@@ -135,7 +135,15 @@ func (s *Store) QueryCopilotRange(start, end time.Time, limit ...int) ([]*api.Co
 		WHERE captured_at BETWEEN ? AND ? ORDER BY captured_at ASC`
 	args := []interface{}{start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano)}
 	if len(limit) > 0 && limit[0] > 0 {
-		query += ` LIMIT ?`
+		query = `SELECT id, captured_at, copilot_plan, reset_date, quota_count
+			FROM (
+				SELECT id, captured_at, copilot_plan, reset_date, quota_count
+				FROM copilot_snapshots
+				WHERE captured_at BETWEEN ? AND ?
+				ORDER BY captured_at DESC
+				LIMIT ?
+			) recent
+			ORDER BY captured_at ASC`
 		args = append(args, limit[0])
 	}
 

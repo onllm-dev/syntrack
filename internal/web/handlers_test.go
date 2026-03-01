@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -4071,8 +4072,395 @@ func TestHandler_LoggingHistory_AntigravityCalculatesDeltas(t *testing.T) {
 	cq2 := log2["crossQuotas"].([]interface{})[0].(map[string]interface{})
 	delta2 := cq2["delta"].(float64)
 	expectedDelta := 10.0 // 30% - 20% = 10%
-	if delta2 != expectedDelta {
+	if math.Abs(delta2-expectedDelta) > 0.001 {
 		t.Fatalf("expected second snapshot delta to be %v, got %v", expectedDelta, delta2)
+	}
+}
+
+func TestHandler_LoggingHistory_SyntheticReturnsSnapshots(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	base := time.Now().UTC().Add(-5 * time.Minute)
+	for i, sub := range []float64{10, 25, 40} {
+		snap := &api.Snapshot{
+			CapturedAt: base.Add(time.Duration(i) * time.Minute),
+			Sub:        api.QuotaInfo{Limit: 100, Requests: sub, RenewsAt: base.Add(5 * time.Hour)},
+			Search:     api.QuotaInfo{Limit: 50, Requests: float64(5 + i), RenewsAt: base.Add(time.Hour)},
+			ToolCall:   api.QuotaInfo{Limit: 200, Requests: float64(20 + i), RenewsAt: base.Add(3 * time.Hour)},
+		}
+		if _, err := s.InsertSnapshot(snap); err != nil {
+			t.Fatalf("InsertSnapshot[%d]: %v", i, err)
+		}
+	}
+
+	h := NewHandler(s, nil, nil, nil, createTestConfigWithSynthetic())
+	req := httptest.NewRequest(http.MethodGet, "/api/logging-history?provider=synthetic&limit=2", nil)
+	rr := httptest.NewRecorder()
+	h.LoggingHistory(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if response["provider"] != "synthetic" {
+		t.Fatalf("expected provider synthetic, got %v", response["provider"])
+	}
+
+	quotaNames := response["quotaNames"].([]interface{})
+	expectedQuotaNames := []string{"subscription", "search", "toolcall"}
+	if len(quotaNames) != len(expectedQuotaNames) {
+		t.Fatalf("expected %d quota names, got %d", len(expectedQuotaNames), len(quotaNames))
+	}
+	for i, expected := range expectedQuotaNames {
+		if quotaNames[i].(string) != expected {
+			t.Fatalf("quotaNames[%d]=%s, want %s", i, quotaNames[i].(string), expected)
+		}
+	}
+
+	logs := response["logs"].([]interface{})
+	if len(logs) != 2 {
+		t.Fatalf("expected 2 logs, got %d", len(logs))
+	}
+
+	newest := logs[0].(map[string]interface{})
+	older := logs[1].(map[string]interface{})
+	newestTime, _ := time.Parse(time.RFC3339, newest["capturedAt"].(string))
+	olderTime, _ := time.Parse(time.RFC3339, older["capturedAt"].(string))
+	if !newestTime.After(olderTime) {
+		t.Fatalf("expected newest-first order, got %s then %s", newestTime, olderTime)
+	}
+
+	newestCQ := newest["crossQuotas"].([]interface{})
+	olderCQ := older["crossQuotas"].([]interface{})
+	if len(newestCQ) == 0 || len(olderCQ) == 0 {
+		t.Fatal("expected crossQuotas in logs")
+	}
+
+	olderSub := olderCQ[0].(map[string]interface{})
+	if olderSub["name"].(string) != "subscription" {
+		t.Fatalf("expected first quota subscription, got %s", olderSub["name"].(string))
+	}
+	if olderSub["delta"].(float64) != 0 {
+		t.Fatalf("expected older delta 0, got %.2f", olderSub["delta"].(float64))
+	}
+
+	newestSub := newestCQ[0].(map[string]interface{})
+	expectedDelta := 15.0 // 40% - 25%
+	if math.Abs(newestSub["delta"].(float64)-expectedDelta) > 0.001 {
+		t.Fatalf("expected newest delta %.2f, got %.2f", expectedDelta, newestSub["delta"].(float64))
+	}
+}
+
+func TestHandler_LoggingHistory_ZaiReturnsSnapshots(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	base := time.Now().UTC().Add(-5 * time.Minute)
+	for i, pct := range []int{10, 25, 40} {
+		snap := &api.ZaiSnapshot{
+			CapturedAt:       base.Add(time.Duration(i) * time.Minute),
+			TimeLimit:        1000,
+			TimeUnit:         1,
+			TimeNumber:       1000,
+			TimeUsage:        float64(100 + (i * 10)),
+			TimeCurrentValue: float64(100 + (i * 10)),
+			TimeRemaining:    float64(900 - (i * 10)),
+			TimePercentage:   10 + i,
+			TokensLimit:      200,
+			TokensUnit:       1,
+			TokensNumber:     200,
+			TokensUsage:      float64(20 + (i * 30)),
+			TokensPercentage: pct,
+		}
+		if _, err := s.InsertZaiSnapshot(snap); err != nil {
+			t.Fatalf("InsertZaiSnapshot[%d]: %v", i, err)
+		}
+	}
+
+	h := NewHandler(s, nil, nil, nil, createTestConfigWithZai())
+	req := httptest.NewRequest(http.MethodGet, "/api/logging-history?provider=zai&limit=2", nil)
+	rr := httptest.NewRecorder()
+	h.LoggingHistory(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if response["provider"] != "zai" {
+		t.Fatalf("expected provider zai, got %v", response["provider"])
+	}
+
+	quotaNames := response["quotaNames"].([]interface{})
+	expectedQuotaNames := []string{"tokens", "time"}
+	if len(quotaNames) != len(expectedQuotaNames) {
+		t.Fatalf("expected %d quota names, got %d", len(expectedQuotaNames), len(quotaNames))
+	}
+	for i, expected := range expectedQuotaNames {
+		if quotaNames[i].(string) != expected {
+			t.Fatalf("quotaNames[%d]=%s, want %s", i, quotaNames[i].(string), expected)
+		}
+	}
+
+	logs := response["logs"].([]interface{})
+	if len(logs) != 2 {
+		t.Fatalf("expected 2 logs, got %d", len(logs))
+	}
+
+	newest := logs[0].(map[string]interface{})
+	older := logs[1].(map[string]interface{})
+	newestTime, _ := time.Parse(time.RFC3339, newest["capturedAt"].(string))
+	olderTime, _ := time.Parse(time.RFC3339, older["capturedAt"].(string))
+	if !newestTime.After(olderTime) {
+		t.Fatalf("expected newest-first order, got %s then %s", newestTime, olderTime)
+	}
+
+	olderToken := older["crossQuotas"].([]interface{})[0].(map[string]interface{})
+	if olderToken["name"].(string) != "tokens" {
+		t.Fatalf("expected tokens first, got %s", olderToken["name"].(string))
+	}
+	if olderToken["delta"].(float64) != 0 {
+		t.Fatalf("expected older delta 0, got %.2f", olderToken["delta"].(float64))
+	}
+
+	newestToken := newest["crossQuotas"].([]interface{})[0].(map[string]interface{})
+	expectedDelta := 15.0 // 40 - 25
+	if math.Abs(newestToken["delta"].(float64)-expectedDelta) > 0.001 {
+		t.Fatalf("expected delta %.2f, got %.2f", expectedDelta, newestToken["delta"].(float64))
+	}
+}
+
+func TestHandler_LoggingHistory_AnthropicReturnsSnapshots(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	base := time.Now().UTC().Add(-5 * time.Minute)
+	for i, util := range []float64{20, 35, 55} {
+		snap := &api.AnthropicSnapshot{
+			CapturedAt: base.Add(time.Duration(i) * time.Minute),
+			Quotas: []api.AnthropicQuota{
+				{Name: "five_hour", Utilization: util},
+				{Name: "seven_day", Utilization: 10 + float64(i)},
+				{Name: "seven_day_sonnet", Utilization: 5 + float64(i)},
+			},
+			RawJSON: "{}",
+		}
+		if _, err := s.InsertAnthropicSnapshot(snap); err != nil {
+			t.Fatalf("InsertAnthropicSnapshot[%d]: %v", i, err)
+		}
+	}
+
+	h := NewHandler(s, nil, nil, nil, createTestConfigWithAnthropic())
+	req := httptest.NewRequest(http.MethodGet, "/api/logging-history?provider=anthropic&limit=2", nil)
+	rr := httptest.NewRecorder()
+	h.LoggingHistory(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if response["provider"] != "anthropic" {
+		t.Fatalf("expected provider anthropic, got %v", response["provider"])
+	}
+
+	quotaNames := response["quotaNames"].([]interface{})
+	expectedQuotaNames := []string{"five_hour", "seven_day", "seven_day_sonnet"}
+	if len(quotaNames) != len(expectedQuotaNames) {
+		t.Fatalf("expected %d quota names, got %d", len(expectedQuotaNames), len(quotaNames))
+	}
+	for i, expected := range expectedQuotaNames {
+		if quotaNames[i].(string) != expected {
+			t.Fatalf("quotaNames[%d]=%s, want %s", i, quotaNames[i].(string), expected)
+		}
+	}
+
+	logs := response["logs"].([]interface{})
+	if len(logs) != 2 {
+		t.Fatalf("expected 2 logs, got %d", len(logs))
+	}
+
+	newest := logs[0].(map[string]interface{})
+	older := logs[1].(map[string]interface{})
+	newestTime, _ := time.Parse(time.RFC3339, newest["capturedAt"].(string))
+	olderTime, _ := time.Parse(time.RFC3339, older["capturedAt"].(string))
+	if !newestTime.After(olderTime) {
+		t.Fatalf("expected newest-first order, got %s then %s", newestTime, olderTime)
+	}
+
+	olderFiveHour := older["crossQuotas"].([]interface{})[0].(map[string]interface{})
+	if olderFiveHour["delta"].(float64) != 0 {
+		t.Fatalf("expected older delta 0, got %.2f", olderFiveHour["delta"].(float64))
+	}
+
+	newestFiveHour := newest["crossQuotas"].([]interface{})[0].(map[string]interface{})
+	expectedDelta := 20.0 // 55 - 35
+	if math.Abs(newestFiveHour["delta"].(float64)-expectedDelta) > 0.001 {
+		t.Fatalf("expected delta %.2f, got %.2f", expectedDelta, newestFiveHour["delta"].(float64))
+	}
+}
+
+func TestHandler_LoggingHistory_CopilotReturnsSnapshots(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	base := time.Now().UTC().Add(-5 * time.Minute)
+	for i, remaining := range []int{90, 70, 40} {
+		snap := &api.CopilotSnapshot{
+			CapturedAt:  base.Add(time.Duration(i) * time.Minute),
+			CopilotPlan: "individual_pro",
+			RawJSON:     "{}",
+			Quotas: []api.CopilotQuota{
+				{Name: "premium_interactions", Entitlement: 100, Remaining: remaining, PercentRemaining: float64(remaining), Unlimited: false},
+				{Name: "chat", Entitlement: 0, Remaining: 0, PercentRemaining: 100, Unlimited: true},
+				{Name: "completions", Entitlement: 0, Remaining: 0, PercentRemaining: 100, Unlimited: true},
+			},
+		}
+		if _, err := s.InsertCopilotSnapshot(snap); err != nil {
+			t.Fatalf("InsertCopilotSnapshot[%d]: %v", i, err)
+		}
+	}
+
+	h := NewHandler(s, nil, nil, nil, createTestConfigWithAll())
+	req := httptest.NewRequest(http.MethodGet, "/api/logging-history?provider=copilot&limit=2", nil)
+	rr := httptest.NewRecorder()
+	h.LoggingHistory(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if response["provider"] != "copilot" {
+		t.Fatalf("expected provider copilot, got %v", response["provider"])
+	}
+
+	quotaNames := response["quotaNames"].([]interface{})
+	expectedQuotaNames := []string{"premium_interactions", "chat", "completions"}
+	if len(quotaNames) != len(expectedQuotaNames) {
+		t.Fatalf("expected %d quota names, got %d", len(expectedQuotaNames), len(quotaNames))
+	}
+	for i, expected := range expectedQuotaNames {
+		if quotaNames[i].(string) != expected {
+			t.Fatalf("quotaNames[%d]=%s, want %s", i, quotaNames[i].(string), expected)
+		}
+	}
+
+	logs := response["logs"].([]interface{})
+	if len(logs) != 2 {
+		t.Fatalf("expected 2 logs, got %d", len(logs))
+	}
+
+	newest := logs[0].(map[string]interface{})
+	older := logs[1].(map[string]interface{})
+	newestTime, _ := time.Parse(time.RFC3339, newest["capturedAt"].(string))
+	olderTime, _ := time.Parse(time.RFC3339, older["capturedAt"].(string))
+	if !newestTime.After(olderTime) {
+		t.Fatalf("expected newest-first order, got %s then %s", newestTime, olderTime)
+	}
+
+	olderPremium := older["crossQuotas"].([]interface{})[0].(map[string]interface{})
+	if olderPremium["delta"].(float64) != 0 {
+		t.Fatalf("expected older delta 0, got %.2f", olderPremium["delta"].(float64))
+	}
+
+	newestPremium := newest["crossQuotas"].([]interface{})[0].(map[string]interface{})
+	expectedDelta := 30.0 // used 60 - used 30
+	if math.Abs(newestPremium["delta"].(float64)-expectedDelta) > 0.001 {
+		t.Fatalf("expected delta %.2f, got %.2f", expectedDelta, newestPremium["delta"].(float64))
+	}
+}
+
+func TestHandler_LoggingHistory_CodexReturnsSnapshots(t *testing.T) {
+	s, _ := store.New(":memory:")
+	defer s.Close()
+
+	base := time.Now().UTC().Add(-5 * time.Minute)
+	for i, util := range []float64{10, 25, 45} {
+		snap := &api.CodexSnapshot{
+			CapturedAt: base.Add(time.Duration(i) * time.Minute),
+			PlanType:   "pro",
+			RawJSON:    "{}",
+			Quotas: []api.CodexQuota{
+				{Name: "five_hour", Utilization: util},
+				{Name: "seven_day", Utilization: 5 + float64(i)},
+				{Name: "code_review", Utilization: 2 + float64(i)},
+			},
+		}
+		if _, err := s.InsertCodexSnapshot(snap); err != nil {
+			t.Fatalf("InsertCodexSnapshot[%d]: %v", i, err)
+		}
+	}
+
+	h := NewHandler(s, nil, nil, nil, createTestConfigWithCodex())
+	req := httptest.NewRequest(http.MethodGet, "/api/logging-history?provider=codex&limit=2", nil)
+	rr := httptest.NewRecorder()
+	h.LoggingHistory(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rr.Code)
+	}
+
+	var response map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
+		t.Fatalf("failed to parse JSON: %v", err)
+	}
+
+	if response["provider"] != "codex" {
+		t.Fatalf("expected provider codex, got %v", response["provider"])
+	}
+
+	quotaNames := response["quotaNames"].([]interface{})
+	expectedQuotaNames := []string{"five_hour", "seven_day", "code_review"}
+	if len(quotaNames) != len(expectedQuotaNames) {
+		t.Fatalf("expected %d quota names, got %d", len(expectedQuotaNames), len(quotaNames))
+	}
+	for i, expected := range expectedQuotaNames {
+		if quotaNames[i].(string) != expected {
+			t.Fatalf("quotaNames[%d]=%s, want %s", i, quotaNames[i].(string), expected)
+		}
+	}
+
+	logs := response["logs"].([]interface{})
+	if len(logs) != 2 {
+		t.Fatalf("expected 2 logs, got %d", len(logs))
+	}
+
+	newest := logs[0].(map[string]interface{})
+	older := logs[1].(map[string]interface{})
+	newestTime, _ := time.Parse(time.RFC3339, newest["capturedAt"].(string))
+	olderTime, _ := time.Parse(time.RFC3339, older["capturedAt"].(string))
+	if !newestTime.After(olderTime) {
+		t.Fatalf("expected newest-first order, got %s then %s", newestTime, olderTime)
+	}
+
+	olderFiveHour := older["crossQuotas"].([]interface{})[0].(map[string]interface{})
+	if olderFiveHour["delta"].(float64) != 0 {
+		t.Fatalf("expected older delta 0, got %.2f", olderFiveHour["delta"].(float64))
+	}
+
+	newestFiveHour := newest["crossQuotas"].([]interface{})[0].(map[string]interface{})
+	expectedDelta := 20.0 // 45 - 25
+	if math.Abs(newestFiveHour["delta"].(float64)-expectedDelta) > 0.001 {
+		t.Fatalf("expected delta %.2f, got %.2f", expectedDelta, newestFiveHour["delta"].(float64))
 	}
 }
 

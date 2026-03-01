@@ -159,6 +159,42 @@ func TestQueryAntigravityCycleOverview_GroupedCrossQuotas(t *testing.T) {
 	}
 }
 
+func TestStore_QueryAntigravityRange_WithLimitReturnsLatestChronological(t *testing.T) {
+	s, err := New(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer s.Close()
+
+	base := time.Date(2026, 2, 27, 15, 0, 0, 0, time.UTC)
+	for i := 0; i < 5; i++ {
+		snap := &api.AntigravitySnapshot{
+			CapturedAt: base.Add(time.Duration(i) * time.Minute),
+			Models: []api.AntigravityModelQuota{
+				{ModelID: "claude-4-5-sonnet", Label: "Claude 4.5 Sonnet", RemainingFraction: 0.9 - (0.1 * float64(i)), RemainingPercent: 90 - (10 * float64(i))},
+			},
+		}
+		if _, err := s.InsertAntigravitySnapshot(snap); err != nil {
+			t.Fatalf("failed to insert snapshot %d: %v", i, err)
+		}
+	}
+
+	snapshots, err := s.QueryAntigravityRange(base.Add(-time.Minute), base.Add(10*time.Minute), 2)
+	if err != nil {
+		t.Fatalf("QueryAntigravityRange failed: %v", err)
+	}
+	if len(snapshots) != 2 {
+		t.Fatalf("expected 2 snapshots, got %d", len(snapshots))
+	}
+
+	if !snapshots[0].CapturedAt.Equal(base.Add(3 * time.Minute)) {
+		t.Fatalf("expected first limited snapshot at t+3m, got %s", snapshots[0].CapturedAt)
+	}
+	if !snapshots[1].CapturedAt.Equal(base.Add(4 * time.Minute)) {
+		t.Fatalf("expected second limited snapshot at t+4m, got %s", snapshots[1].CapturedAt)
+	}
+}
+
 func TestQueryAntigravityCycleOverview_RejectsInvalidGroup(t *testing.T) {
 	s, err := New(":memory:")
 	if err != nil {

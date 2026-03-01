@@ -2853,26 +2853,24 @@ function buildChartOptions(colors, yMax) {
 
 async function fetchCycles() {
   const provider = getCurrentProvider();
+  const loggingHistoryProviders = new Set(['synthetic', 'zai', 'anthropic', 'copilot', 'codex', 'antigravity']);
 
-  // For Antigravity, use logging-history endpoint (polling snapshots)
-  // For other providers, use cycle-overview endpoint (reset cycles)
-  if (provider === 'antigravity') {
-    const url = `/api/logging-history?provider=antigravity&limit=200`;
+  if (loggingHistoryProviders.has(provider)) {
+    const url = `/api/logging-history?provider=${provider}&limit=200`;
     try {
       const res = await authFetch(url);
       if (!res.ok) throw new Error('Failed to fetch logging history');
       const data = await res.json();
-      // Transform logging history to cycle-like format for table rendering
       State.allCyclesData = (data.logs || []).map(log => ({
         cycleId: log.id,
         cycleStart: log.capturedAt,
-        cycleEnd: log.capturedAt, // Point-in-time snapshot
+        cycleEnd: log.capturedAt,
         totalDelta: 0,
         crossQuotas: log.crossQuotas || [],
       }));
       State.cyclesQuotaNames = data.quotaNames || [];
       State.cyclesPage = 1;
-      State.isLoggingHistory = true; // Flag to render differently
+      State.isLoggingHistory = true;
       renderCyclesTable();
     } catch (err) {
       // logging history fetch error — table shows empty state
@@ -2880,16 +2878,8 @@ async function fetchCycles() {
     return;
   }
 
-  // For other providers, use cycle-overview endpoint
-  let groupBy = 'five_hour'; // default for Anthropic
-  if (provider === 'synthetic') {
-    groupBy = 'subscription';
-  } else if (provider === 'zai') {
-    groupBy = 'tokens';
-  } else if (provider === 'both') {
-    groupBy = 'five_hour';
-  }
-
+  // For both-provider view, keep existing cycle-overview behavior
+  let groupBy = 'five_hour';
   const url = `/api/cycle-overview?${providerParam()}&groupBy=${groupBy}&limit=200`;
 
   try {

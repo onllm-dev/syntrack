@@ -150,7 +150,15 @@ func (s *Store) QueryCodexRange(start, end time.Time, limit ...int) ([]*api.Code
 		WHERE captured_at BETWEEN ? AND ? ORDER BY captured_at ASC`
 	args := []interface{}{start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano)}
 	if len(limit) > 0 && limit[0] > 0 {
-		query += ` LIMIT ?`
+		query = `SELECT id, captured_at, plan_type, credits_balance, quota_count
+			FROM (
+				SELECT id, captured_at, plan_type, credits_balance, quota_count
+				FROM codex_snapshots
+				WHERE captured_at BETWEEN ? AND ?
+				ORDER BY captured_at DESC
+				LIMIT ?
+			) recent
+			ORDER BY captured_at ASC`
 		args = append(args, limit[0])
 	}
 

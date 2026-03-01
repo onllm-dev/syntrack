@@ -125,7 +125,14 @@ func TestCopilotStore_QueryRange(t *testing.T) {
 		t.Fatalf("QueryCopilotRange with limit: %v", err)
 	}
 	if len(limited) != 2 {
-		t.Errorf("QueryCopilotRange limited len = %d, want 2", len(limited))
+		t.Fatalf("QueryCopilotRange limited len = %d, want 2", len(limited))
+	}
+
+	if !limited[0].CapturedAt.Equal(now.Add(3 * time.Minute)) {
+		t.Fatalf("expected first limited snapshot at t+3m, got %s", limited[0].CapturedAt)
+	}
+	if !limited[1].CapturedAt.Equal(now.Add(4 * time.Minute)) {
+		t.Fatalf("expected second limited snapshot at t+4m, got %s", limited[1].CapturedAt)
 	}
 }
 

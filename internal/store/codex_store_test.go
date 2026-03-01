@@ -89,6 +89,13 @@ func TestCodexStore_QueryRange(t *testing.T) {
 	if len(limited) != 2 {
 		t.Fatalf("len(limited) = %d, want 2", len(limited))
 	}
+
+	if !limited[0].CapturedAt.Equal(now.Add(2 * time.Minute)) {
+		t.Fatalf("expected first limited snapshot at t+2m, got %s", limited[0].CapturedAt)
+	}
+	if !limited[1].CapturedAt.Equal(now.Add(3 * time.Minute)) {
+		t.Fatalf("expected second limited snapshot at t+3m, got %s", limited[1].CapturedAt)
+	}
 }
 
 func TestCodexStore_CyclesAndSeries(t *testing.T) {

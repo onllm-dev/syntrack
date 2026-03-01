@@ -5597,17 +5597,388 @@ func (h *Handler) cycleOverviewAntigravity(w http.ResponseWriter, r *http.Reques
 	})
 }
 
+type loggingHistoryCrossQuota struct {
+	Name     string
+	Value    float64
+	Limit    float64
+	Percent  float64
+	HasValue bool
+	HasLimit bool
+}
+
 // LoggingHistory returns polling snapshots (logging history) for providers.
 // This is separate from cycle-overview which shows reset cycles.
 func (h *Handler) LoggingHistory(w http.ResponseWriter, r *http.Request) {
 	provider := r.URL.Query().Get("provider")
 	switch provider {
+	case "synthetic":
+		h.loggingHistorySynthetic(w, r)
+	case "zai":
+		h.loggingHistoryZai(w, r)
+	case "anthropic":
+		h.loggingHistoryAnthropic(w, r)
+	case "copilot":
+		h.loggingHistoryCopilot(w, r)
+	case "codex":
+		h.loggingHistoryCodex(w, r)
 	case "antigravity":
 		h.loggingHistoryAntigravity(w, r)
 	default:
-		// For other providers, logging history is not yet implemented
 		respondJSON(w, http.StatusOK, map[string]interface{}{"logs": []interface{}{}})
 	}
+}
+
+func (h *Handler) loggingHistoryRangeAndLimit(r *http.Request) (time.Time, time.Time, int) {
+	limit := parseCycleOverviewLimit(r)
+	if limit <= 0 {
+		limit = 200
+	}
+	now := time.Now().UTC()
+	start := now.Add(-30 * 24 * time.Hour)
+	return start, now, limit
+}
+
+func loggingHistoryRowsFromSnapshots(
+	capturedAt []time.Time,
+	ids []int64,
+	quotaNames []string,
+	quotaSeries []map[string]loggingHistoryCrossQuota,
+) []map[string]interface{} {
+	rows := make([]map[string]interface{}, 0, len(capturedAt))
+	prevPercent := map[string]float64{}
+
+	for i := range capturedAt {
+		crossQuotas := make([]map[string]interface{}, 0, len(quotaNames))
+		for _, qn := range quotaNames {
+			cq, ok := quotaSeries[i][qn]
+			if !ok {
+				continue
+			}
+			delta := 0.0
+			if prev, seen := prevPercent[qn]; seen {
+				delta = cq.Percent - prev
+			}
+			entry := map[string]interface{}{
+				"name":    cq.Name,
+				"percent": cq.Percent,
+				"delta":   delta,
+			}
+			if cq.HasValue {
+				entry["value"] = cq.Value
+			}
+			if cq.HasLimit {
+				entry["limit"] = cq.Limit
+			}
+			crossQuotas = append(crossQuotas, entry)
+			prevPercent[qn] = cq.Percent
+		}
+
+		row := map[string]interface{}{
+			"capturedAt":  capturedAt[i].Format(time.RFC3339),
+			"crossQuotas": crossQuotas,
+		}
+		if i < len(ids) {
+			row["id"] = ids[i]
+		} else {
+			row["id"] = i + 1
+		}
+		rows = append(rows, row)
+	}
+
+	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
+		rows[i], rows[j] = rows[j], rows[i]
+	}
+	return rows
+}
+
+func (h *Handler) loggingHistorySynthetic(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"logs": []interface{}{}})
+		return
+	}
+
+	start, end, limit := h.loggingHistoryRangeAndLimit(r)
+	snapshots, err := h.store.QueryRange(start, end, limit)
+	if err != nil {
+		h.logger.Error("failed to query Synthetic snapshots", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query logging history")
+		return
+	}
+
+	quotaNames := []string{"subscription", "search", "toolcall"}
+	capturedAt := make([]time.Time, 0, len(snapshots))
+	ids := make([]int64, 0, len(snapshots))
+	series := make([]map[string]loggingHistoryCrossQuota, 0, len(snapshots))
+
+	for _, snap := range snapshots {
+		capturedAt = append(capturedAt, snap.CapturedAt)
+		ids = append(ids, snap.ID)
+
+		row := map[string]loggingHistoryCrossQuota{
+			"subscription": {
+				Name:     "subscription",
+				Value:    snap.Sub.Requests,
+				Limit:    snap.Sub.Limit,
+				Percent:  percentUsed(snap.Sub.Requests, snap.Sub.Limit),
+				HasValue: true,
+				HasLimit: true,
+			},
+			"search": {
+				Name:     "search",
+				Value:    snap.Search.Requests,
+				Limit:    snap.Search.Limit,
+				Percent:  percentUsed(snap.Search.Requests, snap.Search.Limit),
+				HasValue: true,
+				HasLimit: true,
+			},
+			"toolcall": {
+				Name:     "toolcall",
+				Value:    snap.ToolCall.Requests,
+				Limit:    snap.ToolCall.Limit,
+				Percent:  percentUsed(snap.ToolCall.Requests, snap.ToolCall.Limit),
+				HasValue: true,
+				HasLimit: true,
+			},
+		}
+		series = append(series, row)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"provider":   "synthetic",
+		"quotaNames": quotaNames,
+		"logs":       loggingHistoryRowsFromSnapshots(capturedAt, ids, quotaNames, series),
+	})
+}
+
+func (h *Handler) loggingHistoryZai(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"logs": []interface{}{}})
+		return
+	}
+
+	start, end, limit := h.loggingHistoryRangeAndLimit(r)
+	snapshots, err := h.store.QueryZaiRange(start, end, limit)
+	if err != nil {
+		h.logger.Error("failed to query Z.ai snapshots", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query logging history")
+		return
+	}
+
+	quotaNames := []string{"tokens", "time"}
+	capturedAt := make([]time.Time, 0, len(snapshots))
+	ids := make([]int64, 0, len(snapshots))
+	series := make([]map[string]loggingHistoryCrossQuota, 0, len(snapshots))
+
+	for _, snap := range snapshots {
+		capturedAt = append(capturedAt, snap.CapturedAt)
+		ids = append(ids, snap.ID)
+
+		row := map[string]loggingHistoryCrossQuota{
+			"tokens": {
+				Name:     "tokens",
+				Value:    snap.TokensUsage,
+				Limit:    float64(snap.TokensLimit),
+				Percent:  float64(snap.TokensPercentage),
+				HasValue: true,
+				HasLimit: true,
+			},
+			"time": {
+				Name:     "time",
+				Value:    snap.TimeUsage,
+				Limit:    float64(snap.TimeLimit),
+				Percent:  float64(snap.TimePercentage),
+				HasValue: true,
+				HasLimit: true,
+			},
+		}
+		series = append(series, row)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"provider":   "zai",
+		"quotaNames": quotaNames,
+		"logs":       loggingHistoryRowsFromSnapshots(capturedAt, ids, quotaNames, series),
+	})
+}
+
+func percentUsed(value, limit float64) float64 {
+	if limit <= 0 {
+		return 0
+	}
+	pct := (value / limit) * 100
+	if pct < 0 {
+		return 0
+	}
+	if pct > 100 {
+		return 100
+	}
+	return pct
+}
+
+func anthropicLoggingQuotaOrder(names []string) []string {
+	preferred := []string{"five_hour", "seven_day", "seven_day_sonnet", "monthly_limit", "extra_usage"}
+	present := make(map[string]bool, len(names))
+	for _, n := range names {
+		present[n] = true
+	}
+	ordered := make([]string, 0, len(names))
+	for _, n := range preferred {
+		if present[n] {
+			ordered = append(ordered, n)
+			delete(present, n)
+		}
+	}
+	extra := make([]string, 0, len(present))
+	for n := range present {
+		extra = append(extra, n)
+	}
+	sort.Strings(extra)
+	ordered = append(ordered, extra...)
+	return ordered
+}
+
+func (h *Handler) loggingHistoryAnthropic(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"logs": []interface{}{}})
+		return
+	}
+
+	start, end, limit := h.loggingHistoryRangeAndLimit(r)
+	snapshots, err := h.store.QueryAnthropicRange(start, end, limit)
+	if err != nil {
+		h.logger.Error("failed to query Anthropic snapshots", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query logging history")
+		return
+	}
+
+	quotaSet := map[string]bool{}
+	for _, snap := range snapshots {
+		for _, q := range snap.Quotas {
+			quotaSet[q.Name] = true
+		}
+	}
+	quotaNames := make([]string, 0, len(quotaSet))
+	for qn := range quotaSet {
+		quotaNames = append(quotaNames, qn)
+	}
+	if len(quotaNames) == 0 {
+		quotaNames = []string{"five_hour", "seven_day", "seven_day_sonnet"}
+	} else {
+		quotaNames = anthropicLoggingQuotaOrder(quotaNames)
+	}
+
+	capturedAt := make([]time.Time, 0, len(snapshots))
+	ids := make([]int64, 0, len(snapshots))
+	series := make([]map[string]loggingHistoryCrossQuota, 0, len(snapshots))
+
+	for _, snap := range snapshots {
+		capturedAt = append(capturedAt, snap.CapturedAt)
+		ids = append(ids, snap.ID)
+		row := make(map[string]loggingHistoryCrossQuota, len(snap.Quotas))
+		for _, q := range snap.Quotas {
+			row[q.Name] = loggingHistoryCrossQuota{
+				Name:    q.Name,
+				Percent: q.Utilization,
+			}
+		}
+		series = append(series, row)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"provider":   "anthropic",
+		"quotaNames": quotaNames,
+		"logs":       loggingHistoryRowsFromSnapshots(capturedAt, ids, quotaNames, series),
+	})
+}
+
+func (h *Handler) loggingHistoryCopilot(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"logs": []interface{}{}})
+		return
+	}
+
+	start, end, limit := h.loggingHistoryRangeAndLimit(r)
+	snapshots, err := h.store.QueryCopilotRange(start, end, limit)
+	if err != nil {
+		h.logger.Error("failed to query Copilot snapshots", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query logging history")
+		return
+	}
+
+	quotaNames := []string{"premium_interactions", "chat", "completions"}
+	capturedAt := make([]time.Time, 0, len(snapshots))
+	ids := make([]int64, 0, len(snapshots))
+	series := make([]map[string]loggingHistoryCrossQuota, 0, len(snapshots))
+
+	for _, snap := range snapshots {
+		capturedAt = append(capturedAt, snap.CapturedAt)
+		ids = append(ids, snap.ID)
+		row := make(map[string]loggingHistoryCrossQuota, len(snap.Quotas))
+		for _, q := range snap.Quotas {
+			usedPercent := 100.0 - q.PercentRemaining
+			if usedPercent < 0 {
+				usedPercent = 0
+			}
+			usedValue := float64(q.Entitlement - q.Remaining)
+			if usedValue < 0 {
+				usedValue = 0
+			}
+			row[q.Name] = loggingHistoryCrossQuota{
+				Name:     q.Name,
+				Value:    usedValue,
+				Limit:    float64(q.Entitlement),
+				Percent:  usedPercent,
+				HasValue: true,
+				HasLimit: true,
+			}
+		}
+		series = append(series, row)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"provider":   "copilot",
+		"quotaNames": quotaNames,
+		"logs":       loggingHistoryRowsFromSnapshots(capturedAt, ids, quotaNames, series),
+	})
+}
+
+func (h *Handler) loggingHistoryCodex(w http.ResponseWriter, r *http.Request) {
+	if h.store == nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"logs": []interface{}{}})
+		return
+	}
+
+	start, end, limit := h.loggingHistoryRangeAndLimit(r)
+	snapshots, err := h.store.QueryCodexRange(start, end, limit)
+	if err != nil {
+		h.logger.Error("failed to query Codex snapshots", "error", err)
+		respondError(w, http.StatusInternalServerError, "failed to query logging history")
+		return
+	}
+
+	quotaNames := []string{"five_hour", "seven_day", "code_review"}
+	capturedAt := make([]time.Time, 0, len(snapshots))
+	ids := make([]int64, 0, len(snapshots))
+	series := make([]map[string]loggingHistoryCrossQuota, 0, len(snapshots))
+
+	for _, snap := range snapshots {
+		capturedAt = append(capturedAt, snap.CapturedAt)
+		ids = append(ids, snap.ID)
+		row := make(map[string]loggingHistoryCrossQuota, len(snap.Quotas))
+		for _, q := range snap.Quotas {
+			row[q.Name] = loggingHistoryCrossQuota{
+				Name:    q.Name,
+				Percent: q.Utilization,
+			}
+		}
+		series = append(series, row)
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"provider":   "codex",
+		"quotaNames": quotaNames,
+		"logs":       loggingHistoryRowsFromSnapshots(capturedAt, ids, quotaNames, series),
+	})
 }
 
 // loggingHistoryAntigravity returns Antigravity polling snapshots with deltas.
@@ -5617,15 +5988,8 @@ func (h *Handler) loggingHistoryAntigravity(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	limit := parseCycleOverviewLimit(r)
-	if limit <= 0 {
-		limit = 200
-	}
-
-	// Query recent snapshots (polling logs)
-	now := time.Now().UTC()
-	start := now.Add(-30 * 24 * time.Hour) // Last 30 days
-	snapshots, err := h.store.QueryAntigravityRange(start, now, limit)
+	start, end, limit := h.loggingHistoryRangeAndLimit(r)
+	snapshots, err := h.store.QueryAntigravityRange(start, end, limit)
 	if err != nil {
 		h.logger.Error("failed to query Antigravity snapshots", "error", err)
 		respondError(w, http.StatusInternalServerError, "failed to query logging history")
@@ -5633,54 +5997,38 @@ func (h *Handler) loggingHistoryAntigravity(w http.ResponseWriter, r *http.Reque
 	}
 
 	quotaNames := api.AntigravityQuotaGroupOrder()
+	capturedAt := make([]time.Time, 0, len(snapshots))
+	ids := make([]int64, 0, len(snapshots))
+	series := make([]map[string]loggingHistoryCrossQuota, 0, len(snapshots))
 
-	// Convert snapshots to logging rows
-	// Query returns oldest first (ASC), iterate forward for correct delta calculation
-	rows := make([]map[string]interface{}, 0, len(snapshots))
-	var prevGroupValues map[string]float64
+	for _, snap := range snapshots {
+		capturedAt = append(capturedAt, snap.CapturedAt)
+		ids = append(ids, snap.ID)
 
-	for i := 0; i < len(snapshots); i++ {
-		snap := snapshots[i]
 		groups := api.GroupAntigravityModelsByLogicalQuota(snap.Models)
-
-		// Build cross-quota values for this snapshot
-		crossQuotas := []map[string]interface{}{}
-		groupValues := map[string]float64{}
-
+		groupByName := make(map[string]api.AntigravityGroupedQuota, len(groups))
 		for _, group := range groups {
-			usedPercent := 100.0 - group.RemainingPercent
-			groupValues[group.GroupKey] = usedPercent
+			groupByName[group.GroupKey] = group
+		}
 
-			delta := 0.0
-			if prevGroupValues != nil {
-				delta = usedPercent - prevGroupValues[group.GroupKey]
+		row := make(map[string]loggingHistoryCrossQuota, len(quotaNames))
+		for _, qn := range quotaNames {
+			group, ok := groupByName[qn]
+			if !ok {
+				continue
 			}
-
-			crossQuotas = append(crossQuotas, map[string]interface{}{
-				"name":    group.GroupKey,
-				"percent": usedPercent,
-				"delta":   delta,
-			})
+			row[qn] = loggingHistoryCrossQuota{
+				Name:    qn,
+				Percent: group.UsagePercent,
+			}
 		}
-
-		row := map[string]interface{}{
-			"id":          snap.ID,
-			"capturedAt":  snap.CapturedAt.Format(time.RFC3339),
-			"crossQuotas": crossQuotas,
-		}
-		rows = append(rows, row)
-		prevGroupValues = groupValues
-	}
-
-	// Reverse to show newest first
-	for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
-		rows[i], rows[j] = rows[j], rows[i]
+		series = append(series, row)
 	}
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{
 		"provider":   "antigravity",
 		"quotaNames": quotaNames,
-		"logs":       rows,
+		"logs":       loggingHistoryRowsFromSnapshots(capturedAt, ids, quotaNames, series),
 	})
 }
 

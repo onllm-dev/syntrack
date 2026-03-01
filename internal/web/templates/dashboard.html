@@ -383,104 +383,6 @@
             </div>
         </section>
 
-        <section class="cycle-overview-section">
-            <header class="section-header">
-                <h3 class="section-title">
-                    <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 20V10M18 20V4M6 20v-4"/>
-                    </svg>
-                    Cycle Overview
-                </h3>
-                <div class="cycles-filters-inline">
-                    <div class="filter-group">
-                        <span class="filter-label">Period</span>
-                        <div class="filter-pills" id="overview-period-pills" role="group" aria-label="Renewal period"></div>
-                    </div>
-                    <select class="page-size-select" id="overview-page-size" aria-label="Rows per page">
-                        <option value="10">10</option>
-                        <option value="20">20</option>
-                        <option value="30">30</option>
-                        <option value="0">All</option>
-                    </select>
-                </div>
-            </header>
-            <div class="table-wrapper">
-                <table class="data-table" id="overview-table">
-                    <thead id="overview-thead"><tr><th>Loading...</th></tr></thead>
-                    <tbody id="overview-tbody">
-                        <tr><td class="empty-state">Select a renewal period to view cross-quota data.</td></tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="table-footer">
-                <span class="table-info" id="overview-info">Showing 0-0 of 0</span>
-                <span class="table-legend">⚡ = consumption rate per hour</span>
-                <div class="table-pagination" id="overview-pagination"></div>
-            </div>
-        </section>
-
-        <section class="cycles-section">
-            <header class="section-header">
-                <h3 class="section-title">
-                    <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-                        <path d="M3 3v5h5"/>
-                    </svg>
-                    Logging History
-                </h3>
-                <div class="cycles-filters-inline">
-                    <div class="filter-group">
-                        <span class="filter-label">Range</span>
-                        <div class="filter-pills" id="cycle-range-pills" role="group" aria-label="Time range">
-                            <button class="filter-pill" data-range="3600000">1h</button>
-                            <button class="filter-pill active" data-range="259200000">3d</button>
-                            <button class="filter-pill" data-range="604800000">7d</button>
-                            <button class="filter-pill" data-range="1296000000">15d</button>
-                            <button class="filter-pill" data-range="2592000000">30d</button>
-                        </div>
-                    </div>
-                    <div class="filter-group">
-                        <span class="filter-label">Group</span>
-                        <div class="filter-pills" id="cycles-bucket-pills" role="group" aria-label="Polling grouping window">
-                            <button class="filter-pill active" data-bucket-minutes="1">1m</button>
-                            <button class="filter-pill" data-bucket-minutes="5">5m</button>
-                            <button class="filter-pill" data-bucket-minutes="10">10m</button>
-                            <button class="filter-pill" data-bucket-minutes="30">30m</button>
-                        </div>
-                    </div>
-                    <select class="page-size-select" id="cycles-page-size" aria-label="Rows per page">
-                        <option value="10">10</option>
-                        <option value="20">20</option>
-                        <option value="30">30</option>
-                        <option value="0">All</option>
-                    </select>
-                </div>
-            </header>
-            <div class="table-wrapper">
-                <table class="data-table" id="cycles-table">
-                    <thead id="cycles-thead">
-                        <tr>
-                            <th data-sort-key="id" role="button" tabindex="0">Cycle <span class="sort-arrow"></span></th>
-                            <th data-sort-key="start" role="button" tabindex="0">Start <span class="sort-arrow"></span></th>
-                            <th data-sort-key="end" role="button" tabindex="0">End <span class="sort-arrow"></span></th>
-                            <th data-sort-key="duration" role="button" tabindex="0">Duration <span class="sort-arrow"></span></th>
-                            <th data-sort-key="totalDelta" role="button" tabindex="0">Total Δ <span class="sort-arrow"></span></th>
-                        </tr>
-                    </thead>
-                    <tbody id="cycles-tbody">
-                        <tr>
-                            <td colspan="5" class="empty-state">No polling data yet. Tracking begins on first poll.</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="table-footer">
-                <span class="table-info" id="cycles-info">Showing 0-0 of 0</span>
-                <span class="table-legend">⚡ = consumption rate per hour</span>
-                <div class="table-pagination" id="cycles-pagination"></div>
-            </div>
-        </section>
-
         <section class="sessions-section">
             <header class="section-header">
                 <h3 class="section-title">
@@ -546,6 +448,104 @@
             <div class="table-footer">
                 <span class="table-info" id="sessions-info">Showing 0-0 of 0</span>
                 <div class="table-pagination" id="sessions-pagination"></div>
+            </div>
+        </section>
+
+        <section class="cycles-section">
+            <header class="section-header">
+                <h3 class="section-title">
+                    <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                        <path d="M3 3v5h5"/>
+                    </svg>
+                    Logging History
+                </h3>
+                <div class="cycles-filters-inline">
+                    <div class="filter-group">
+                        <span class="filter-label">Range</span>
+                        <div class="filter-pills" id="cycle-range-pills" role="group" aria-label="Time range">
+                            <button class="filter-pill" data-range="3600000">1h</button>
+                            <button class="filter-pill active" data-range="259200000">3d</button>
+                            <button class="filter-pill" data-range="604800000">7d</button>
+                            <button class="filter-pill" data-range="1296000000">15d</button>
+                            <button class="filter-pill" data-range="2592000000">30d</button>
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <span class="filter-label">Group</span>
+                        <div class="filter-pills" id="cycles-bucket-pills" role="group" aria-label="Polling grouping window">
+                            <button class="filter-pill active" data-bucket-minutes="1">1m</button>
+                            <button class="filter-pill" data-bucket-minutes="5">5m</button>
+                            <button class="filter-pill" data-bucket-minutes="10">10m</button>
+                            <button class="filter-pill" data-bucket-minutes="30">30m</button>
+                        </div>
+                    </div>
+                    <select class="page-size-select" id="cycles-page-size" aria-label="Rows per page">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="30">30</option>
+                        <option value="0">All</option>
+                    </select>
+                </div>
+            </header>
+            <div class="table-wrapper">
+                <table class="data-table" id="cycles-table">
+                    <thead id="cycles-thead">
+                        <tr>
+                            <th data-sort-key="id" role="button" tabindex="0">Cycle <span class="sort-arrow"></span></th>
+                            <th data-sort-key="start" role="button" tabindex="0">Start <span class="sort-arrow"></span></th>
+                            <th data-sort-key="end" role="button" tabindex="0">End <span class="sort-arrow"></span></th>
+                            <th data-sort-key="duration" role="button" tabindex="0">Duration <span class="sort-arrow"></span></th>
+                            <th data-sort-key="totalDelta" role="button" tabindex="0">Total Δ <span class="sort-arrow"></span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cycles-tbody">
+                        <tr>
+                            <td colspan="5" class="empty-state">No polling data yet. Tracking begins on first poll.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="table-footer">
+                <span class="table-info" id="cycles-info">Showing 0-0 of 0</span>
+                <span class="table-legend">⚡ = consumption rate per hour</span>
+                <div class="table-pagination" id="cycles-pagination"></div>
+            </div>
+        </section>
+
+        <section class="cycle-overview-section">
+            <header class="section-header">
+                <h3 class="section-title">
+                    <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 20V10M18 20V4M6 20v-4"/>
+                    </svg>
+                    Cycle Overview
+                </h3>
+                <div class="cycles-filters-inline">
+                    <div class="filter-group">
+                        <span class="filter-label">Period</span>
+                        <div class="filter-pills" id="overview-period-pills" role="group" aria-label="Renewal period"></div>
+                    </div>
+                    <select class="page-size-select" id="overview-page-size" aria-label="Rows per page">
+                        <option value="10">10</option>
+                        <option value="20">20</option>
+                        <option value="30">30</option>
+                        <option value="0">All</option>
+                    </select>
+                </div>
+            </header>
+            <div class="table-wrapper">
+                <table class="data-table" id="overview-table">
+                    <thead id="overview-thead"><tr><th>Loading...</th></tr></thead>
+                    <tbody id="overview-tbody">
+                        <tr><td class="empty-state">Select a renewal period to view cross-quota data.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="table-footer">
+                <span class="table-info" id="overview-info">Showing 0-0 of 0</span>
+                <span class="table-legend">⚡ = consumption rate per hour</span>
+                <div class="table-pagination" id="overview-pagination"></div>
             </div>
         </section>
     </main>

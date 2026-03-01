@@ -191,7 +191,14 @@ func TestStore_QueryAnthropicRange_WithLimit(t *testing.T) {
 		t.Fatalf("QueryAnthropicRange failed: %v", err)
 	}
 	if len(snapshots) != 2 {
-		t.Errorf("Expected 2 snapshots with limit, got %d", len(snapshots))
+		t.Fatalf("Expected 2 snapshots with limit, got %d", len(snapshots))
+	}
+
+	if !snapshots[0].CapturedAt.Equal(base.Add(3 * time.Hour)) {
+		t.Fatalf("expected first limited snapshot at t+3h, got %s", snapshots[0].CapturedAt)
+	}
+	if !snapshots[1].CapturedAt.Equal(base.Add(4 * time.Hour)) {
+		t.Fatalf("expected second limited snapshot at t+4h, got %s", snapshots[1].CapturedAt)
 	}
 }
 

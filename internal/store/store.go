@@ -645,7 +645,19 @@ func (s *Store) QueryRange(start, end time.Time, limit ...int) ([]*api.Snapshot,
 		ORDER BY captured_at ASC`
 	args := []interface{}{start.Format(time.RFC3339Nano), end.Format(time.RFC3339Nano)}
 	if len(limit) > 0 && limit[0] > 0 {
-		query += ` LIMIT ?`
+		query = `SELECT id, captured_at, sub_limit, sub_requests, sub_renews_at,
+			 search_limit, search_requests, search_renews_at,
+			 tool_limit, tool_requests, tool_renews_at
+			FROM (
+				SELECT id, captured_at, sub_limit, sub_requests, sub_renews_at,
+					search_limit, search_requests, search_renews_at,
+					tool_limit, tool_requests, tool_renews_at
+				FROM quota_snapshots
+				WHERE captured_at BETWEEN ? AND ?
+				ORDER BY captured_at DESC
+				LIMIT ?
+			) recent
+			ORDER BY captured_at ASC`
 		args = append(args, limit[0])
 	}
 	rows, err := s.db.Query(query, args...)
